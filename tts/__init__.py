@@ -1,0 +1,1 @@
+from tts.piper_ import text_to_speech
