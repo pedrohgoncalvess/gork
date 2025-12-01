@@ -9,7 +9,7 @@ from piper import SynthesisConfig, PiperVoice
 from utils import project_root
 
 
-async def text_to_speech(text: str, rate: float = 1.0) -> str:
+async def text_to_speech(text: str, rate: float = 1.0, english: bool = False) -> str:
     syn_config = SynthesisConfig(
         volume=1.0,
         length_scale=1.0 / rate,
@@ -17,7 +17,10 @@ async def text_to_speech(text: str, rate: float = 1.0) -> str:
         normalize_audio=True,
     )
 
-    voice = PiperVoice.load(f"{project_root}/tts/models/pt_BR-faber-medium.onnx")
+    if not english:
+        voice = PiperVoice.load(f"{project_root}/tts/models/pt_BR-faber-medium.onnx")
+    else:
+        voice = PiperVoice.load(f"{project_root}/tts/models/en_US-ryan-high.onnx")
 
     wav_buffer = io.BytesIO()
 
@@ -30,7 +33,7 @@ async def text_to_speech(text: str, rate: float = 1.0) -> str:
         u"\U0001F900-\U0001F9FF"
         u"\U0001FA70-\U0001FAFF"
         u"\U00002700-\U000027BF"
-        u"\U0000FE00-\U0000FE0F"  # variation selectors
+        u"\U0000FE00-\U0000FE0F"
         u"\U0001F018-\U0001F270"
         u"\U0001F600-\U0001F636"
         "]+"
