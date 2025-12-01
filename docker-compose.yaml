@@ -1,0 +1,75 @@
+services:
+  postgres:
+    container_name: gork_postgres
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5435:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dokploy-network
+
+  webhook-fastapi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webhook_fastapi
+    ports:
+      - "9001:9001"
+    environment:
+      - ENV_FILE=.env
+    volumes:
+      # Configuração
+      - ./.env.docker:/app/.env:ro
+      - ./main.py:/app/main.py:ro
+
+      # Código fonte (read-only)
+      - ./agents:/app/agents:ro
+      - ./api:/app/api:ro
+      - ./external:/app/external:ro
+      - ./functions:/app/functions:ro
+      - ./services:/app/services:ro
+      - ./tts:/app/tts:ro
+      - ./utils:/app/utils:ro
+      - ./s3:/app/s3:ro
+
+      # Dados (read-write)
+      - ./data:/app/data:rw
+      - ./database:/app/database:rw
+      - ./log:/app/log:rw
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+
+  s3-minio:
+    image: minio/minio
+    command: server /data --address ":19000" --console-address ":19001"
+    ports:
+      - "19000:19000"
+      - "19001:19001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+  postgres_data:
+  minio_data:
