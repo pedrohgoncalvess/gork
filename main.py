@@ -1,0 +1,218 @@
+import asyncio
+import base64
+from datetime import datetime, timedelta
+from io import BytesIO
+from pathlib import Path
+
+import uvicorn
+from PIL import Image
+from fastapi import FastAPI, Request, HTTPException
+
+from starlette import status
+from fastapi import BackgroundTasks
+
+from database import PgConnection, init_agents
+from database.models.base import Group, WhiteList, User
+from database.models.content import Message
+from database.models.manager import Model
+from database.operations.base.group import GroupRepository
+from database.operations.base.user import UserRepository
+from database.operations.base.white_list import WhiteListRepository
+from database.operations.content.message import MessageRepository
+from database.operations.manager.model import ModelRepository
+from external import get_group_info
+from functions import get_resume_conversation, generic_conversation
+from functions.web_search import web_search
+from log import logger
+from external.evolution import send_message, send_audio, download_image, send_sticker
+from s3 import S3Client
+from tts import text_to_speech
+from utils import get_env_var
+
+app = FastAPI()
+evolution_api = get_env_var("EVOLUTION_API")
+evolution_api_key = get_env_var("API_KEY")
+instance_key = get_env_var("INSTANCE_KEY")
+instance_name = get_env_var("INSTANCE_NAME")
+
+COMMANDS = [
+    ("@gork", "_[Sem comando]_ Interação genérica"),
+    ("!help", "Mostra os comandos disponíveis. _[Ignora o restante da mensagem]_"),
+    ("!audio", "Envia áudio como forma de resposta."),
+    ("!resume", "Faz um resumo das últimas 30 mensagens. _[Ignora o restante da mensagem]_"),
+    ("!search", "Faz uma pesquisa por termo na internet e retorna um resumo."),
+    ("!model", "Mostra um modelo sendo utilizado."),
+    ("!sticker", "Cria um sticker com base em uma imagem fornecida.")
+]
+
+
+@app.post("/webhook/evolution")
+async def evolution_webhook(
+        request: Request,
+        background_tasks: BackgroundTasks,
+):
+    try:
+        body = await request.json()
+    except Exception as e:
+        await logger.error("Webhook", "Error reading body", str(e))
+        return {"status": "error"}
+
+    api_key = body.get("apikey")
+
+    if api_key != instance_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED)
+
+    background_tasks.add_task(process_webhook, body)
+
+    return {"status": "received"}
+
+
+async def process_webhook(body: dict):
+    async with PgConnection() as db:
+        whitelist_repo = WhiteListRepository(WhiteList, db)
+        user_repo = UserRepository(User, db)
+        message_repo = MessageRepository(Message, db)
+        group_repo = GroupRepository(Group, db)
+        minio_client = S3Client()
+
+        event_type = body.get("event")
+        event_data = body.get("data")
+
+        if event_type == "send.message":
+            return
+
+        if event_type == "messages.upsert":
+            await logger.info("Request", body.get("instance"), body)
+            remote_id = body.get("data", {}).get("key", {}).get("remoteJid", "")
+            message_id = event_data["key"]["id"]
+            contact_name = body["data"]["pushName"]
+
+            message_data = event_data.get("message", {})
+            image_message = message_data.get('imageMessage')
+
+            if image_message:
+                await minio_client.connect()
+
+                image_base64 = await download_image(message_id) if message_id else None
+                caption = message_data['imageMessage'].get('caption', '')
+                #s3_file_path = await minio_client.upload_image(file_bytes, convert_to_webp=True)
+            else:
+                s3_file_path = None
+                caption = None
+
+            if remote_id.endswith("@g.us"):
+                group_jid = remote_id.replace("@g.us", "")
+                contact_id = event_data["key"]["participant"].replace("@lid", "")
+
+                created_at = datetime.fromtimestamp(event_data["messageTimestamp"])
+
+                if created_at < (datetime.now() - timedelta(minutes=20)):
+                    return
+
+                user = await user_repo.find_or_create(
+                    name=contact_name,
+                    lid=contact_id
+                )
+
+                group = await group_repo.find_or_create(
+                    group_jid=group_jid
+                )
+
+                if not group.name:
+                    gp_infos = get_group_info(remote_id)
+                    group = await group_repo.find_or_create(
+                        group_jid=group_jid,
+                        name=gp_infos["subject"],
+                        description=gp_infos.get("desc"),
+                    )
+
+                is_whitelisted = await whitelist_repo.is_whitelisted(
+                    sender_type="group",
+                    sender_id=group.id
+                )
+
+                conversation = caption if caption else message_data.get("conversation", "")
+                if not conversation:
+                    conversation = message_data.get("ephemeralMessage", {}).get("message", {}).get("extendedTextMessage", {}).get("text", "")
+
+                _ = await message_repo.find_or_create(
+                    message_id=event_data["key"]["id"],
+                    sender_id=user.id,
+                    group_id=group.id,
+                    content=conversation,
+                    created_at=datetime.fromtimestamp(event_data["messageTimestamp"])
+                )
+
+                if not is_whitelisted:
+                    return
+
+                if "@gork" not in conversation.lower():
+                    return
+
+                treated_text = conversation.strip()
+                for command, _ in COMMANDS:
+                    treated_text = treated_text.replace(command, "")
+
+                if "!sticker" in conversation.lower():
+                    image_bytes = base64.b64decode(image_base64)
+
+                    img = Image.open(BytesIO(image_bytes))
+                    img.thumbnail((512, 512), Image.Resampling.LANCZOS)
+
+                    if img.mode != 'RGBA':
+                        img = img.convert('RGBA')
+
+                    buffer = BytesIO()
+                    img.save(buffer, format='WEBP', quality=95)
+                    buffer.seek(0)
+                    webp_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+                    await send_sticker(remote_id, webp_base64)
+                    return
+
+                if "!help" in conversation.lower():
+                    tt_messages = ["Comandos do Gork disponíveis."]
+                    for command, desc in COMMANDS:
+                        tt_messages.append(
+                            f"*{command}* - {desc}"
+                        )
+                    await send_message(remote_id, "\n".join(tt_messages))
+                    return
+
+                if "!model" in conversation.lower():
+                    model_repo = ModelRepository(Model, db)
+                    model = await model_repo.get_default_model()
+                    await send_message(remote_id, f"Ta sendo usado o {model.name}.")
+                    return
+
+                if "!resume" in conversation.lower():
+                    resume = await get_resume_conversation(user.id, group_id=group.id)
+                    await send_message(remote_id, resume)
+                    return
+
+                if "!search" in conversation.lower():
+                    search = await web_search(treated_text, remote_id)
+                    await send_message(remote_id, search)
+                    return
+
+                if conversation.lower() == "@gork":
+                    await send_message(remote_id, f"🤖 Robo do mito está pronto")
+                    return
+
+                response_message = await generic_conversation(group.id, user.name, treated_text)
+                if "!audio" in conversation.lower():
+                    audio_base64 = await text_to_speech(response_message)
+                    await send_audio(remote_id, audio_base64)
+                    return
+
+                await send_message(remote_id, response_message)
+                return
+
+            elif remote_id.endswith(".net"):
+                # TODO: Implement
+                pass
+
+
+if __name__ == "__main__":
+    asyncio.run(init_agents())
+    uvicorn.run(app, host="0.0.0.0", port=9001)
