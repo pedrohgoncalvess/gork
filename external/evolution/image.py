@@ -1,8 +1,35 @@
+from typing import Optional
+
 import httpx
-import base64
 
 from external.evolution.base import instance_name, evolution_api_key, evolution_api
 
+
+def extract_quoted_image_bytes(webhook_data: dict) -> Optional[bytes]:
+    """
+    Extract image bytes from a quoted message in WhatsApp webhook
+
+    Returns:
+        bytes: JPEG thumbnail bytes or None if not found
+    """
+    try:
+        context_info = webhook_data['data']['contextInfo']
+        quoted_message = context_info.get('quotedMessage', {})
+        image_message = quoted_message.get('imageMessage', {})
+
+        jpeg_thumbnail = image_message.get('jpegThumbnail')
+
+        if not jpeg_thumbnail:
+            return None
+
+        byte_array = bytearray()
+        for i in range(len(jpeg_thumbnail)):
+            byte_array.append(jpeg_thumbnail[str(i)])
+
+        return bytes(byte_array)
+
+    except (KeyError, TypeError) as e:
+        return None
 
 async def send_sticker(contact_id: str, image_base64: str):
     url = f"{evolution_api}/message/sendSticker/{instance_name}"
