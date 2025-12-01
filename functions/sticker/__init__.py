@@ -1,0 +1,1 @@
+from functions.sticker.modify_image import add_caption_to_image

@@ -1,2 +1,3 @@
 from functions.resume import get_resume_conversation
 from functions.generic import generic_conversation
+from functions.sticker.generate_sticker import generate_sticker
