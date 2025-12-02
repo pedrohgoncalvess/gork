@@ -28,7 +28,7 @@ def extract_quoted_image_bytes(webhook_data: dict) -> Optional[bytes]:
 
         return bytes(byte_array)
 
-    except (KeyError, TypeError) as e:
+    except (KeyError, TypeError):
         return None
 
 async def send_sticker(contact_id: str, image_base64: str):
@@ -47,30 +47,3 @@ async def send_sticker(contact_id: str, image_base64: str):
     async with httpx.AsyncClient() as client:
         response = await client.post(url, json=payload, headers=headers, timeout=60)
         return response.json()
-
-
-async def download_image(message_id: str) -> bytes:
-    media_url = f"{evolution_api}/chat/getBase64FromMediaMessage/{evolution_instance_name}"
-
-    payload = {
-        "message": {
-            "key": {
-                "id" :message_id,
-            }
-        },
-        "convertToMp4": False
-    }
-
-    headers = {
-        "Content-Type": "application/json",
-        "apikey": evolution_api_key
-    }
-
-    async with httpx.AsyncClient() as client:
-        response = await client.post(media_url, json=payload, headers=headers, timeout=60)
-        response.raise_for_status()
-
-        result = response.json()
-
-        if 'base64' in result:
-            return result['base64']
