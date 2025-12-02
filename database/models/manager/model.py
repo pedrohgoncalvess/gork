@@ -13,6 +13,7 @@ class Model(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
     openrouter_id = Column(Text, nullable=False)
+    audio_input = Column(Boolean, nullable=False, default=False)
     input_price = Column(Numeric(10, 2))
     output_price = Column(Numeric(10, 2))
     default = Column(Boolean, nullable=False, default=False)

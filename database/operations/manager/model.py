@@ -14,7 +14,13 @@ class ModelRepository(BaseRepository[Model]):
 
     async def get_default_model(self) -> Optional[Model]:
         result = await self.db.execute(
-            select(Model).filter(Model.default == True)
+            select(Model).filter(Model.default == True, Model.audio_input == False)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_default_audio_model(self) -> Optional[Model]:
+        result = await self.db.execute(
+            select(Model).filter(Model.default == True, Model.audio_input == True)
         )
         return result.scalar_one_or_none()
 
