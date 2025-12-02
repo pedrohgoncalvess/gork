@@ -1,7 +1,10 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,jupyternotebooks
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,jupyternotebooks
+
 # Personal
 .env.docker
+tts/models/en_US-ryan-high.onnx
+tts/models/en_US-ryan-high.onnx.json
 
 ### JupyterNotebooks ###
 # gitignore template for Jupyter Notebooks
