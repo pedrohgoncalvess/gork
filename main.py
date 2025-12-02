@@ -18,6 +18,7 @@ from database.operations.content.message import MessageRepository
 from database.operations.manager.model import ModelRepository
 from external import get_group_info, evolution_instance_key
 from functions import get_resume_conversation, generic_conversation, generate_sticker
+from functions.audio.transcribe_audio import transcribe_audio
 from functions.web_search import web_search
 from log import logger
 from external.evolution import send_message, send_audio, send_sticker
@@ -130,6 +131,30 @@ async def process_webhook(body: dict):
                 if "@gork" not in conversation.lower():
                     return
 
+                if conversation.lower().replace("!english", "") == "@gork":
+                    audio_message = event_data.get("contextInfo", {}).get("quotedMessage", {}).get("audioMessage")
+                    ephemeral_audio_message = (
+                        event_data.get("message", {})
+                        .get("ephemeralMessage", {})
+                        .get("message", {})
+                        .get("extendedTextMessage", {})
+                        .get("contextInfo", {})
+                        .get("quotedMessage", {})
+                        .get("ephemeralMessage", {})
+                        .get("message", {})
+                        .get("audioMessage")
+                    )
+                    if audio_message or ephemeral_audio_message:
+                        conversation = await transcribe_audio(body)
+                        response_message = await generic_conversation(group.id, user.name, conversation)
+                        language = response_message.get("language")
+                        audio_base64 = await text_to_speech(response_message.get("text"), language)
+                        await send_audio(remote_id, audio_base64, message_id)
+                        return
+                    else:
+                        await send_message(remote_id, f"🤖 Robo do mito está pronto", message_id)
+                        return
+
                 treated_text = conversation.strip()
                 for command, _ in COMMANDS:
                     treated_text = treated_text.replace(command, "")
@@ -168,20 +193,18 @@ async def process_webhook(body: dict):
                     await send_message(remote_id, search, message_id)
                     return
 
-                if conversation.lower() == "@gork":
-                    await send_message(remote_id, f"🤖 Robo do mito está pronto", message_id)
-                    return
-
                 response_message = await generic_conversation(group.id, user.name, treated_text)
                 if "!audio" in conversation.lower():
-                    english = "!english" in conversation.lower()
-                    audio_base64 = await text_to_speech(response_message, english=english)
+                    audio_base64 = await text_to_speech(
+                        response_message.get("text"),
+                        language=response_message.get("language")
+                    )
                     await send_audio(remote_id, audio_base64, message_id)
                     return
 
                 model_repo = ModelRepository(Model, db)
                 default_model = await model_repo.get_default_model()
-                response_message = f"{response_message}\n\n_{default_model.name}_"
+                response_message = f"{response_message.get('text')}\n\n_{default_model.name}_"
                 await send_message(remote_id, response_message, message_id)
                 return
 
