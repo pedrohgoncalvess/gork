@@ -132,3 +132,9 @@ else
 	@rm -rf $(VENV)
 endif
 	@echo Virtual environment removed!
+
+setup-evolution-api:
+	@if ! docker network ls | grep -q dokploy-network; then \
+		docker network create dokploy-network; \
+	fi
+	docker compose -f ./evolution-api/docker-compose.yaml up
