@@ -63,7 +63,7 @@ async def transcribe_audio(webhook_data:dict) -> str:
         resp = req["choices"][0]["message"]["content"]
 
         interaction_repo = InteractionRepository(Interaction, db)
-        first_interac = await interaction_repo.create_interaction(
+        first_interac = await interaction_repo.create_interaction(  # TODO: compress in just one interaction in the dat
             model_id = audio_model.id,
             sender = "user",
             agent_id = transcriber_agent.id,

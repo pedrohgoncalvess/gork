@@ -1,13 +1,10 @@
 import json
 from datetime import datetime
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
 from database import PgConnection
 from database.models.manager import Command, Remember
 from database.operations.manager import CommandRepository
 from database.operations.manager.remember import RememberRepository
-from external.evolution import send_message
 from services import manage_interaction
 
 

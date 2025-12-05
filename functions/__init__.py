@@ -2,3 +2,6 @@ from functions.resume import get_resume_conversation
 from functions.generic import generic_conversation
 from functions.sticker.generate_sticker import generate_sticker
 from functions.remember import remember_generator
+from functions.transcribe_audio import transcribe_audio
+from functions.web_search import web_search
+from functions.generate_image import generate_image
