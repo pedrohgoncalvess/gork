@@ -182,12 +182,12 @@ async def process_private_message(
     treated_text = clean_text(conversation)
 
     if not treated_text:
-        await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
+        await send_message(number, "🤖 Robo do mito está pronto", message_id)
         return
 
     await process_commands(
         conversation,
-        user.phone_number,
+        number,
         message_id,
         user,
         body,
