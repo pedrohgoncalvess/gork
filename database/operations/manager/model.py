@@ -14,20 +14,26 @@ class ModelRepository(BaseRepository[Model]):
 
     async def get_default_model(self) -> Optional[Model]:
         result = await self.db.execute(
-            select(Model).filter(Model.default == True, Model.audio_input == False)
+            select(Model).filter(Model.text_default == True)
         )
         return result.scalar_one_or_none()
 
     async def get_default_audio_model(self) -> Optional[Model]:
         result = await self.db.execute(
-            select(Model).filter(Model.default == True, Model.audio_input == True)
+            select(Model).filter(Model.audio_default == True)
+        )
+        return result.scalar_one_or_none()
+
+    async def get_default_image_model(self) -> Optional[Model]:
+        result = await self.db.execute(
+            select(Model).filter(Model.image_default == True)
         )
         return result.scalar_one_or_none()
 
     async def set_as_default(self, model_id: int) -> Optional[Model]:
         all_models = await self.find_all()
         for model in all_models:
-            if model.default:
+            if model.text_default:
                 await self.update(model.id, {"default": 0})
 
         return await self.update(model_id, {"default": 1})
