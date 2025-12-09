@@ -94,12 +94,6 @@ class RememberRepository(BaseRepository[Remember]):
         return await self.insert(remember)
 
     async def soft_delete(self, remember_id: int) -> Optional[Remember]:
-        """
-        Marca um lembrete como deletado (soft delete)
-
-        Args:
-            remember_id: ID do lembrete
-        """
         return await self.update(
             remember_id,
             {"deleted_at": datetime.now()}
@@ -110,13 +104,6 @@ class RememberRepository(BaseRepository[Remember]):
             user_id: Optional[int] = None,
             group_id: Optional[int] = None
     ) -> List[Remember]:
-        """
-        Busca lembretes por usuário OU grupo
-
-        Args:
-            user_id: ID do usuário
-            group_id: ID do grupo
-        """
         filters = [Remember.deleted_at.is_(None)]
 
         if user_id and group_id:

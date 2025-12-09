@@ -14,7 +14,6 @@ from external.evolution import send_message
 from utils import get_env_var
 
 
-
 async def web_search(user_question: str, user_id: int, contact_id: str, is_group: bool = True):
     brave_key = get_env_var("BRAVE_KEY")
 

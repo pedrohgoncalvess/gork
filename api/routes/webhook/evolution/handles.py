@@ -2,6 +2,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Optional
 from textwrap import dedent
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -225,6 +226,7 @@ async def handle_remember_command(
 ):
     remember, feedback_message = await remember_generator(user_id, treated_text, group_id)
     remember.message = f"*[LEMBRETE]* {remember.message}"
+    remember.remember_at = remember.remember_at.replace(tzinfo=ZoneInfo("America/Sao_Paulo"))
 
     scheduler.add_job(
         action_remember,

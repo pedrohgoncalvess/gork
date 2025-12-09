@@ -16,7 +16,7 @@ async def remember_generator(user_id: int, message: str, group_id: int = None) -
 
         new_command = await command_repo.insert(Command(
             user_id=user_id,
-            command="!remember",
+            command="remember",
             group_id=group_id,
         ))
         resp = await manage_interaction(db, message, agent_name="remember-formatter", command=new_command, user_id=user_id, group_id=group_id)
