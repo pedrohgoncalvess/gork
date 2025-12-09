@@ -14,7 +14,7 @@ class Message(Base):
     id = Column(Integer, primary_key=True)
     message_id = Column(String(255), unique=True, nullable=False)
 
-    sender_id = Column(Integer, ForeignKey("base.user.id"))
+    user_id = Column(Integer, ForeignKey("base.user.id"))
 
     group_id = Column(Integer, ForeignKey("base.group.id"))
 

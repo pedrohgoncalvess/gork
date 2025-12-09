@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Text,
+    Column, Integer, Text,
     TIMESTAMP, func, ForeignKey
 )
 from sqlalchemy.orm import relationship
@@ -13,21 +13,22 @@ class Interaction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     model_id = Column(Integer, ForeignKey("manager.model.id"), nullable=False)
-    interaction_id = Column(Integer, ForeignKey("manager.interaction.id"), nullable=True)
     command_id = Column(Integer, ForeignKey("manager.command.id"), nullable=True)
     agent_id = Column(Integer, ForeignKey("manager.agent.id"), nullable=True)
-    sender = Column(String(10), nullable=False)
-    content = Column(Text, nullable=False)
-    tokens = Column(Integer, nullable=False)
-    inserted_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    user_id = Column(Integer, ForeignKey("base.user.id"), nullable=False)
+    group_id = Column(Integer, ForeignKey("base.group.id"))
+    user_prompt = Column(Text, nullable=False)
+    response = Column(Text, nullable=False)
+    system_behavior = Column(Text)
+    input_tokens = Column(Integer, nullable=False)
+    output_tokens = Column(Integer, nullable=False)
+    inserted_at = Column(
+        TIMESTAMP(timezone=True),
+        server_default=func.timezone('America/Sao_Paulo', func.now()),
+        nullable=False
+    )
 
-    # Relationships
     model = relationship("Model", backref="interactions")
     command = relationship("Command", backref="interactions")
     agent = relationship("Agent", backref="interactions")
-    parent_interaction = relationship(
-        "Interaction",
-        remote_side=[id],
-        backref="child_interactions",
-        foreign_keys=[interaction_id]
-    )
+    user = relationship("User", backref="interactions")

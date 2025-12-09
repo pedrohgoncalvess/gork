@@ -13,13 +13,14 @@ class Media(Base):
 
     id = Column(Integer, primary_key=True)
 
+    name = Column(String(150), nullable=False)
     message_id = Column(Integer, ForeignKey("content.message.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("base.user.id"), nullable=True)
 
     bucket = Column(String(30), nullable=False)
     sub_path = Column(String(200), nullable=False)
 
-    type = Column(String(20))  # audio, image, sticker...
+    type = Column(String(20))
     size = Column(DECIMAL)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)

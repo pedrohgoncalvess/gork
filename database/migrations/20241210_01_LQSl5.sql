@@ -76,7 +76,7 @@ CREATE TABLE "manager"."interaction" (
     sender VARCHAR(10) NOT NULL,
     content TEXT NOT NULL,
     tokens INTEGER NOT NULL,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
 
     CONSTRAINT interaction_pk PRIMARY KEY (id),
     CONSTRAINT interaction_model_fk FOREIGN KEY (model_id) REFERENCES "manager"."model"(id),
