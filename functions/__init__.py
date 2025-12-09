@@ -5,3 +5,5 @@ from functions.remember import remember_generator
 from functions.transcribe_audio import transcribe_audio
 from functions.web_search import web_search
 from functions.generate_image import generate_image
+from functions.intent import classify_intent
+from functions.tokens import token_consumption
