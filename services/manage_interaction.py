@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from database.models.manager import Model, Agent, Interaction, Command
 from database.operations.manager import ModelRepository, AgentRepository, InteractionRepository
@@ -8,9 +9,11 @@ from external import make_request_openrouter
 async def manage_interaction(
         db,
         user_prompt: str,
-        system_prompt: str = None,
-        agent_name: str = None,
-        command: Command = None,
+        user_id: int,
+        group_id: Optional[int] = None,
+        system_prompt: Optional[str] = None,
+        agent_name: Optional[str] = None,
+        command: Optional[Command] = None,
 ) -> str:
 
     model_repo = ModelRepository(Model, db)
@@ -26,7 +29,6 @@ async def manage_interaction(
         system_prompt = agent.prompt
 
     now = datetime.now()
-
 
     system_prompt = system_prompt.replace("{CURRENT_DATETIME}", now.strftime("%Y-%m-%d %H:%M:%S (%A)"))
     system_prompt = system_prompt.replace("{CURRENT_DATE}", now.strftime("%B %d, %Y"))
@@ -47,26 +49,20 @@ async def manage_interaction(
         ]
     }
 
-    llm_req = make_request_openrouter(payload_term_formatter)
-    llm_resp = llm_req["choices"][0]["message"]["content"]
+    req = make_request_openrouter(payload_term_formatter)
+    resp = req["choices"][0]["message"]["content"]
 
     interaction_repo = InteractionRepository(Interaction, db)
-    first_interaction_term_formatter = await interaction_repo.create_interaction(
-        agent_id=agent.id if agent_name else None,
-        model_id=default_model.id,
-        sender="user",
-        command_id=command.id if command else None,
-        content=f"System: {agent.prompt}\n\nUser: {llm_resp}",
-        tokens=llm_req["usage"]["prompt_tokens"]
-    )
-
     _ = await interaction_repo.create_interaction(
-        agent_id=agent.id if agent_name else None,
-        interaction_id=first_interaction_term_formatter.id,
         model_id=default_model.id,
-        sender="assistant",
-        content=llm_resp,
-        tokens=llm_req["usage"]["completion_tokens"]
+        user_id=user_id,
+        group_id=group_id,
+        agent_id=agent.id if agent_name else None,
+        command_id=command.id if command else None,
+        user_prompt=user_prompt,
+        response=resp,
+        input_tokens=req["usage"]["prompt_tokens"],
+        output_tokens=req["usage"]["completion_tokens"]
     )
 
-    return llm_resp
+    return resp
