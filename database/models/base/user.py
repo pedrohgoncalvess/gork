@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String,
-    TIMESTAMP, func
+    TIMESTAMP, func, UUID, text
 )
 from sqlalchemy.orm import relationship
 
@@ -14,6 +14,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True)
     src_id = Column(String(100), unique=True, nullable=False)
+    ext_id = Column(UUID, unique=True, nullable=False, server_default=text("uuid_generate_v4()"))
     phone_number = Column(String(20))
     name = Column(String(255))
 

@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text,
-    TIMESTAMP, func
+    TIMESTAMP, func, UUID, text
 )
 from sqlalchemy.orm import relationship
 
@@ -13,6 +13,7 @@ class Group(Base):
 
     id = Column(Integer, primary_key=True)
     src_id = Column(String(100), unique=True, nullable=False)
+    ext_id = Column(UUID, unique=True, nullable=False, server_default=text("uuid_generate_v4()"))
     name = Column(String(255))
     description = Column(Text)
     profile_image_url = Column(Text)
