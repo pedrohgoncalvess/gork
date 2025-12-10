@@ -49,15 +49,6 @@ async def text_to_speech(text: str, language: str) -> str:
         voice.synthesize_wav(tt_message, wav_file, syn_config=syn_config)
 
     audio_bytes = wav_buffer.getvalue()
-
-    folder = "./data/tts"
-    os.makedirs(folder, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    file_path = os.path.join(folder, f"{timestamp}.wav")
-
-    with open(file_path, "wb") as f:
-        f.write(audio_bytes)
-
     audio_base64 = base64.b64encode(audio_bytes).decode('utf-8')
 
     return audio_base64
