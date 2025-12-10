@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from io import BytesIO
 
@@ -5,9 +6,12 @@ from PIL import Image
 
 from database import PgConnection
 from database.models.manager import Model, Interaction, Command
-from database.operations.manager import ModelRepository, InteractionRepository, CommandRepository
+from database.operations.manager import (
+    ModelRepository, InteractionRepository, CommandRepository
+)
 from external import make_request_openrouter
 from external.evolution import download_media
+from services.save_image import materialize_image
 
 
 async def generate_image(user_id: int, user_message: str, webhook_event: dict, group_id: int = None) -> tuple[str, bool]:
@@ -15,6 +19,15 @@ async def generate_image(user_id: int, user_message: str, webhook_event: dict, g
     message_id = event_data["key"]["id"]
     async with PgConnection() as db:
         model_repo = ModelRepository(Model, db)
+        command_repo = CommandRepository(Command, db)
+        new_command = await command_repo.create_command(
+            command="image",
+            user_id=user_id,
+            group_id=group_id,
+        )
+
+        interaction_repo = InteractionRepository(Interaction, db)
+
         default_image_model = await model_repo.get_default_image_model()
 
         message_data = event_data["message"]
@@ -68,7 +81,7 @@ async def generate_image(user_id: int, user_message: str, webhook_event: dict, g
             "messages": messages
             }
 
-        req = make_request_openrouter(payload)
+        req = await make_request_openrouter(payload)
 
         if req.get("choices"):
             message = req["choices"][0]["message"]
@@ -77,6 +90,16 @@ async def generate_image(user_id: int, user_message: str, webhook_event: dict, g
                 if image.startswith("data:"):
                     image = image.split(",")[1]
             else:
+                _ = await interaction_repo.create_interaction(
+                    model_id=default_image_model.id,
+                    user_id=user_id,
+                    command_id=new_command.id,
+                    user_prompt=user_message,
+                    response=None,
+                    input_tokens=req["usage"]["prompt_tokens"],
+                    output_tokens=None,
+                    group_id=group_id
+                )
                 return "Não foi possível completar sua requisição. Tente novamente mais tarde.", True
 
         image_bytes = base64.b64decode(image)
@@ -91,14 +114,6 @@ async def generate_image(user_id: int, user_message: str, webhook_event: dict, g
         buffer.seek(0)
         webp_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
-        command_repo = CommandRepository(Command, db)
-        new_command = await command_repo.create_command(
-            command="!image",
-            user_id=user_id,
-            group_id=group_id,
-        )
-
-        interaction_repo = InteractionRepository(Interaction, db)
         _ = await interaction_repo.create_interaction(
             model_id=default_image_model.id,
             user_id=user_id,
@@ -110,4 +125,13 @@ async def generate_image(user_id: int, user_message: str, webhook_event: dict, g
             group_id=group_id
         )
 
+        webp_base64_bytes = base64.b64encode(buffer.getvalue())
+        if group_id:
+            asyncio.create_task(
+                materialize_image(message_id, webp_base64_bytes, group_id=group_id)
+            )
+        else:
+            asyncio.create_task(
+                materialize_image(message_id, webp_base64_bytes, user_id=user_id)
+            )
         return webp_base64, False
