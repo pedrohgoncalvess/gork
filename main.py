@@ -1,5 +1,3 @@
-import asyncio
-
 import uvicorn
 from scheduler import scheduler
 from fastapi import FastAPI
