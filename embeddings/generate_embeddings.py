@@ -1,9 +1,12 @@
+import io
 from datetime import datetime
 
+import torch
 from PIL import Image
-import io
+from transformers import CLIPModel, CLIPProcessor
 
 from log import openrouter_logger
+
 
 # model = CLIPModel.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k") #1024
 # processor = CLIPProcessor.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
