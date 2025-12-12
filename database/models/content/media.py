@@ -16,8 +16,8 @@ class Media(Base):
 
     name = Column(String(150), nullable=False)
     message_id = Column(Integer, ForeignKey("content.message.id"), nullable=True)
-    image_embedding = Column(Vector(768), nullable=False)
-    name_embedding = Column(Vector(768), nullable=False)
+    image_embedding = Column(Vector(1024), nullable=False)
+    name_embedding = Column(Vector(1024), nullable=False)
 
     bucket = Column(String(30), nullable=False)
     path = Column(String(200), nullable=False)

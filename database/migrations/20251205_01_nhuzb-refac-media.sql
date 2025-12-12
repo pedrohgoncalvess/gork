@@ -2,8 +2,8 @@
 -- depends: 20251203_02_mAXIh-image-models
 CREATE EXTENSION IF NOT EXISTS vector;
 
-ALTER TABLE "content"."media" ADD COLUMN image_embedding vector(768) NOT NULL;
-ALTER TABLE "content"."media" ADD COLUMN name_embedding vector(768) NOT NULL;
+ALTER TABLE "content"."media" ADD COLUMN image_embedding vector(1024) NOT NULL;
+ALTER TABLE "content"."media" ADD COLUMN name_embedding vector(1024) NOT NULL;
 ALTER TABLE "content"."media" RENAME COLUMN sub_path TO "path";
 ALTER TABLE "content"."media" RENAME COLUMN "type" TO format;
 ALTER TABLE "content"."media" ADD COLUMN message_id INTEGER NOT NULL;
