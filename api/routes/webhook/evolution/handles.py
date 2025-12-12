@@ -9,8 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models.base import User
 from database.models.manager import Model
 from database.operations.manager import ModelRepository
-from functions import get_resume_conversation, generic_conversation, generate_sticker, remember_generator, \
-    generate_image, describe_image
+from functions import (
+    get_resume_conversation, generic_conversation,
+    generate_sticker, remember_generator,
+    generate_image, describe_image,
+    list_images, search_images
+)
 from functions.tokens import token_consumption
 from functions.transcribe_audio import transcribe_audio
 from functions.web_search import web_search
@@ -32,7 +36,8 @@ COMMANDS = [
     ("!transcribe", "Transcreve um áudio. _[Ignora o restante da mensagem]_", "audio"),
     ("!image", "Gera ou modifica uma imagem mencionada.", "image"),
     ("!consumption", "Gera relatório de consumo de grupos e usuários.", "search"),
-    ("!describe", "Descreve uma imagem.", "image")
+    ("!describe", "Descreve uma imagem.", "image"),
+    ("!gallery", "Lista as imagens enviadas. _[Filtros podem ser feitos com termos ou datas]_", "image"),
 ]
 
 
@@ -320,3 +325,19 @@ def handle_media(body: dict) -> list[str]:
         medias.append("audio_message")
 
     return medias
+
+async def handle_list_images_command(
+        remote_id: str, treated_text: Optional[str],
+        db: AsyncSession, user_id: Optional[int] = None,
+        group_id: Optional[int] = None
+):
+    if treated_text:
+        message = await search_images(treated_text, user_id=user_id, group_id=group_id, db=db)
+    else:
+        message = await list_images(
+            user_id=user_id if not group_id else None,
+            group_id=group_id,
+            db=db
+        )
+    await send_message(remote_id, message)
+    return
