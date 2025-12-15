@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String,
-    TIMESTAMP, func, UUID, text
+    TIMESTAMP, func, UUID, text, Text
 )
 from sqlalchemy.orm import relationship
 
@@ -17,6 +17,7 @@ class User(Base):
     ext_id = Column(UUID, unique=True, nullable=False, server_default=text("uuid_generate_v4()"))
     phone_number = Column(String(20))
     name = Column(String(255))
+    profile_pic_path = Column(Text, nullable=True)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
