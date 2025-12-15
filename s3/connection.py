@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import uuid
 from io import BytesIO
 from typing import Optional, List
@@ -68,6 +69,48 @@ class S3Client:
                     self.client.make_bucket,
                     bucket_name
                 )
+
+    async def get_image_base64(
+            self,
+            bucket_name: str,
+            object_path: str,
+    ) -> str:
+        """
+        Get image as base64 string from MinIO
+
+        Args:
+            bucket_name: Bucket name
+            object_path: Object path in bucket
+            include_data_uri: If True, returns "data:image/...;base64,..."
+
+        Returns:
+            Base64 encoded image string
+        """
+        if not self.client:
+            raise RuntimeError("MinIO client not initialized")
+
+        loop = asyncio.get_event_loop()
+        object_path = object_path.lstrip('/')
+
+        try:
+            response = await loop.run_in_executor(
+                None,
+                self.client.get_object,
+                bucket_name,
+                object_path
+            )
+
+            image_bytes = response.read()
+            response.close()
+            response.release_conn()
+
+            base64_string = base64.b64encode(image_bytes).decode('utf-8')
+
+            return base64_string
+
+        except S3Error as e:
+            raise Exception(f"Error downloading image from MinIO: {str(e)}")
+
 
     async def upload_image(
             self,
