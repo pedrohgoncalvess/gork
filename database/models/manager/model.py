@@ -18,5 +18,6 @@ class Model(Base):
     text_default = Column(Boolean, nullable=False, default=False)
     audio_default = Column(Boolean, nullable=False, default=False)
     image_default = Column(Boolean, nullable=False, default=False)
+    embedding_default = Column(Boolean, nullable=False, default=False)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())
