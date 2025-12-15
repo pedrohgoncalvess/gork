@@ -129,3 +129,4 @@ class StructuredLogger:
 # Customize your log formats and files
 logger = StructuredLogger()
 openrouter_logger = StructuredLogger(file_name="openrouter")
+other_webhooks_logger = StructuredLogger(file_name="otherwebhooks")
