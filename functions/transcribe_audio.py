@@ -36,7 +36,7 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
                     .get("contextInfo", {})
                     .get("stanzaId")
                 )
-        audio_base64 = await download_media(message_id)
+        audio_base64, _ = await download_media(message_id)
         audio_bytes = base64.b64decode(audio_base64)
         audio_data, sample_rate = sf.read(BytesIO(audio_bytes))
 
