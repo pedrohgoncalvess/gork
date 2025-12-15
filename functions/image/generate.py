@@ -11,7 +11,7 @@ from database.operations.manager import (
 )
 from external import make_request_openrouter
 from external.evolution import download_media
-from services.save_image import materialize_image
+from services.save_image import save_image
 
 
 async def generate_image(user_id: int, user_message: str, webhook_event: dict, group_id: int = None) -> tuple[str, bool]:
@@ -45,9 +45,9 @@ async def generate_image(user_id: int, user_message: str, webhook_event: dict, g
             )
 
         if message_data.get("imageMessage"):
-            image_base64 = await download_media(message_id)
+            image_base64, _ = await download_media(message_id)
         elif quoted_message_id:
-            image_base64 = await download_media(quoted_message_id)
+            image_base64, _ = await download_media(quoted_message_id)
         else:
             image_base64 = None
 
@@ -125,13 +125,7 @@ async def generate_image(user_id: int, user_message: str, webhook_event: dict, g
             group_id=group_id
         )
 
-        webp_base64_bytes = base64.b64encode(buffer.getvalue())
-        if group_id:
-            asyncio.create_task(
-                materialize_image(message_id, webp_base64_bytes, group_id=group_id)
-            )
-        else:
-            asyncio.create_task(
-                materialize_image(message_id, webp_base64_bytes, user_id=user_id)
-            )
+        asyncio.create_task(
+            save_image(user_id, message_id, webhook_event, webp_base64, group_id)
+        )
         return webp_base64, False

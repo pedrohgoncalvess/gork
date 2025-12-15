@@ -119,7 +119,7 @@ async def search_images(
     ]
 
     for idx, media in enumerate(results, 1):
-        name_sim = media['name_similarity'] * 100
+        name_sim = media['desc_similarity'] * 100
         image_sim = media['image_similarity'] * 100
         best_sim = media['best_similarity'] * 100
         matched_by = media['matched_by']
