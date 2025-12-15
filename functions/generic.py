@@ -11,7 +11,8 @@ from services import manage_interaction
 from utils import get_env_var
 
 
-async def generic_conversation(contact_id: int, user_name: str, last_message: str, user_id: int, is_group: bool = True) -> dict:
+async def generic_conversation(contact_id: int, user_name: str, last_message: str, user_id: int, message_context: dict, is_group: bool = True) -> dict:
+    quoted_text = message_context["text_quote"] if "text_quote" in message_context.keys() else None
 
     async with PgConnection() as db:
         user_repo = UserRepository(User, db)
@@ -46,11 +47,13 @@ async def generic_conversation(contact_id: int, user_name: str, last_message: st
             formatted_messages.append(f"{sender_name}: {content} - {timestamp}")
             existing_messages.append(content.lower())
 
-        formatted_messages.append(f"""
-        \nUltima mensagem enviada e que dever ser respondida: 
-        {user_name}: {last_message} - {datetime.now().strftime('%H:%M')}
-        """)
+        message = (
+                (f"Mensagem quotada: {quoted_text}\n" if quoted_text else "") +
+                "Última mensagem enviada e que dever ser respondida:\n"
+                f"{user_name}: {last_message} - {datetime.now().strftime('%H:%M')}"
+        )
 
+        formatted_messages.append(message)
         final_message = "\n".join(formatted_messages)
 
         resp = await manage_interaction(db, final_message, agent_name="generic", user_id=user_id, group_id=contact_id if is_group else None)
