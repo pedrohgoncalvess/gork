@@ -35,7 +35,7 @@ class UserRepository(BaseRepository[User]):
         user = await self.find_by_lid(lid)
         if user:
             update_data = {}
-            if name and user.name != name:
+            if name and user.name is not None:
                 update_data["name"] = name
             if phone_number and user.phone_number != phone_number:
                 update_data["phone_number"] = phone_number
