@@ -1,6 +1,7 @@
 def verifiy_media(body: dict) -> dict[str, str]:
     event_data = body.get("data")
     message_id = event_data["key"]["id"]
+    phone_send = event_data["key"]["participantAlt"]
     message_type = event_data["messageType"]
 
     audio_message = True if message_type == "audioMessage" else False
@@ -28,6 +29,18 @@ def verifiy_media(body: dict) -> dict[str, str]:
             .get("imageMessage")
         )
 
+    caption = context_info.get('imageMessage', {}).get('caption', '')
+    conversation = caption if caption else event_data["message"].get("conversation", "")
+
+    if not conversation:
+        conversation = (
+            event_data["message"]
+            .get("ephemeralMessage", {})
+            .get("message", {})
+            .get("extendedTextMessage", {})
+            .get("text", "")
+        )
+
     text_quote = context_info.get("quotedMessage", {}).get("conversation")
     if not text_quote:
         text_quote = (
@@ -49,6 +62,24 @@ def verifiy_media(body: dict) -> dict[str, str]:
             .get("audioMessage")
         )
 
+    mentions: list[str] = context_info.get("mentionedJid", [])
+    if not mentions:
+        mentions: list[str] = (
+            context_info
+            .get("ephemeralMessage", {})
+            .get("message", {})
+            .get("extendedTextMessage", {})
+            .get("contextInfo", {})
+            .get("mentionedJid", [])
+        )
+
+    if conversation:
+        if "@me" in conversation:
+            mentions.append(phone_send)
+
+    clean_id = lambda t: t.replace("@s.whatsapp.net", "").replace("@lid", "")
+    tt_mentions = list(map(clean_id, mentions))
+
     medias = {}
     if audio_quote:
         medias.update({"audio_quote": quoted_id})
@@ -60,5 +91,7 @@ def verifiy_media(body: dict) -> dict[str, str]:
         medias.update({"audio_message": message_id})
     if text_quote:
         medias.update({"text_quote": (text_quote, quoted_id)})
+    if tt_mentions:
+        medias.update({"mentions": tt_mentions})
 
     return medias
