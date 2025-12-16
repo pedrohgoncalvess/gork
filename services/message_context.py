@@ -1,7 +1,7 @@
 def verifiy_media(body: dict) -> dict[str, str]:
     event_data = body.get("data")
     message_id = event_data["key"]["id"]
-    phone_send = event_data["key"]["participantAlt"]
+    phone_send = event_data["key"]["participantAlt"] if event_data["key"].get("participantAlt") else event_data["key"].get("remoteJidAlt")
     message_type = event_data["messageType"]
 
     audio_message = True if message_type == "audioMessage" else False
