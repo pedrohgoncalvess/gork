@@ -33,6 +33,7 @@ async def process_group_message(
 ):
     group_jid = remote_id.replace("@g.us", "")
     contact_id = event_data["key"]["participant"].replace("@lid", "")
+    phone_number = event_data["key"]["participantAlt"].replace("@s.whatsapp.net", "")
     contact_name = event_data["pushName"]
     message_id = event_data["key"]["id"]
     instance_number = get_env_var("EVOLUTION_INSTANCE_NUMBER")
@@ -46,7 +47,7 @@ async def process_group_message(
     whitelist_repo = WhiteListRepository(WhiteList, db)
     user_gork = await user_repo.find_by_name("Gork")
 
-    user = await user_repo.find_or_create(name=contact_name, lid=contact_id)
+    user = await user_repo.find_or_create(name=contact_name, lid=contact_id, phone_number=phone_number)
     _ = await save_profile_pic(user.id)
 
     group = await group_repo.find_or_create(group_jid=group_jid)
@@ -174,8 +175,6 @@ async def process_private_message(
     if "!status" in conversation:
         await send_message(number, "🤖 Robo do mito está pronto", message_id)
         return
-
-    print(conversation)
 
     await process_commands(
         conversation,
