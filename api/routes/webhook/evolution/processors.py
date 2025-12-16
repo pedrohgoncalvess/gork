@@ -33,7 +33,7 @@ async def process_group_message(
 ):
     group_jid = remote_id.replace("@g.us", "")
     contact_id = event_data["key"]["participant"].replace("@lid", "")
-    phone_number = event_data["key"]["participantAlt"].replace("@s.whatsapp.net", "")
+    phone_number = event_data["key"].get("participantAlt", "").replace("@s.whatsapp.net", "")
     contact_name = event_data["pushName"]
     message_id = event_data["key"]["id"]
     instance_number = get_env_var("EVOLUTION_INSTANCE_NUMBER")
