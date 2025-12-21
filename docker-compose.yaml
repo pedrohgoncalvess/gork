@@ -51,20 +51,20 @@ services:
       - dokploy-network
     restart: unless-stopped
 
-#  s3-minio:
-#    image: minio/minio
-#    command: server /data --address ":19000" --console-address ":19001"
-#    ports:
-#      - "19000:19000"
-#      - "19001:19001"
-#    environment:
-#      MINIO_ROOT_USER: minioadmin
-#      MINIO_ROOT_PASSWORD: minioadmin
-#    volumes:
-#      - minio_data:/data
-#    networks:
-#      - dokploy-network
-#    restart: unless-stopped
+  s3-minio:
+    image: minio/minio
+    command: server /data --address ":19000" --console-address ":19001"
+    ports:
+      - "19000:19000"
+      - "19001:19001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    networks:
+      - dokploy-network
+    restart: unless-stopped
 
 networks:
   dokploy-network:

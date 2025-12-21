@@ -42,4 +42,4 @@ COPY . .
 
 EXPOSE 9001
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001", "--workers", "4"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001", "--workers", "8"]
