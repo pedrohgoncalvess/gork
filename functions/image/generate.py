@@ -12,11 +12,12 @@ from database.operations.base import UserRepository
 from database.operations.manager import (
     ModelRepository, InteractionRepository, CommandRepository
 )
-from external import make_request_openrouter
+from external import completions
 from external.evolution import download_media
 from s3 import S3Client
 from services import verifiy_media
 from services.save_image import save_image
+from utils import get_env_var
 
 
 async def generate_image(
@@ -37,7 +38,7 @@ async def generate_image(
             user_repo = UserRepository(User, db)
             for mention in mentions:
                 user_mentioned = await user_repo.find_by_phone_or_id(mention)
-                if user_mentioned.name != "Gork":
+                if user_mentioned.name != get_env_var("EVOLUTION_INSTANCE_NAME"):
                     if user_mentioned is not None and user_mentioned.profile_pic_path is not None:
                         photo_base64 = await s3_client.get_image_base64("whatsapp", user_mentioned.profile_pic_path)
                         mention_photo.append((photo_base64, user_mentioned))
@@ -124,7 +125,7 @@ async def generate_image(
             "messages": messages
             }
 
-        req = await make_request_openrouter(payload)
+        req = await completions(payload)
 
         if req.get("choices"):
             message = req["choices"][0]["message"]
