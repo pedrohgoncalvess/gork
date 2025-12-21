@@ -1,38 +1,27 @@
-import io
-from datetime import datetime
+from sqlalchemy.ext.asyncio import AsyncSession
 
-import torch
-from PIL import Image
-from transformers import CLIPModel, CLIPProcessor
+from database.models.content import Message
+from database.models.manager import Model, Interaction
+from database.operations.content import MessageRepository
+from database.operations.manager import ModelRepository, InteractionRepository
+from external import embeddings
 
-from log import openrouter_logger
 
+async def generate_text_embeddings(text: str, message_id: str, db: AsyncSession) -> list[float]:
+    message_repo = MessageRepository(Message, db)
+    message = await message_repo.find_by_message_id(message_id)
 
-model = CLIPModel.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
-processor = CLIPProcessor.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
-model.eval()
+    model_repo = ModelRepository(Model, db)
+    embedding_model = await model_repo.get_default_embedding_model()
 
-async def generate_text_embeddings(text: str) -> list[float]:
-    start = datetime.now()
-    inputs = processor(text=[text], return_tensors="pt", padding=True, truncation=True)
-    with torch.no_grad():
-        text_emb = model.get_text_features(**inputs)
-    text_emb = text_emb / text_emb.norm(p=2, dim=-1, keepdim=True)
-    duration = datetime.now() - start
-    minutes = duration.total_seconds() / 60
-    r = text_emb.squeeze().cpu().numpy().tolist()
-    await openrouter_logger.info("Embedding", "Text generation", f"Text: {text} - Time took: {minutes:.2f}")
-    return r
-
-async def generate_image_embeddings(decoded_base64: bytes) -> list[float]:
-    start = datetime.now()
-    image = Image.open(io.BytesIO(decoded_base64)).convert("RGB")
-    inputs = processor(images=image, return_tensors="pt")
-    with torch.no_grad():
-        img_emb = model.get_image_features(**inputs)
-    img_emb = img_emb / img_emb.norm(p=2, dim=-1, keepdim=True)
-    duration = datetime.now() - start
-    minutes = duration.total_seconds() / 60
-    r = img_emb.squeeze().cpu().numpy().tolist()
-    await openrouter_logger.info("Embedding", "Image generation", f"Time took: {minutes:.2f}")
-    return r
+    embedding_json = await embeddings(text, embedding_model.openrouter_id)
+    interaction_repo = InteractionRepository(Interaction, db)
+    _ = await interaction_repo.create_interaction(
+        model_id=embedding_model.id,
+        user_id=message.user_id,
+        group_id=message.group_id,
+        user_prompt=text,
+        input_tokens=embedding_json["usage"]["prompt_tokens"],
+        output_tokens=(embedding_json["usage"]["total_tokens"] - embedding_json["usage"]["prompt_tokens"])
+    )
+    return embedding_json["data"][0]["embedding"]
