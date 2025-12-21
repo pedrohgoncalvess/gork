@@ -13,18 +13,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE SCHEMA "manager";
 
-CREATE TABLE "manager"."command" (
-    id SERIAL,
-    command VARCHAR(50) NOT NULL,
-    user_id INTEGER NOT NULL,
-    group_id INTEGER,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
-
-    CONSTRAINT command_pk PRIMARY KEY (id),
-    CONSTRAINT command_user_fk FOREIGN KEY (user_id) REFERENCES "base"."user"(id),
-    CONSTRAINT command_group_fk FOREIGN KEY (group_id) REFERENCES "base"."group"(id)
-);
-
 CREATE TABLE "manager"."model" (
     id SERIAL,
     name TEXT NOT NULL,
@@ -33,7 +21,7 @@ CREATE TABLE "manager"."model" (
     input_price NUMERIC(10, 2),
     output_price NUMERIC(10, 2),
     "default" BOOLEAN NOT NULL DEFAULT FALSE,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
 
     CONSTRAINT model_pk PRIMARY KEY (id)
 );
@@ -64,9 +52,61 @@ CREATE TABLE "manager"."agent" (
     id SERIAL,
     name VARCHAR(50) NOT NULL UNIQUE,
     prompt TEXT NOT NULL,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
 
     CONSTRAINT agent_pk PRIMARY KEY (id)
+);
+
+CREATE SCHEMA "content";
+
+CREATE TABLE "content"."media" (
+    id SERIAL,
+    bucket VARCHAR(30) NOT NULL,
+    sub_path VARCHAR(200) NOT NULL,
+    "type" VARCHAR(20), --audio, image, sticker, profile pic, video
+    "size" DECIMAL,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
+    updated_at TIMESTAMP,
+    deleted_at TIMESTAMP,
+
+    CONSTRAINT media_pk PRIMARY KEY (id)
+);
+
+CREATE SCHEMA "base";
+
+CREATE TABLE "base"."user" (
+    id SERIAL,
+    src_id VARCHAR(100) UNIQUE NOT NULL,
+    phone_number VARCHAR(20),
+    name VARCHAR(255),
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
+    updated_at TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT user_pk PRIMARY KEY (id)
+);
+
+CREATE TABLE "base"."group" (
+    id SERIAL,
+    src_id VARCHAR(100) UNIQUE NOT NULL,
+    name VARCHAR(255),
+    description TEXT,
+    profile_image_url TEXT,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
+    updated_at TIMESTAMP DEFAULT NOW(),
+
+    CONSTRAINT group_pk PRIMARY KEY (id)
+);
+
+CREATE TABLE "manager"."command" (
+    id SERIAL,
+    command VARCHAR(50) NOT NULL,
+    user_id INTEGER NOT NULL,
+    group_id INTEGER,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
+
+    CONSTRAINT command_pk PRIMARY KEY (id),
+    CONSTRAINT command_user_fk FOREIGN KEY (user_id) REFERENCES "base"."user"(id),
+    CONSTRAINT command_group_fk FOREIGN KEY (group_id) REFERENCES "base"."group"(id)
 );
 
 CREATE TABLE "manager"."interaction" (
@@ -87,54 +127,11 @@ CREATE TABLE "manager"."interaction" (
     CONSTRAINT interaction_interaction_fk FOREIGN KEY (interaction_id) REFERENCES "manager"."interaction"(id)
 );
 
-
-CREATE SCHEMA "content";
-
-CREATE TABLE "content"."media" (
-    id SERIAL,
-    bucket VARCHAR(30) NOT NULL,
-    sub_path VARCHAR(200) NOT NULL,
-    "type" VARCHAR(20), --audio, image, sticker, profile pic, video
-    "size" DECIMAL,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
-    updated_at TIMESTAMP,
-    deleted_at TIMESTAMP,
-
-    CONSTRAINT media_pk PRIMARY KEY (id)
-);
-
-CREATE SCHEMA "base";
-
-CREATE TABLE "base"."user" (
-    id SERIAL,
-    src_id VARCHAR(100) UNIQUE NOT NULL,
-    media_id INTEGER,
-    phone_number VARCHAR(20),
-    name VARCHAR(255),
-    inserted_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT user_pk PRIMARY KEY (id),
-    CONSTRAINT user_media_fk FOREIGN KEY (media_id) REFERENCES "content"."media"(id)
-);
-
-CREATE TABLE "base"."group" (
-    id SERIAL,
-    src_id VARCHAR(100) UNIQUE NOT NULL,
-    name VARCHAR(255),
-    description TEXT,
-    profile_image_url TEXT,
-    inserted_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW(),
-
-    CONSTRAINT group_pk PRIMARY KEY (id)
-);
-
 CREATE TABLE "base"."white_list" (
     id SERIAL,
     sender_type VARCHAR(5) NOT NULL,
     sender_id INTEGER NOT NULL,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
     is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     deleted_at TIMESTAMP,
 
@@ -149,7 +146,7 @@ CREATE TABLE "content"."message" (
     group_id INTEGER,
     content TEXT,
     created_at TIMESTAMP NOT NULL,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
     updated_at TIMESTAMP,
     deleted_at TIMESTAMP,
 
@@ -163,7 +160,7 @@ CREATE TABLE "content"."mention" (
     id SERIAL,
     message_id INTEGER NOT NULL,
     mentioned_message_id INTEGER NOT NULL,
-    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo')
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
 
     CONSTRAINT mention_pk PRIMARY KEY (id),
     CONSTRAINT mention_message_fk FOREIGN KEY (message_id) REFERENCES "content"."message"(id),
