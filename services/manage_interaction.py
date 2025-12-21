@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from database.models.manager import Model, Agent, Interaction, Command
 from database.operations.manager import ModelRepository, AgentRepository, InteractionRepository
-from external import make_request_openrouter
+from external import completions
 
 
 async def manage_interaction(
@@ -50,7 +50,7 @@ async def manage_interaction(
         ]
     }
 
-    req = await make_request_openrouter(payload_term_formatter)
+    req = await completions(payload_term_formatter)
     resp = req["choices"][0]["message"]["content"]
 
     interaction_repo = InteractionRepository(Interaction, db)

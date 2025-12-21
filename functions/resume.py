@@ -8,7 +8,7 @@ from database.operations.content.message import MessageRepository
 from database.operations.manager.command import CommandRepository
 from database.operations.manager.interaction import InteractionRepository
 from database.operations.manager.model import ModelRepository
-from external import make_request_openrouter
+from external import completions
 
 
 async def get_resume_conversation(user_id: int, contact_id: int = None, group_id: int = None) -> str:
@@ -89,7 +89,7 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
             ],
         }
 
-        req = await make_request_openrouter(payload)
+        req = await completions(payload)
         conversation_resume = req["choices"][0]["message"]["content"]
 
         command = await command_repo.insert(

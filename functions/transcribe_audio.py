@@ -7,7 +7,7 @@ import soundfile as sf
 from database import PgConnection
 from database.models.manager import Interaction, Model, Agent, Command
 from database.operations.manager import InteractionRepository, ModelRepository, AgentRepository, CommandRepository
-from external import make_request_openrouter
+from external import completions
 from external.evolution import download_media
 
 
@@ -66,7 +66,7 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
             ]
         }
 
-        req = await make_request_openrouter(payload)
+        req = await completions(payload)
         resp = req["choices"][0]["message"]["content"]
 
         if command:
