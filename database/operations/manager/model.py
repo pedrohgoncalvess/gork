@@ -24,6 +24,12 @@ class ModelRepository(BaseRepository[Model]):
         )
         return result.scalar_one_or_none()
 
+    async def get_default_embedding_model(self) -> Optional[Model]:
+        result = await self.db.execute(
+            select(Model).filter(Model.embedding_default == True)
+        )
+        return result.scalar_one_or_none()
+
     async def get_default_image_model(self) -> Optional[Model]:
         result = await self.db.execute(
             select(Model).filter(Model.image_default == True)
