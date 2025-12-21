@@ -7,13 +7,13 @@ from database.models.base import Group, User
 from database.models.content import Media, Message
 from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MediaRepository, MessageRepository
-from embeddings import generate_image_embeddings, generate_text_embeddings
+from embeddings import generate_text_embeddings
 from external.evolution import download_media
 from s3 import S3Client
 from database import PgConnection
 from database.models.manager import Model, Interaction, Command
 from database.operations.manager import ModelRepository, InteractionRepository, CommandRepository
-from external import make_request_openrouter
+from external import completions
 from services.message_context import verifiy_media
 from utils import generate_random_name
 
@@ -70,7 +70,7 @@ async def describe_image(
             "messages": messages
             }
 
-        req = await make_request_openrouter(payload)
+        req = await completions(payload)
 
         resume = req["choices"][0]["message"]["content"]
 
@@ -133,8 +133,7 @@ async def save_image(
         description = await describe_image(user_id, message_id, image_base64, group_id, for_embeddings=True)
 
         decoded = base64.b64decode(image_base64)
-        emb = await generate_image_embeddings(decoded)
-        text_emb = await generate_text_embeddings(description)
+        text_emb = await generate_text_embeddings(description, message_id, db)
 
         image_id = uuid4()
         path = f"{ext_id}/{datetime.now().strftime("%Y-%m-%d")}/{image_id}.png"
@@ -150,9 +149,7 @@ async def save_image(
             Media(
                 ext_id=image_id, name=name, message_id=message.id,
                 bucket="whatsapp", path=path, format="png",
-                size=len(decoded) / float((1024 * 1024)),
-                image_embedding=emb, description_embedding=text_emb,
-                description=description
+                description_embedding=text_emb, description=description
             )
         )
 
