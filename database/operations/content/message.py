@@ -111,7 +111,7 @@ class MessageRepository(BaseRepository[Message]):
             message_id=message_id,
             user_id=sender_id,
             group_id=group_id,
-            content=content,
+            content=content if content else None,
             created_at=created_at
         )
         return await self.insert(new_message)
