@@ -81,6 +81,8 @@ def verifiy_media(body: dict) -> dict[str, str]:
     tt_mentions = list(map(clean_id, mentions))
 
     medias = {}
+    if quoted_id:
+        medias.update({"quoted_message": quoted_id})
     if audio_quote:
         medias.update({"audio_quote": quoted_id})
     if image_quote:
