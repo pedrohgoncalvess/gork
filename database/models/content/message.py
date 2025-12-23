@@ -1,6 +1,7 @@
 from sqlalchemy import (
     Column, Integer, String, Text,
-    TIMESTAMP, func, ForeignKey, UUID, text
+    TIMESTAMP, func, ForeignKey,
+    UUID, text, BOOLEAN
 )
 from sqlalchemy.orm import relationship
 
@@ -22,6 +23,7 @@ class Message(Base):
 
     content = Column(Text)
     created_at = Column(TIMESTAMP, nullable=False)
+    is_favorite = Column(BOOLEAN, default=False)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, onupdate=func.now())
