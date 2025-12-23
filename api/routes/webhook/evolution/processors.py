@@ -10,7 +10,8 @@ from api.routes.webhook.evolution.handles import (
     handle_image_command, handle_search_command, handle_transcribe_command,
     handle_resume_command, handle_model_command, COMMANDS,
     is_message_too_old, extract_conversation_text,
-    handle_consumption_command, handle_describe_image_command, handle_list_images_command
+    handle_consumption_command, handle_describe_image_command, handle_list_images_command, handle_favorite_message,
+    handle_list_favorites_message, handle_remove_favorite
 )
 from database.models.base import User, Group, WhiteList
 from database.models.content import Message
@@ -201,46 +202,47 @@ async def process_explicit_commands(
         scheduler: AsyncIOScheduler,
         context: dict[str, str]
 ):
-    if "!help" in conversation.lower():
+    lw_conversation = conversation.lower()
+    if "!help" in lw_conversation:
         await handle_help_command(remote_id, message_id)
         return
 
-    if "!model" in conversation.lower():
+    if "!model" in lw_conversation:
         await handle_model_command(remote_id, message_id, db)
         return
 
-    if "!resume" in conversation.lower():
+    if "!resume" in lw_conversation:
         await handle_resume_command(remote_id, message_id, user.id, group_id)
         return
 
-    if "!transcribe" in conversation.lower():
+    if "!transcribe" in lw_conversation:
         await handle_transcribe_command(remote_id, message_id, body, user.id, group_id)
         return
 
-    if "!search" in conversation.lower():
+    if "!search" in lw_conversation:
         group = True if group_id else False
         await handle_search_command(remote_id, message_id, treated_text, group, user.id)
         return
 
-    if "!image" in conversation.lower():
+    if "!image" in lw_conversation:
         await handle_image_command(remote_id, user.id, treated_text, body, group_id)
         return
 
-    if "!describe" in conversation.lower():
+    if "!describe" in lw_conversation:
         await handle_describe_image_command(remote_id, user.id, treated_text, body, group_id)
         return
 
-    if "!sticker" in conversation.lower():
+    if "!sticker" in lw_conversation:
         await handle_sticker_command(remote_id, body, treated_text, conversation, db)
         return
 
-    if "!remember" in conversation.lower():
+    if "!remember" in lw_conversation:
         await handle_remember_command(
             scheduler, remote_id, message_id, user.id, treated_text, group_id
         )
         return
 
-    if "!consumption" in conversation.lower():
+    if "!consumption" in lw_conversation:
         if group_id:
             await handle_consumption_command(
                 remote_id, group_id=group_id
@@ -251,7 +253,7 @@ async def process_explicit_commands(
             )
         return
 
-    if "!gallery" in conversation.lower():
+    if "!gallery" in lw_conversation:
         if group_id:
             await handle_list_images_command(
                 remote_id, treated_text,
@@ -262,6 +264,24 @@ async def process_explicit_commands(
                 remote_id, treated_text,
                 db, user_id=user.id
             )
+        return
+
+    if "!favorite" in lw_conversation:
+        if "!list" in lw_conversation:
+            await handle_list_favorites_message(
+                remote_id, db, message_id, user.id, group_id
+            )
+            return
+
+        if "!remove" in lw_conversation:
+            await handle_remove_favorite(
+                remote_id, db, conversation, user.id, group_id
+            )
+            return
+
+        await handle_favorite_message(
+            remote_id, context, db
+        )
         return
 
     await handle_generic_conversation(
