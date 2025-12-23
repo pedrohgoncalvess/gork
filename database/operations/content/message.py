@@ -1,9 +1,10 @@
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import joinedload
 from sqlalchemy import select, and_, desc
 
+from database.models.base import User
 from database.models.content import Message
 from database.operations import BaseRepository
 
@@ -68,7 +69,6 @@ class MessageRepository(BaseRepository[Message]):
             group_id: int = None,
             sender_id: int = None
     ) -> List[Message]:
-        from datetime import timedelta
         time_threshold = datetime.now() - timedelta(minutes=minutes)
 
         filters = [
@@ -87,6 +87,46 @@ class MessageRepository(BaseRepository[Message]):
             .order_by(desc(Message.created_at))
         )
         return list(result.scalars().all())
+
+    async def remove_favorite_message(self, message_id: str) -> Optional[Message]:
+        message = await self.find_by_message_id(message_id)
+        if not message:
+            return None
+
+        update_data = {"is_favorite": False}
+        return await self.update(message.id, update_data)
+
+    async def find_favorites_messages(
+            self,
+            last_days: int = None,
+            group_id: int = None,
+            user_id: int = None,
+            user_name: str = None
+    ) -> List[Message]:
+        filters = [
+            Message.deleted_at.is_(None),
+            Message.is_favorite.is_(True)
+        ]
+
+        if last_days:
+            time_threshold = datetime.now() - timedelta(days=last_days)
+            filters.append(Message.created_at >= time_threshold)
+
+        if group_id:
+            filters.append(Message.group_id == group_id)
+        if user_id:
+            filters.append(Message.user_id == user_id)
+        if user_name:
+            filters.append(User.name.ilike(f"%{user_name}%"))
+
+        result = await self.db.execute(
+            select(Message)
+            .join(User, Message.user_id == User.id)
+            .options(joinedload(Message.sender))
+            .filter(and_(*filters))
+            .order_by(desc(Message.created_at))
+        )
+        return list(result.unique().scalars().all())
 
     async def find_or_create(
             self,
@@ -115,6 +155,18 @@ class MessageRepository(BaseRepository[Message]):
             created_at=created_at
         )
         return await self.insert(new_message)
+
+    async def set_is_favorite(
+            self,
+            message_id: str,
+    ) -> Optional[Message]:
+        message = await self.find_by_message_id(message_id)
+
+        if message:
+            update_data = {"is_favorite": True}
+            return await self.update(message.id, update_data)
+
+        return None
 
     async def soft_delete(self, message_id: str) -> bool:
         message = await self.find_by_message_id(message_id)
