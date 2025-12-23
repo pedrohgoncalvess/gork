@@ -4,7 +4,7 @@
 ALTER TABLE "manager"."model" ADD COLUMN embedding_default BOOLEAN NOT NULL DEFAULT FALSE;
 
 INSERT INTO "manager"."model"(name, openrouter_id, "input_price", output_price, embedding_default) VALUES
-('Qwen3 Embedding 8B', 'qwen/qwen3-embedding-8b', 0.02, 0, true);
+('Qwen3 Embedding 4B', 'qwen/qwen3-embedding-4b', 0.02, 0, true);
 
 DELETE FROM "content"."media";
 
