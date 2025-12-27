@@ -1,5 +1,6 @@
 import base64
 from io import BytesIO
+import re
 
 import httpx
 from PIL import Image
@@ -40,6 +41,16 @@ async def generate_sticker(webhook_event: dict, caption_text: str, db: AsyncSess
     if image_base64 is None and message:
         user_repo = UserRepository(User, db)
         user = await user_repo.find_by_id(message.user_id)
+
+        if caption_text:
+            pattern = r'@(\d+)'
+            mentions = re.findall(pattern, caption_text)
+            users_mentioned = [await user_repo.find_by_phone_or_id(mention) for mention in mentions]
+            users_mentions = zip(users_mentioned, mentions)
+
+            for user_m, mention in users_mentions:
+                caption_text = caption_text.replace(f"@{mention}", user_m.name)
+
         if user.profile_pic_path:
             s3_client = S3Client()
             _ = await s3_client.connect()
