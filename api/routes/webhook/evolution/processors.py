@@ -9,8 +9,8 @@ from api.routes.webhook.evolution.handles import (
     handle_generic_conversation, handle_remember_command, handle_sticker_command,
     handle_image_command, handle_search_command, handle_transcribe_command,
     handle_resume_command, handle_model_command, COMMANDS,
-    is_message_too_old, extract_conversation_text,
-    handle_consumption_command, handle_describe_image_command, handle_list_images_command, handle_favorite_message,
+    is_message_too_old, handle_consumption_command,
+    handle_describe_image_command, handle_list_images_command, handle_favorite_message,
     handle_list_favorites_message, handle_remove_favorite
 )
 from database.models.base import User, Group, WhiteList
@@ -26,18 +26,19 @@ from utils import get_env_var
 
 async def process_group_message(
         body: dict,
-        event_data: dict,
-        message_data: dict,
         remote_id: str,
         db: AsyncSession,
         scheduler: AsyncIOScheduler,
 ):
     group_jid = remote_id.replace("@g.us", "")
+    event_data = body["data"]
+    message_data = event_data["message"]
     contact_id = event_data["key"]["participant"].replace("@lid", "")
     phone_number = event_data["key"].get("participantAlt", "").replace("@s.whatsapp.net", "")
     contact_name = event_data["pushName"]
     message_id = event_data["key"]["id"]
     instance_number = get_env_var("EVOLUTION_INSTANCE_NUMBER")
+    medias = verifiy_media(body)
 
     if await is_message_too_old(event_data["messageTimestamp"]):
         return
@@ -66,7 +67,7 @@ async def process_group_message(
         sender_id=group.id
     )
 
-    conversation = await extract_conversation_text(message_data)
+    conversation = medias.get("text_message", "")
 
     await message_repo.find_or_create(
         message_id=message_id,
@@ -103,7 +104,6 @@ async def process_group_message(
     if not is_mention:
         return
 
-    medias = verifiy_media(body)
     if "audio_message" in medias.keys():
         conversation = await transcribe_audio(body, user.id, group.id)
 
@@ -127,7 +127,6 @@ async def process_group_message(
 async def process_private_message(
         body: dict,
         event_data: dict,
-        message_data: dict,
         remote_id: str,
         number: str,
         db: AsyncSession,
@@ -135,6 +134,7 @@ async def process_private_message(
 ):
     contact_name = event_data["pushName"]
     message_id = event_data["key"]["id"]
+    context = verifiy_media(body)
 
     if await is_message_too_old(event_data["messageTimestamp"]):
         return
@@ -151,7 +151,7 @@ async def process_private_message(
         sender_id=user.id
     )
 
-    conversation = await extract_conversation_text(message_data)
+    conversation = context.get("text_message", "")
 
     await message_repo.find_or_create(
         message_id=message_id,
@@ -169,8 +169,7 @@ async def process_private_message(
         )
         return
 
-    medias = verifiy_media(body)
-    if "audio_message" in medias.keys():
+    if "audio_message" in context.keys():
         conversation = await transcribe_audio(body, user.id, group_id=None)
 
     if "!status" in conversation:
@@ -186,7 +185,7 @@ async def process_private_message(
         None,
         db,
         scheduler,
-        medias
+        context
     )
 
 
@@ -233,7 +232,7 @@ async def process_explicit_commands(
         return
 
     if "!sticker" in lw_conversation:
-        await handle_sticker_command(remote_id, body, treated_text, conversation, db)
+        await handle_sticker_command(remote_id, body, treated_text, conversation, db, context)
         return
 
     if "!remember" in lw_conversation:
@@ -326,9 +325,9 @@ async def process_intent_based_commands(
         treated_text: str,
         db: AsyncSession,
         scheduler: AsyncIOScheduler,
-        medias: dict[str, str]
+        context: dict[str, str]
 ):
-    intent, wants_audio = await classify_intent(conversation, db, COMMANDS, medias, user.id, group_id)
+    intent, wants_audio = await classify_intent(conversation, db, COMMANDS, context, user.id, group_id)
     is_group = True if group_id else False
 
     intent_handlers = {
@@ -338,7 +337,7 @@ async def process_intent_based_commands(
         "transcribe": lambda: handle_transcribe_command(remote_id, message_id, body, user.id, group_id),
         "search": lambda: handle_search_command(remote_id, message_id, treated_text, is_group, user.id),
         "image": lambda: handle_image_command(remote_id, user.id, treated_text, body, group_id),
-        "sticker": lambda: handle_sticker_command(remote_id, body, treated_text, conversation, db),
+        "sticker": lambda: handle_sticker_command(remote_id, body, treated_text, conversation, db, context),
         "remember": lambda: handle_remember_command(scheduler, remote_id, message_id, user.id, treated_text, group_id),
     }
 
@@ -348,5 +347,5 @@ async def process_intent_based_commands(
         await handler()
     else:
         await handle_generic_conversation(
-            remote_id, message_id, user, treated_text, medias, group_id, wants_audio
+            remote_id, message_id, user, treated_text, context, group_id, wants_audio
         )

@@ -22,7 +22,6 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
 
         remote_id = event_data.get("key", {}).get("remoteJid", "")
         alt_id = event_data.get("key", {}).get("remoteJidAlt", "")
-        message_data = event_data.get("message", {})
 
         if remote_id.endswith(".net"):
             is_private = True
@@ -45,9 +44,9 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
 
         if not is_private:
             await process_group_message(
-                body, event_data, message_data, remote_id, db, scheduler
+                body, remote_id, db, scheduler
             )
         elif is_private:
             await process_private_message(
-                body, event_data, message_data, remote_id, phone_number, db, scheduler
+                body, event_data, remote_id, phone_number, db, scheduler
             )
