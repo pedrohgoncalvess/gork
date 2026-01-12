@@ -6,6 +6,7 @@ def verifiy_media(body: dict) -> dict[str, str]:
 
     audio_message = True if message_type == "audioMessage" else False
     image_message = True if message_type == "imageMessage" else False
+    video_message = True if message_type == "videoMessage" else False
 
     context_info = event_data.get("contextInfo") if event_data.get("contextInfo") is not None else {}
     if not context_info:
@@ -29,7 +30,20 @@ def verifiy_media(body: dict) -> dict[str, str]:
             .get("imageMessage")
         )
 
+    video_quote = context_info.get("quotedMessage", {}).get("videoMessage")
+    if not video_quote:
+        image_quote = (
+            context_info
+            .get("quotedMessage", {})
+            .get("ephemeralMessage", {})
+            .get("message", {})
+            .get("videoMessage")
+        )
+
     caption = context_info.get('imageMessage', {}).get('caption', '')
+    if not caption:
+        context_info.get('videoMessage', {}).get('caption', '')
+
     conversation = caption if caption else event_data["message"].get("conversation", "")
 
     if not conversation:
@@ -40,6 +54,8 @@ def verifiy_media(body: dict) -> dict[str, str]:
             .get("extendedTextMessage", {})
             .get("text", "")
         )
+        if not conversation:
+            conversation = event_data["message"].get("videoMessage", {}).get("caption", "")
 
     text_quote = context_info.get("quotedMessage", {}).get("conversation")
     if not text_quote:
@@ -83,14 +99,20 @@ def verifiy_media(body: dict) -> dict[str, str]:
     medias = {}
     if quoted_id:
         medias.update({"quoted_message": quoted_id})
+    if conversation:
+        medias.update({"text_message": conversation})
     if audio_quote:
         medias.update({"audio_quote": quoted_id})
     if image_quote:
         medias.update({"image_quote": quoted_id})
+    if video_quote:
+        medias.update({"video_quote": quoted_id})
     if image_message:
         medias.update({"image_message": message_id})
     if audio_message:
         medias.update({"audio_message": message_id})
+    if video_message:
+        medias.update({"video_message": message_id})
     if text_quote:
         medias.update({"text_quote": (text_quote, quoted_id)})
     if tt_mentions:
