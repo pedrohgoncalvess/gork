@@ -15,13 +15,13 @@ from functions import (
     get_resume_conversation, generic_conversation,
     generate_sticker, remember_generator,
     generate_image,
-    list_images, search_images
+    list_images, search_images, generate_animated_sticker
 )
 from functions.tokens import token_consumption
 from functions.transcribe_audio import transcribe_audio
 from functions.web_search import web_search
-from external.evolution import send_message, send_audio, send_sticker, send_image, download_media
-from services import describe_image
+from external.evolution import send_message, send_audio, send_sticker, send_animated_sticker, send_image, download_media
+from services import describe_image, parse_params
 from services.remember import action_remember
 from tts import text_to_speech
 
@@ -35,7 +35,6 @@ COMMANDS = [
     ("!model", "Mostra o modelo sendo utilizado.", "search"),
     ("!sticker", "Cria um sticker com base em uma imagem e texto fornecido. _[Use | como separador de top/bottom]_ \n_(Obs: Mensagens quotadas com !sticker será criado um sticker da mensagem com a foto de perfil de quem enviou, comando !random pega uma imagem aleatória)_", "image"),
     ("!english", "", "hidden"),
-    ("!random", "", "hidden"),
     ("!remember", "Cria um lembrete para o dia, hora e tópico solicitado. _[Ex: Lembrete para comentar amanhã as 4 da tarde]_", "reminder"),
     ("!transcribe", "Transcreve um áudio. _[Ignora o restante da mensagem]_", "audio"),
     ("!image", "Gera ou modifica uma imagem mencionada. _[Mencione alguém para adicionar a foto de perfil ao contexto de criação. Adicione @me na mensagem e sua foto vai ser mencionada no contexto.]_", "image"),
@@ -44,23 +43,10 @@ COMMANDS = [
     ("!gallery", "Lista as imagens enviadas. _[Filtros podem ser feitos com termos ou datas]_", "image"),
     ("!favorite", "Favorita uma mensagem.", "utility"),
     ("!list", "", "hidden"),
-    ("!remove", "", "hidden")
+    ("!remove", "", "hidden"),
+    (":no-background", "", "hidden"),
+    (":random", "", "hidden")
 ]
-
-
-async def extract_conversation_text(message_data: dict) -> str:
-    caption = message_data.get('imageMessage', {}).get('caption', '')
-    conversation = caption if caption else message_data.get("conversation", "")
-
-    if not conversation:
-        conversation = (
-            message_data.get("ephemeralMessage", {})
-            .get("message", {})
-            .get("extendedTextMessage", {})
-            .get("text", "")
-        )
-
-    return conversation
 
 
 async def is_message_too_old(timestamp: int, max_minutes: int = 20) -> bool:
@@ -209,11 +195,24 @@ async def handle_sticker_command(
         body: dict,
         treated_text: str,
         message: str,
-        db: AsyncSession
+        db: AsyncSession,
+        message_context: dict
 ):
-    is_random = True if "!random" in message else False
-    webp_base64 = await generate_sticker(body, treated_text, db, is_random)
-    await send_sticker(remote_id, webp_base64)
+    medias = message_context.keys()
+    params = parse_params(message)
+    if "video_message" in medias or "video_quote" in medias:
+        message_id = message_context.get("video_quote") if "video_quote" in medias else message_context.get("video_message")
+        gif_url = await generate_animated_sticker(message_id, treated_text)
+        print(gif_url)
+        await send_animated_sticker(remote_id, gif_url)
+    else:
+        is_random = True if params.get("random", "f") == "t" else False
+        remove_background = True if params.get("no-background", "f") == "t" else False
+        webp_base64 = await generate_sticker(
+            body, treated_text, db,
+            message_context, is_random, remove_background
+        )
+        await send_sticker(remote_id, webp_base64)
 
 
 async def handle_describe_image_command(
@@ -392,7 +391,6 @@ async def handle_remove_favorite(
     match_conversation = re.search(pattern, conversation)
     if match_conversation:
         message_id = match_conversation.group(1)
-        print(message_id)
     else:
         await send_message(remote_id, "Utilize o comando !remove passando id:{id da mensagem}.")
         return
