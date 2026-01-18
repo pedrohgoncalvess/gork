@@ -19,6 +19,15 @@ def verifiy_media(body: dict) -> dict[str, str]:
         context_info = raw_context_info if raw_context_info else {}
 
     quoted_id = context_info.get("stanzaId")
+    quoted_sticker = context_info.get("quotedMessage", {}).get("stickerMessage")
+    if not quoted_sticker:
+        quoted_sticker = (
+            context_info
+            .get("quotedMessage", {})
+            .get("ephemeralMessage", {})
+            .get("message", {})
+            .get("stickerMessage")
+        )
 
     image_quote = context_info.get("quotedMessage", {}).get("imageMessage")
     if not image_quote:
@@ -101,6 +110,8 @@ def verifiy_media(body: dict) -> dict[str, str]:
     medias = {}
     if quoted_id:
         medias.update({"quoted_message": quoted_id})
+    if quoted_sticker:
+        medias.update({"sticker_quote": quoted_id})
     if conversation:
         medias.update({"text_message": conversation})
     if audio_quote:

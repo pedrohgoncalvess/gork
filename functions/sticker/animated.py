@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import os
 import math
+from io import BytesIO
 
 import numpy as np
 import httpx
@@ -289,18 +290,6 @@ def apply_fisheye_effect(frame: Image.Image, intensity: float = 0.5) -> Image.Im
     return Image.fromarray(new_img)
 
 
-def apply_explosion_effect(frame: Image.Image, progress: float) -> Image.Image:
-    intensity = progress * 1.5
-
-    frame = apply_bulge_effect(frame, intensity)
-
-    if progress > 0.5:
-        swirl_intensity = (progress - 0.5) * 2 * 0.3
-        frame = apply_swirl_effect(frame, swirl_intensity)
-
-    return frame
-
-
 def apply_breathing_effect(frame: Image.Image, progress: float) -> Image.Image:
     intensity = math.sin(progress * math.pi * 2) * 0.3
 
@@ -310,24 +299,56 @@ def apply_breathing_effect(frame: Image.Image, progress: float) -> Image.Image:
         return apply_pinch_effect(frame, abs(intensity))
 
 
-def add_effect_to_gif_frames(gif_path: str, output_path: str, effect: str = "bulge") -> str:
-    """
-    Aplica efeitos de distorção a um GIF.
+def apply_rotation_effect(frame: Image.Image, progress: float) -> Image.Image:
+    angle = progress * 360
+    return frame.rotate(-angle, resample=Image.BICUBIC, expand=False, fillcolor=(0, 0, 0))
 
-    Efeitos disponíveis:
-    - "bulge": Efeito de balão/infla
-    - "pinch": Efeito de pinça/implode
-    - "swirl": Efeito de redemoinho
-    - "wave": Efeito de ondas
-    - "fisheye": Efeito olho de peixe
-    - "explosion": Efeito de explosão animado
-    - "breathing": Efeito de respiração animado
-    """
+
+def apply_explosion_effect(frame: Image.Image, progress: float, explosion_frames: list = None,
+                           explosion_index: int = 0) -> Image.Image:
+    if progress >= 0.8 and explosion_frames and isinstance(explosion_frames, list) and len(explosion_frames) > 0:
+        return explosion_frames[min(explosion_index, len(explosion_frames) - 1)]
+
+    return frame
+
+
+def add_effect_to_gif_frames(gif_path: str, output_path: str, effect: str) -> str:
     gif = Image.open(gif_path)
     frames = []
     durations = []
 
+    explosion_frames = []
+    if effect == "explosion":
+        try:
+            explosion_url = "https://media.giphy.com/media/HhTXt43pk1I1W/giphy.gif"
+            import requests
+            from io import BytesIO
+
+            response = requests.get(explosion_url, timeout=5)
+            explosion_gif = Image.open(BytesIO(response.content))
+
+            explosion_frame_count = 0
+            try:
+                while explosion_frame_count < 30:  # ~1.5 segundos a 15fps
+                    explosion_gif.seek(explosion_frame_count)
+                    exp_frame = explosion_gif.copy()
+
+                    if exp_frame.mode != 'RGB':
+                        if exp_frame.mode == 'P':
+                            exp_frame = exp_frame.convert('RGBA').convert('RGB')
+                        else:
+                            exp_frame = exp_frame.convert('RGB')
+
+                    exp_frame = exp_frame.resize((gif.width, gif.height), Image.LANCZOS)
+                    explosion_frames.append(exp_frame)
+                    explosion_frame_count += 1
+            except EOFError:
+                pass
+        except:
+            pass
+
     frame_count = 0
+    explosion_frame_index = 0
     try:
         while True:
             frame = gif.copy()
@@ -355,9 +376,13 @@ def add_effect_to_gif_frames(gif_path: str, output_path: str, effect: str = "bul
             elif effect == "fisheye":
                 frame_effect = apply_fisheye_effect(frame, 0.5)
             elif effect == "explosion":
-                frame_effect = apply_explosion_effect(frame, progress)
+                frame_effect = apply_explosion_effect(frame, progress, explosion_frames, explosion_frame_index)
+                if progress >= 0.7 and explosion_frames:
+                    explosion_frame_index += 1
             elif effect == "breathing":
                 frame_effect = apply_breathing_effect(frame, progress)
+            elif effect == "rotation":
+                frame_effect = apply_rotation_effect(frame, progress)
             else:
                 frame_effect = frame
 
@@ -383,33 +408,91 @@ def add_effect_to_gif_frames(gif_path: str, output_path: str, effect: str = "bul
 
 
 async def animated(message_id: str, caption_text: str = None, effect: str = None) -> str:
-    video_base64 = await download_media(message_id, True)
-    video_data = base64.b64decode(video_base64[0])
+    media_data = await download_media(message_id, True)
+    media_base64 = media_data[0]
+    media_bytes = base64.b64decode(media_base64)
 
-    with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as video_temp:
-        video_temp.write(video_data)
-        video_path = video_temp.name
+    with tempfile.NamedTemporaryFile(suffix='.webp', delete=False) as temp_input:
+        temp_input.write(media_bytes)
+        webp_path = temp_input.name
 
     gif_path = tempfile.mktemp(suffix='.gif')
     gif_with_caption_path = tempfile.mktemp(suffix='.gif')
     gif_with_effect_path = tempfile.mktemp(suffix='.gif')
 
     try:
-        subprocess.run([
-            'ffmpeg',
-            '-i', video_path,
-            '-vf',
-            'fps=15,'
-            'scale=512:512:force_original_aspect_ratio=increase:flags=lanczos,'
-            'crop=512:512,'
-            'split[s0][s1];'
-            '[s0]palettegen=max_colors=256[p];'
-            '[s1][p]paletteuse=dither=bayer:bayer_scale=5',
-            '-t', '5',
-            '-loop', '0',
-            gif_path,
-            '-y'
-        ], check=True, capture_output=True)
+        is_webp_animated = False
+        try:
+            test_img = Image.open(webp_path)
+            is_webp_animated = test_img.format == 'WEBP' and hasattr(test_img, 'n_frames') and test_img.n_frames > 1
+            test_img.close()
+        except:
+            pass
+
+        if is_webp_animated:
+            webp = Image.open(webp_path)
+            frames = []
+            durations = []
+
+            original_width = webp.width
+            original_height = webp.height
+
+            try:
+                frame_index = 0
+                while frame_index < min(webp.n_frames, 105):
+                    webp.seek(frame_index)
+                    frame = webp.copy()
+
+                    if frame.mode != 'RGB':
+                        if frame.mode == 'P':
+                            frame = frame.convert('RGBA').convert('RGB')
+                        elif frame.mode == 'RGBA':
+                            background = Image.new('RGB', frame.size, (255, 255, 255))
+                            background.paste(frame, mask=frame.split()[3])
+                            frame = background
+                        else:
+                            frame = frame.convert('RGB')
+
+                    frames.append(frame)
+
+                    duration = webp.info.get('duration', 66)
+                    durations.append(duration)
+
+                    frame_index += 1
+            except EOFError:
+                pass
+
+            webp.close()
+
+            if frames:
+                frames[0].save(
+                    gif_path,
+                    format='GIF',
+                    save_all=True,
+                    append_images=frames[1:],
+                    duration=durations,
+                    loop=0,
+                    optimize=False
+                )
+            else:
+                raise Exception("Nenhum frame foi extraído do WebP")
+        else:
+            # Para vídeos MP4, também mantém proporção melhor
+            subprocess.run([
+                'ffmpeg',
+                '-i', webp_path,
+                '-vf',
+                'fps=15,'
+                'scale=512:512:force_original_aspect_ratio=decrease,'  # decrease ao invés de increase
+                'pad=512:512:(ow-iw)/2:(oh-ih)/2:black,'  # adiciona padding preto se necessário
+                'split[s0][s1];'
+                '[s0]palettegen=max_colors=256[p];'
+                '[s1][p]paletteuse=dither=bayer:bayer_scale=5',
+                '-t', '7',
+                '-loop', '0',
+                gif_path,
+                '-y'
+            ], check=True, capture_output=True)
 
         final_gif_path = gif_path
 
@@ -426,11 +509,13 @@ async def animated(message_id: str, caption_text: str = None, effect: str = None
 
     except subprocess.CalledProcessError as e:
         error_msg = e.stderr.decode() if e.stderr else str(e)
-        raise Exception(f"Erro ao processar vídeo: {error_msg}")
+        raise Exception(f"Erro ao processar mídia: {error_msg}")
+    except Exception as e:
+        raise Exception(f"Erro ao processar mídia: {str(e)}")
 
     finally:
-        if os.path.exists(video_path):
-            os.remove(video_path)
+        if os.path.exists(webp_path):
+            os.remove(webp_path)
         if os.path.exists(gif_path):
             os.remove(gif_path)
         if os.path.exists(gif_with_caption_path):
