@@ -52,7 +52,7 @@ def draw_meme_text(draw, text: str, width: int, height: int, position: str = "to
 
     for size in range(font_size, 20, -5):
         try:
-            font = ImageFont.truetype(f"{project_root}/data/fonts/arial-bold.ttf", size)
+            font = ImageFont.truetype(f"{project_root}/utils/fonts/arial-bold.ttf", size)
         except:
             font = ImageFont.load_default()
 
@@ -69,7 +69,7 @@ def draw_meme_text(draw, text: str, width: int, height: int, position: str = "to
             break
     if best_font is None:
         try:
-            best_font = ImageFont.truetype(f"{project_root}/data/fonts/arial-bold.ttf", 25)
+            best_font = ImageFont.truetype(f"{project_root}/utils/fonts/arial-bold.ttf", 25)
         except:
             best_font = ImageFont.load_default()
         best_lines = wrap_text_to_width(draw, text, best_font, usable_width)
