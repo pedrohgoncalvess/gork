@@ -32,13 +32,12 @@ async def process_group_message(
 ):
     group_jid = remote_id.replace("@g.us", "")
     event_data = body["data"]
-    message_data = event_data["message"]
     contact_id = event_data["key"]["participant"].replace("@lid", "")
     phone_number = event_data["key"].get("participantAlt", "").replace("@s.whatsapp.net", "")
     contact_name = event_data["pushName"]
     message_id = event_data["key"]["id"]
     instance_number = get_env_var("EVOLUTION_INSTANCE_NUMBER")
-    medias = verifiy_media(body)
+    context_message = verifiy_media(body)
 
     if await is_message_too_old(event_data["messageTimestamp"]):
         return
@@ -67,7 +66,7 @@ async def process_group_message(
         sender_id=group.id
     )
 
-    conversation = medias.get("text_message", "")
+    conversation = context_message.get("text_message", "")
 
     await message_repo.find_or_create(
         message_id=message_id,
@@ -80,15 +79,7 @@ async def process_group_message(
     if not is_whitelisted:
         return
 
-    mentions: list[str] = event_data.get("contextInfo", {}).get("mentionedJid", [])
-    if not mentions:
-        mentions = (
-            message_data.get("ephemeralMessage", {})
-            .get("message", {})
-            .get("extendedTextMessage", {})
-            .get("contextInfo", {})
-            .get("mentionedJid", [])
-        )
+    mentions: list[str] = context_message.get("mentions", [])
 
     is_mention = False
     for mention in mentions:
@@ -104,7 +95,7 @@ async def process_group_message(
     if not is_mention:
         return
 
-    if "audio_message" in medias.keys():
+    if "audio_message" in context_message.keys():
         conversation = await transcribe_audio(body, user.id, group.id)
 
     if conversation in [f"@{instance_number}", f"@{user_gork.src_id}"]:
@@ -120,7 +111,7 @@ async def process_group_message(
         group.id,
         db,
         scheduler,
-        medias
+        context_message
     )
 
 
@@ -152,6 +143,10 @@ async def process_private_message(
     )
 
     conversation = context.get("text_message", "")
+
+    # if user.phone_number == "554899865556":
+    #     await handle_message(user.phone_number, conversation)
+    #     return
 
     await message_repo.find_or_create(
         message_id=message_id,
