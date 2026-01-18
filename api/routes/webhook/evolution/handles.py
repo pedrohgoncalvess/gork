@@ -38,9 +38,18 @@ COMMANDS = [
         "Cria um sticker com base em uma imagem e texto fornecido. _[Use | como separador de top/bottom]_ \n_(Obs: Mensagens quotadas com !sticker será criado um sticker da mensagem com a foto de perfil de quem enviou)_",
         "image",
         [
-            (":no-background", "Remove fundo da imagem",[("t", "Verdadeiro"), ("f", "Falso")]),
-            (":random", "Usa uma imagem aleatória",[("t", "Verdadeiro"), ("f", "Falso")]),
-            (":effect", "Adiciona um efeito. *Apenas figurinha animadas",[("explosion", "Explosão"), ("f", "Falso")]),
+            (":no-background", "Remove fundo da imagem.", [("t", "Verdadeiro"),]),
+            (":random", "Usa uma imagem aleatória", [("t", "Verdadeiro"),]),
+            (":effect", "Adiciona um efeito. *Apenas figurinhas animadas*", [
+                ("explosion", "Efeito de explosão"),
+                ("breathing", "Efeito de respiração (infla e desinfla)"),
+                ("rotation", "Efeito de rotação (360 graus)"),
+                ("bulge", "Efeito de balão/infla"),
+                ("pinch", "Efeito de pinça/implode"),
+                ("swirl", "Efeito de redemoinho"),
+                ("wave", "Efeito de ondas"),
+                ("fisheye", "Efeito olho de peixe"),
+            ]),
         ]
     ),
     ("!english", "", "hidden", []),
@@ -102,8 +111,8 @@ async def handle_help_command(remote_id: str, message_id: str):
                     for param_name, param_desc, param_options in params:
                         help_parts.append(f"  • *{param_name}* - {param_desc}")
                         if param_options:
-                            options_str = ", ".join([f"`{opt}` ({desc})" for opt, desc in param_options])
-                            help_parts.append(f"    Opções: {options_str}")
+                            options_str = "\n".join([f"        - _{opt}_ ({desc})" for opt, desc in param_options])
+                            help_parts.append(f"    Opções:\n {options_str}")
 
             help_parts.append("")
 
@@ -215,11 +224,17 @@ async def handle_sticker_command(
         db: AsyncSession,
         message_context: dict
 ):
+
     medias = message_context.keys()
     params = parse_params(message)
-    if "video_message" in medias or "video_quote" in medias:
+    if "video_message" in medias or "video_quote" in medias or "sticker_quote" in medias:
         effect = params.get("effect")
-        message_id = message_context.get("video_quote") if "video_quote" in medias else message_context.get("video_message")
+        if "video_quote" in medias:
+            message_id = message_context.get("video_quote")
+        elif "video_message" in medias:
+            message_id = message_context.get("video_message")
+        else:
+            message_id = message_context.get("sticker_quote")
         gif_url = await animated(message_id, treated_text, effect)
         await send_animated_sticker(remote_id, gif_url)
     else:
