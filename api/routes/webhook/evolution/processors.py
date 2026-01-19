@@ -4,6 +4,8 @@ from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.routes.webhook.evolution.functions.intent import classify_intent
+from api.routes.webhook.evolution.functions.transcribe_audio import transcribe_audio
 from api.routes.webhook.evolution.handles import (
     clean_text, has_explicit_command, handle_help_command,
     handle_generic_conversation, handle_remember_command, handle_sticker_command,
@@ -19,7 +21,6 @@ from database.operations.base import UserRepository, GroupRepository, WhiteListR
 from database.operations.content import MessageRepository
 from external import get_group_info
 from external.evolution import send_message
-from functions import transcribe_audio, classify_intent
 from services import verifiy_media, save_profile_pic
 from utils import get_env_var
 
@@ -143,10 +144,6 @@ async def process_private_message(
     )
 
     conversation = context.get("text_message", "")
-
-    # if user.phone_number == "554899865556":
-    #     await handle_message(user.phone_number, conversation)
-    #     return
 
     await message_repo.find_or_create(
         message_id=message_id,

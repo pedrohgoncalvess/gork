@@ -11,18 +11,17 @@ from database.models.content import Message
 from database.models.manager import Model
 from database.operations.content import MessageRepository
 from database.operations.manager import ModelRepository
-from functions import (
+from api.routes.webhook.evolution.functions import (
     get_resume_conversation, generic_conversation,
     static, animated, remember_generator,
-    generate_image,
-    list_images, search_images
+    generate_image, list_images, search_images,
+    token_consumption, transcribe_audio, web_search
 )
-from functions.tokens import token_consumption
-from functions.transcribe_audio import transcribe_audio
-from functions.web_search import web_search
-from external.evolution import send_message, send_audio, send_sticker, send_animated_sticker, send_image, download_media
-from services import describe_image, parse_params
-from services.remember import action_remember
+from external.evolution import (
+    send_message, send_audio, send_sticker,
+    send_animated_sticker, send_image, download_media
+)
+from services import describe_image, parse_params, action_remember
 from tts import text_to_speech
 
 

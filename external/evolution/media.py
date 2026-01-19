@@ -42,7 +42,6 @@ async def send_media(contact_id: str, file_path: str):
         "media": file_data,
         "mimetype": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", # TODO: add a map with file extension -> mimetype
         "fileName":file_path.split("/")[-1],
-        "caption": "Tá aqui o arquivo solicitado. Qualquer outra coisa pode me chamar",
         "mediatype": "document"
     }
 
