@@ -36,7 +36,6 @@ services:
       - ./agents:/app/agents:ro
       - ./api:/app/api:ro
       - ./external:/app/external:ro
-      - ./functions:/app/functions:ro
       - ./services:/app/services:ro
       - ./tts:/app/tts:ro
       - ./utils:/app/utils:ro
@@ -44,7 +43,6 @@ services:
       - ./scheduler:/app/scheduler:ro
       - ./embeddings:/app/embeddings:ro
 
-      - ./data:/app/data:rw
       - ./database:/app/database:rw
       - ./log:/app/log:rw
     networks:
