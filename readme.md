@@ -1,222 +1,131 @@
-# Python Environment Setup with Makefile
-
-This repository contains a Makefile to facilitate Python virtual environment setup and management across multiple platforms (Windows and Unix-like systems).
-
-### Method 1: Using Makefile
+# Gork Setup Guide
 
 ## Prerequisites
 
-- Python (recommended version: 3.11.0)
-- Make (optional)
-- Operating System: Windows or Linux/MacOS
+- **Python 3.13+**
+- **Docker** and **Docker Compose**
+- **Make** utility
 
-## Virtual Environment Setup Methods
+## Installation
 
-### Method 1: Using Makefile (Cross-Platform)
+### 1. Configure Environment Variables
 
-## Prerequisites
+```bash
+# Copy the example environment file
+cp .env.example .env
 
-- Python (recommended version: 3.11.0)
-- Make
-- Operating System: Windows or Linux/MacOS
+# Edit .env and fill in the missing parameters
+```
 
-## Environment Setup
+Open the `.env` file and complete all required parameters.
 
-### Main Commands
+### 2. Install Dependencies and Setup Environment
+
+```bash
+make setup
+```
+
+This will automatically install UV, create a virtual environment, and install all dependencies.
+
+**Optional - Using a Custom Python Path:**
+
+```bash
+# Windows
+make setup PYTHON_PATH="C:\Python313\python.exe"
+
+# Linux/macOS
+make setup PYTHON_PATH="/usr/local/bin/python3.13"
+```
+
+## Running the Application
+
+```bash
+make run
+```
+
+## Evolution API Setup
+
+### 1. Start Evolution API
+
+```bash
+make evolution-start
+```
+
+The API will be available at `http://localhost:8080`
+
+### 2. Create Instance
+
+1. Open your browser and go to `http://localhost:8080`
+2. Click **"Create Instance"**
+3. Set the instance name to: **`Gork`**
+4. Click **"Create"** or **"Save"**
+
+### 3. Configure Webhook
+
+1. In the instance settings, go to the **Events** tab
+2. Navigate to **Webhook** section
+3. Enable the webhook toggle
+4. Set the webhook URL to: `http://webhook_fastapi:9001/webhook/evolution`
+5. Save the configuration
+
+### 4. Connect Your Phone
+
+1. A QR code will appear in the dashboard
+2. Open WhatsApp on your phone:
+   - Go to **Settings** > **Linked Devices**
+   - Tap **"Link a Device"**
+   - Scan the QR code
+3. Wait for the connection to establish
+
+## Evolution API Management
+
+```bash
+# Stop Evolution API
+make evolution-stop
+
+# Clean Evolution API (removes all data)
+make evolution-clean
+```
+
+## Available Commands
 
 | Command | Description |
-|---------|-----------|
-| `make setup` | Checks Python installation, creates virtual environment, and installs dependencies |
-| `make run` | Executes the main script (`main.py`) after setting up the environment |
-| `make clean` | Removes the virtual environment |
+|---------|-------------|
+| `make setup` | Install dependencies and create virtual environment |
+| `make run` | Run the application |
+| `make clean` | Remove virtual environment |
+| `make evolution-start` | Start Evolution API |
+| `make evolution-stop` | Stop Evolution API |
+| `make evolution-clean` | Stop and clean all Evolution API data |
 
-### Makefile Details
+## Troubleshooting
 
-#### Key Variables
-- `PYTHON_VERSION`: Defines Python version (3.11.0)
-- `VENV`: Virtual environment directory (`.venv`)
+### Evolution API Won't Start
 
-#### Features
-
-1. **Python Installation Check**
-   - On Windows: Automatically downloads and installs if not found
-   - On Unix-like systems: Provides manual installation instructions
-
-2. **Virtual Environment Creation**
-   - Creates an isolated virtual environment
-   - Updates pip
-   - Supports Windows and Unix systems
-
-3. **Dependency Installation**
-   - Uses `requirements.txt` to install packages
-
-### Installation and Usage
-
-#### First-Time Setup
-
-1. Clone the repository
-2. Install Python (3.11.0 recommended)
-3. Run `make setup`
-
-#### Running the Project
-
-- To setup and run: `make run`
-- To clean the environment: `make clean`
-
-### Additional Requirements
-
-- Create a `requirements.txt` file with your dependencies
-- Have a main `main.py` script
-
-### Notes
-
-- Windows requires administrator permissions for installation
-- On Unix systems, use package managers to install Python
-
----
-
-### Method 2: Standard Virtual Environment Setup
-
-#### Using `venv` (Recommended)
-
-1. **Create Virtual Environment**
+Check if Docker is running:
 ```bash
-# On Windows
-python -m venv .venv
-
-# On macOS/Linux
-python3 -m venv .venv
+docker ps
 ```
 
-2. **Activate Virtual Environment**
+Check Docker Compose logs:
 ```bash
-# Windows (Command Prompt)
-.venv\Scripts\activate
-
-# Windows (PowerShell)
-.venv\Scripts\Activate.ps1
-
-# macOS/Linux
-source .venv/bin/activate
+cd external-services/evolution-api-2.3.6
+docker compose logs
 ```
 
-3. **Install Dependencies**
+### QR Code Not Appearing
+
+Restart the Evolution API:
 ```bash
-# With virtual environment activated
-pip install -r requirements.default.txt
+make evolution-stop
+make evolution-start
 ```
 
-4. **Deactivate Virtual Environment**
-```bash
-deactivate
-```
+## Additional Resources
 
-## Project Structure
-
-```
-project-root/
-│
-├── .venv/               # Virtual environment directory
-├── src/                 # Source code directory
-│   └── main.py          # Main application script
-├── tests/               # Test files directory
-├── requirements.txt     # Project dependencies
-├── README.md            # Project documentation
-└── .gitignore           # Git ignore file
-```
-
-## Contributing Guidelines
-
-### Getting Started
-
-1. **Fork the Repository**
-   - Click "Fork" on the top right of the GitHub repository
-   - Clone your forked repository
-   ```bash
-   git clone https://github.com/YOUR-USERNAME/repository-name.git
-   cd repository-name
-   ```
-
-2. **Setup Development Environment**
-   ```bash
-   # Create and activate virtual environment
-   python -m venv .venv
-   source .venv/bin/activate  # On Unix
-   .venv\Scripts\activate     # On Windows
-
-   # Install dependencies
-   pip install -r requirements.default.txt
-   
-   # Install development dependencies
-   pip install -r requirements-dev.txt  # If you have a separate dev requirements file
-   ```
-
-### Contribution Workflow
-
-1. **Create a Branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Make Changes**
-   - Write clean, documented code
-   - Follow project's coding standards
-   - Add/update tests for new functionality
-
-3. **Run Tests**
-   ```bash
-   # Run all tests
-   pytest tests/
-
-   # Run linters (if configured)
-   flake8 src/
-   ```
-
-4. **Commit Changes**
-   ```bash
-   git add .
-   git commit -m "feat: Describe your changes clearly and concisely"
-   ```
-
-5. **Push to Your Fork**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-
-6. **Create Pull Request**
-   - Open a Pull Request from your fork to the main repository
-   - Describe changes in the PR description
-   - Link any related issues
-
-### Best Practices
-
-- Write clear, concise commit messages
-- Keep pull requests focused and small
-- Add tests for new functionality
-- Update documentation as needed
-- Follow PEP 8 style guidelines
-- Use type hints and docstrings
-
-## Code of Conduct
-
-- Be respectful and inclusive
-- Provide constructive feedback
-- Collaborate openly and kindly
+- [UV Documentation](https://github.com/astral-sh/uv)
+- [Evolution API Documentation](https://doc.evolution-api.com/)
+- [Docker Documentation](https://docs.docker.com/)
 
 ## License
-
-[Specify your project's license, e.g., MIT, Apache 2.0]
-
----
-
-### Recommended Tools
-
-- **Virtual Environment**: `venv`
-- **Dependency Management**: `pip`
-- **Testing**: `pytest`
-- **Linting**: `flake8`, `pylint`
-- **Type Checking**: `mypy`
-
-## Support
-
-If you encounter any issues or have questions, please [open an issue](link-to-issues) on GitHub.
+[Apache License](LICENSE)
