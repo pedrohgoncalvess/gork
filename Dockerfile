@@ -44,4 +44,4 @@ COPY . .
 
 EXPOSE 9001
 
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001", "--workers", "6"]
+CMD ["sh", "-c", "uv run yoyo apply --batch && uv run uvicorn main:app --host 0.0.0.0 --port 9001 --workers 6"]
