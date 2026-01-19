@@ -6,7 +6,10 @@ import soundfile as sf
 
 from database import PgConnection
 from database.models.manager import Interaction, Model, Agent, Command
-from database.operations.manager import InteractionRepository, ModelRepository, AgentRepository, CommandRepository
+from database.operations.manager import (
+    InteractionRepository, ModelRepository,
+    AgentRepository, CommandRepository
+)
 from external import completions
 from external.evolution import download_media
 

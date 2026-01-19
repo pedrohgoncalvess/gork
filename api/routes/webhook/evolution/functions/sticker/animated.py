@@ -10,7 +10,7 @@ import httpx
 from PIL import Image, ImageFont
 
 from external.evolution import download_media
-from functions.sticker import add_caption_to_image
+from api.routes.webhook.evolution.functions import add_caption_to_image
 
 
 async def upload_to_tmpfile(gif_path: str) -> str:
@@ -321,10 +321,7 @@ def add_effect_to_gif_frames(gif_path: str, output_path: str, effect: str) -> st
     if effect == "explosion":
         try:
             explosion_url = "https://media.giphy.com/media/HhTXt43pk1I1W/giphy.gif"
-            import requests
-            from io import BytesIO
-
-            response = requests.get(explosion_url, timeout=5)
+            response = httpx.get(explosion_url, timeout=5)
             explosion_gif = Image.open(BytesIO(response.content))
 
             explosion_frame_count = 0
@@ -434,9 +431,6 @@ async def animated(message_id: str, caption_text: str = None, effect: str = None
             frames = []
             durations = []
 
-            original_width = webp.width
-            original_height = webp.height
-
             try:
                 frame_index = 0
                 while frame_index < min(webp.n_frames, 105):
@@ -477,18 +471,17 @@ async def animated(message_id: str, caption_text: str = None, effect: str = None
             else:
                 raise Exception("Nenhum frame foi extraído do WebP")
         else:
-            # Para vídeos MP4, também mantém proporção melhor
             subprocess.run([
                 'ffmpeg',
                 '-i', webp_path,
                 '-vf',
                 'fps=15,'
-                'scale=512:512:force_original_aspect_ratio=decrease,'  # decrease ao invés de increase
-                'pad=512:512:(ow-iw)/2:(oh-ih)/2:black,'  # adiciona padding preto se necessário
+                'scale=512:512:force_original_aspect_ratio=decrease,'
+                'pad=512:512:(ow-iw)/2:(oh-ih)/2:black,'
                 'split[s0][s1];'
                 '[s0]palettegen=max_colors=256[p];'
                 '[s1][p]paletteuse=dither=bayer:bayer_scale=5',
-                '-t', '7',
+                '-t', '10',
                 '-loop', '0',
                 gif_path,
                 '-y'

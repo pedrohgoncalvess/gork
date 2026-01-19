@@ -6,12 +6,12 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 from rembg import remove
 
+from api.routes.webhook.evolution.functions.sticker.modify_image import add_caption_to_image
 from database.models.base import User
 from database.models.content import Message
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
 from external.evolution import download_media
-from functions.sticker import add_caption_to_image
 from s3 import S3Client
 from utils import get_env_var
 
