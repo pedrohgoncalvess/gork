@@ -62,8 +62,7 @@ class StructuredLogger:
     # TODO: Implement convertion to .parquet
 
     async def init(self):
-        if not os.path.exists(self._log_file_dir_):
-            os.makedirs(self._log_file_dir_)
+        os.makedirs(self._log_file_dir_, exist_ok=True)
         if not os.path.exists(self._log_path_):
             async with aiofiles.open(self._log_path_, "w") as f:
                 await f.write(f" {self.sep} ".join(self.headers + [self.row_sep]))
