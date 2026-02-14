@@ -17,7 +17,7 @@ from external.evolution import download_media
 from s3 import S3Client
 from services import verifiy_media
 from services.save_image import save_image
-from utils import get_env_var
+from utils import get_env_var, project_root
 
 
 async def generate_image(
@@ -27,15 +27,26 @@ async def generate_image(
     message_context = verifiy_media(webhook_event)
     event_data = webhook_event["data"]
     message_id = event_data["key"]["id"]
-    user_message = re.sub(r'!\w{3,}', '', user_message)
+
+    with open(f"{project_root}/agents/modify_image.md", mode="r") as file:
+        image_system_prompt = file.read()
 
     mention_photo: list[tuple[str, User]] = []
     async with PgConnection() as db:
+        user_repo = UserRepository(User, db)
+        gork_user = await user_repo.find_by_phone_or_id(get_env_var("EVOLUTION_INSTANCE_NUMBER"))
+        user_message = (
+            user_message
+            .replace(f"@{gork_user.phone_number}@s.whatsapp.net", "")
+            .replace(f"{gork_user.src_id}@lid", "")
+            .replace(f"@{gork_user.src_id}", "")
+        )
+
         mentions = message_context.get("mentions")
         s3_client = S3Client()
         await s3_client.connect()
         if mentions is not None:
-            user_repo = UserRepository(User, db)
+
             for mention in mentions:
                 user_mentioned = await user_repo.find_by_phone_or_id(mention)
                 if user_mentioned.name != get_env_var("EVOLUTION_INSTANCE_NAME"):
@@ -78,11 +89,23 @@ async def generate_image(
 
         photo_context = ""
         if mention_photo:
-            for idx, (_, us) in enumerate(mention_photo, start=2):
-                user_message = user_message.replace(f"@{us.phone_number}@s.whatsapp.net", us.name).replace(f"{us.src_id}@lid", us.name)
+            for idx, (_, us) in enumerate(mention_photo, start=1):
+                idx = idx + 1 if image_base64 else idx
+                user_message = user_message.replace(f"@{us.phone_number}@s.whatsapp.net", us.name).replace(f"{us.src_id}@lid", us.name).replace(f"@{us.src_id}", us.name)
                 photo_context = f"{photo_context}Foto [{idx}]:É a pessoa: {us.name}\n"
 
-        user_message = user_message if not photo_context else f"{photo_context}\n\n{user_message}"
+        base64_context = (
+            "A primeira foto é chamada de 'principal'. Leve isso em consideração quando analisar a requisição final do usuario."
+            if image_base64 else ""
+        )
+
+        final_message = ""
+        if base64_context:
+            final_message = f"{base64_context}\n"
+        if photo_context:
+            final_message = f"{final_message}{photo_context}\n\n"
+
+        user_message = f"{final_message}\n\n{user_message}"
         messages_content = [
             {
                 "type": "text",
@@ -114,6 +137,10 @@ async def generate_image(
                 )
 
         messages = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": image_system_prompt}],
+            },
             {
                 "role": "user",
                 "content": messages_content
