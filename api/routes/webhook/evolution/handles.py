@@ -519,7 +519,7 @@ async def handle_twitter_command(
     )
 
     # Envia mensagem de processamento
-    await send_message(remote_id, "⏳ Baixando a mídia...", message_id)
+    await send_message(remote_id, "⏳ Calma lá, chifrudo..", message_id)
 
     # Baixa a mídia (vídeo ou imagem)
     result = await download_twitter_media(twitter_url)
