@@ -546,7 +546,7 @@ async def handle_twitter_command(
         )
         await send_message(
             remote_id,
-            "❌ Não foi possível baixar a mídia. Verifique se o link está correto e tente novamente.",
+            "❌ Deu ruim, cria. Tente daqui um tempo",
             message_id
         )
         return
