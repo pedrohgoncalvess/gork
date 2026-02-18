@@ -558,7 +558,7 @@ async def handle_twitter_command(
         await logger.error("TwitterCommand", "Erro ao codificar base64", str(e))
         await send_message(
             remote_id,
-            "❌ Erro ao processar a mídia. Tente novamente.",
+            "❌ Esse vídeo ta quebrado, favor parar de gastar tokens nele.",
             message_id
         )
         return
