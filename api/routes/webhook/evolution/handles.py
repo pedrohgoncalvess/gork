@@ -505,7 +505,7 @@ async def handle_twitter_command(
         )
         await send_message(
             remote_id,
-            "❌ Não encontrei um link válido do Twitter/X na mensagem.\n\n"
+            "❌ Põe um link válido do Twitter/X, animal.\n\n"
             "Exemplo de uso:\n"
             "`!twitter https://x.com/usuario/status/12345`",
             message_id
