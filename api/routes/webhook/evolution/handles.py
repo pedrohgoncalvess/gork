@@ -16,11 +16,15 @@ from api.routes.webhook.evolution.functions import (
     get_resume_conversation, generic_conversation,
     static, animated, remember_generator,
     generate_image, list_images, search_images,
-    token_consumption, transcribe_audio, web_search, get_pictures
+    token_consumption, transcribe_audio, web_search, get_pictures,
+    download_twitter_media, extract_twitter_url
 )
+
+import base64
+from log import logger
 from external.evolution import (
     send_message, send_audio, send_sticker,
-    send_animated_sticker, send_image, download_media
+    send_animated_sticker, send_image, download_media, send_video
 )
 from services import describe_image, parse_params, action_remember
 from tts import text_to_speech
@@ -63,6 +67,7 @@ COMMANDS = [
     ("!favorite", "Favorita uma mensagem.", "utility", []),
     ("!list", "", "hidden", []),
     ("!remove", "", "hidden", []),
+    ("!twitter", "Baixa vídeos ou imagens de links do X/Twitter e envia. _[Ex: !twitter https://x.com/usuario/status/12345]_", "media", []),
 ]
 
 
@@ -89,7 +94,8 @@ async def handle_help_command(remote_id: str, message_id: str):
         "audio": ("🎙️ *ÁUDIO & TRANSCRIÇÃO*", []),
         "image": ("🖼️ *IMAGENS & STICKERS*", []),
         "reminder": ("⏰ *LEMBRETES*", []),
-        "utility": ("📝 *UTILIDADES*", [])
+        "utility": ("📝 *UTILIDADES*", []),
+        "media": ("📹 *MÍDIA*", []),
     }
 
     for cmd, desc, category, params in COMMANDS:
@@ -462,4 +468,126 @@ async def handle_remove_favorite(
     await message_repo.remove_favorite_message(message_id)
     await send_message(remote_id, "Mensagem removida dos favoritos.")
     return
+
+
+async def handle_twitter_command(
+        remote_id: str,
+        conversation: str,
+        message_id: str
+):
+    """
+    Handler para o comando !twitter. Baixa mídia (vídeo ou imagem) de um link do X/Twitter e envia.
+
+    Processa URLs do Twitter/X, baixa a mídia (vídeo ou imagem) e envia via WhatsApp.
+    Detecta automaticamente o tipo de mídia e envia usando o método apropriado.
+
+    Args:
+        remote_id: ID do destinatário (telefone ou grupo)
+        conversation: Texto completo da mensagem (contém o link do Twitter)
+        message_id: ID da mensagem para resposta
+
+    Raises:
+        Nenhuma exceção é propagada; erros são tratados e retornados como mensagem ao usuário
+
+    Examples:
+        >>> # Mensagem do usuário:
+        >>> # "!twitter https://x.com/usuario/status/12345"
+        >>> await handle_twitter_command("5511999999999@s.whatsapp.net", "!twitter https://x.com/usuario/status/12345", "msg_123")
+    """
+    # Extrai o URL do Twitter/X
+    twitter_url = extract_twitter_url(conversation)
+
+    if not twitter_url:
+        await logger.warning(
+            "TwitterCommand",
+            "URL não encontrada",
+            {"conversation": conversation}
+        )
+        await send_message(
+            remote_id,
+            "❌ Põe um link válido do Twitter/X, animal.\n\n"
+            "Exemplo de uso:\n"
+            "`!twitter https://x.com/usuario/status/12345`",
+            message_id
+        )
+        return
+
+    await logger.info(
+        "TwitterCommand",
+        "Iniciando download",
+        {"url": twitter_url, "remote_id": remote_id}
+    )
+
+    # Envia mensagem de processamento
+    await send_message(remote_id, "⏳ Calma lá, chifrudo..", message_id)
+
+    # Baixa a mídia (vídeo ou imagem)
+    result = await download_twitter_media(twitter_url)
+
+    if not result.is_success:
+        await logger.error(
+            "TwitterCommand",
+            "Falha no download",
+            {
+                "url": twitter_url,
+                "error": result.error,
+                "media_type": result.media_type,
+            }
+        )
+        await send_message(remote_id, f"❌ {result.error}", message_id)
+        return
+
+    # Valida dados
+    if not result.media_bytes or not result.media_type:
+        await logger.error(
+            "TwitterCommand",
+            "Dados inválidos",
+            {"url": twitter_url, "has_bytes": bool(result.media_bytes), "media_type": result.media_type}
+        )
+        await send_message(
+            remote_id,
+            "❌ Deu ruim, cria. Tente daqui um tempo",
+            message_id
+        )
+        return
+
+    # Converte para base64 para envio
+    try:
+        media_base64 = base64.b64encode(result.media_bytes).decode('utf-8')
+    except Exception as e:
+        await logger.error("TwitterCommand", "Erro ao codificar base64", str(e))
+        await send_message(
+            remote_id,
+            "❌ Esse vídeo ta quebrado, favor parar de gastar tokens nele.",
+            message_id
+        )
+        return
+
+    # Envia a mídia via WhatsApp de acordo com o tipo
+    try:
+        if result.media_type == "video":
+            await send_video(remote_id, media_base64, message_id)
+            await logger.info(
+                "TwitterCommand",
+                "Vídeo enviado",
+                {"url": twitter_url, "size": len(result.media_bytes)}
+            )
+            await send_message(remote_id, "✅ Vídeo enviado com sucesso!", message_id)
+        else:
+            await send_image(remote_id, media_base64)
+            await logger.info(
+                "TwitterCommand",
+                "Imagem enviada",
+                {"url": twitter_url, "size": len(result.media_bytes)}
+            )
+            await send_message(remote_id, "✅ Imagem enviada com sucesso!", message_id)
+    except Exception as e:
+        await logger.error("TwitterCommand", "Erro ao enviar mídia", str(e))
+        await send_message(
+            remote_id,
+            f"❌ Erro ao enviar a mídia: {str(e)}",
+            message_id
+        )
+        return
+
 
