@@ -8,3 +8,4 @@ from api.routes.webhook.evolution.functions.resume import get_resume_conversatio
 from api.routes.webhook.evolution.functions.transcribe_audio import transcribe_audio
 from api.routes.webhook.evolution.functions.web_search import web_search
 from api.routes.webhook.evolution.functions.picture import get_pictures
+from api.routes.webhook.evolution.functions.twitter_video import download_twitter_video, extract_twitter_url
