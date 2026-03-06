@@ -1,4 +1,3 @@
-import uvicorn
 from scheduler import scheduler
 from fastapi import FastAPI
 
@@ -15,7 +14,3 @@ async def startup_event():
     await init_agents()
     await set_remembers(scheduler)
     scheduler.start()
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=90001)
