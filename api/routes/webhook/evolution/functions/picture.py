@@ -15,12 +15,10 @@ async def get_pictures(message_context: dict[str, any], db: AsyncSession) -> lis
     for mention in mentions:
         user = await user_repo.find_by_phone_or_id(mention)
         if user.profile_pic_path:
-            if user.name == "Gork":
-                pass
-
-            _ = await s3_client.connect()
-            image_base64 = await s3_client.get_image_base64("whatsapp", user.profile_pic_path)
-            pictures.append(("picture", image_base64))
+            if not user.name == "Gork":
+                _ = await s3_client.connect()
+                image_base64 = await s3_client.get_image_base64("whatsapp", user.profile_pic_path)
+                pictures.append(("picture", image_base64))
         else:
             pictures.append((None, f"O vagabundo {user.name} não tem foto salva."))
 
