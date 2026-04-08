@@ -14,7 +14,7 @@ from api.routes.webhook.evolution.handles import (
     is_message_too_old, handle_consumption_command,
     handle_describe_image_command, handle_list_images_command, handle_favorite_message,
     handle_list_favorites_message, handle_remove_favorite, handle_picture_command,
-    handle_twitter_command
+    handle_twitter_command, handle_instagram_command
 )
 from database.models.base import User, Group, WhiteList
 from database.models.content import Message
@@ -279,6 +279,10 @@ async def process_explicit_commands(
 
     if "!twitter" in lw_conversation:
         await handle_twitter_command(remote_id, conversation, message_id)
+        return
+
+    if "!instagram" in lw_conversation:
+        await handle_instagram_command(remote_id, conversation, message_id)
         return
 
     await handle_generic_conversation(
