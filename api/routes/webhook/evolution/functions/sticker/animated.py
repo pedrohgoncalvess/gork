@@ -28,7 +28,6 @@ async def upload_to_tmpfile(gif_path: str) -> str:
 
 
 def convert_to_rgb(frame: Image.Image) -> Image.Image:
-    """Converte qualquer modo para RGB preservando transparência com fundo branco."""
     if frame.mode == 'RGB':
         return frame
     if frame.mode == 'RGBA':
@@ -44,7 +43,6 @@ def convert_to_rgb(frame: Image.Image) -> Image.Image:
 
 
 def resize_cover(frame: Image.Image, size: tuple) -> Image.Image:
-    """Redimensiona cobrindo todo o espaço (crop centralizado, sem bordas)."""
     target_w, target_h = size
     orig_w, orig_h = frame.size
     scale = max(target_w / orig_w, target_h / orig_h)
@@ -57,10 +55,6 @@ def resize_cover(frame: Image.Image, size: tuple) -> Image.Image:
 
 
 def compress_gif_to_limit(input_path: str, output_path: str, max_bytes: int = 900_000) -> str:
-    """
-    Tenta compressões progressivas até o GIF caber no limite de tamanho.
-    Reduz resolução, fps e cores até conseguir.
-    """
     configs = [
         {"scale": 512, "fps": 15, "colors": 256, "duration": 10},
         {"scale": 384, "fps": 12, "colors": 128, "duration": 8},
@@ -100,7 +94,6 @@ def compress_gif_to_limit(input_path: str, output_path: str, max_bytes: int = 90
                 os.remove(tmp_out)
             continue
 
-    # último recurso: usa a config mais comprimida sem verificar tamanho
     cfg = configs[-1]
     subprocess.run([
         'ffmpeg',
@@ -399,73 +392,109 @@ def add_effect_to_gif_frames(gif_path: str, output_path: str, effect: str) -> st
     return output_path
 
 
+def compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 490_000) -> str:
+    configs = [
+        {"scale": 512, "fps": 30, "quality": 85, "duration": 6},
+        {"scale": 512, "fps": 24, "quality": 75, "duration": 6},
+        {"scale": 512, "fps": 20, "quality": 65, "duration": 6},
+        {"scale": 512, "fps": 15, "quality": 55, "duration": 6},
+        {"scale": 384, "fps": 15, "quality": 60, "duration": 6},
+        {"scale": 256, "fps": 15, "quality": 60, "duration": 6},
+    ]
+
+    for cfg in configs:
+        tmp_out = output_path + ".tmp.webp"
+        try:
+            subprocess.run([
+                'ffmpeg',
+                '-i', input_path,
+                '-vf',
+                f'fps={cfg["fps"]},'
+                f'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
+                f'scale={cfg["scale"]}:{cfg["scale"]}:flags=lanczos',
+                '-vcodec', 'libwebp',
+                '-lossless', '0',
+                '-compression_level', '6',
+                '-quality', str(cfg["quality"]),
+                '-loop', '0',
+                '-preset', 'picture',
+                '-an',
+                '-t', str(cfg["duration"]),
+                tmp_out, '-y'
+            ], check=True, capture_output=True)
+
+            size = os.path.getsize(tmp_out)
+            if size <= max_bytes:
+                os.rename(tmp_out, output_path)
+                return output_path
+            else:
+                os.remove(tmp_out)
+        except Exception:
+            if os.path.exists(tmp_out):
+                os.remove(tmp_out)
+            continue
+
+    cfg = configs[-1]
+    subprocess.run([
+        'ffmpeg', '-i', input_path,
+        '-vf',
+        f'fps={cfg["fps"]},'
+        f'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
+        f'scale={cfg["scale"]}:{cfg["scale"]}:flags=lanczos',
+        '-vcodec', 'libwebp',
+        '-lossless', '0',
+        '-compression_level', '6',
+        '-quality', str(cfg["quality"]),
+        '-loop', '0',
+        '-preset', 'picture',
+        '-an',
+        '-t', str(cfg["duration"]),
+        output_path, '-y'
+    ], check=True, capture_output=True)
+
+    return output_path
+
+
 async def animated(message_id: str, caption_text: str = None, effect: str = None) -> str:
     media_data = await download_media(message_id, True)
-    media_base64 = media_data[0]
-    media_bytes = base64.b64decode(media_base64)
-    with tempfile.NamedTemporaryFile(suffix='.webp', delete=False) as temp_input:
-        temp_input.write(media_bytes)
-        webp_path = temp_input.name
+    media_bytes = base64.b64decode(media_data[0])
+
+    with tempfile.NamedTemporaryFile(suffix='.webp', delete=False) as f:
+        f.write(media_bytes)
+        webp_path = f.name
+
     gif_path = tempfile.mktemp(suffix='.gif')
-    gif_with_caption_path = tempfile.mktemp(suffix='.gif')
-    gif_with_effect_path = tempfile.mktemp(suffix='.gif')
+    output_webp_path = tempfile.mktemp(suffix='.webp')
+
     try:
-        is_webp_animated = False
-        try:
-            test_img = Image.open(webp_path)
-            is_webp_animated = test_img.format == 'WEBP' and hasattr(test_img, 'n_frames') and test_img.n_frames > 1
-            test_img.close()
-        except:
-            pass
-        if is_webp_animated:
-            webp = Image.open(webp_path)
-            frames = []
-            durations = []
-            try:
-                frame_index = 0
-                while frame_index < min(webp.n_frames, 105):
-                    webp.seek(frame_index)
-                    frame = webp.copy()
-                    frame = convert_to_rgb(frame)
-                    frame = resize_cover(frame, (512, 512))
-                    frames.append(frame)
-                    duration = webp.info.get('duration', 66)
-                    durations.append(duration)
-                    frame_index += 1
-            except EOFError as error:
-                print(error)
-                pass
-            webp.close()
-            if frames:
-                frames[0].save(
-                    gif_path,
-                    format='GIF',
-                    save_all=True,
-                    append_images=frames[1:],
-                    duration=durations,
-                    loop=0,
-                    optimize=False
-                )
-            else:
-                raise Exception("Nenhum frame foi extraído do WebP")
-        else:
-            compress_gif_to_limit(webp_path, gif_path)
+        subprocess.run([
+            'ffmpeg', '-i', webp_path,
+            '-vf',
+            'fps=30,'
+            'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
+            'scale=512:512:flags=lanczos,'
+            'split[s0][s1];[s0]palettegen=max_colors=256[p];[s1][p]paletteuse=dither=sierra2_4a',
+            '-t', '6',
+            '-loop', '0',
+            gif_path, '-y'
+        ], check=True, capture_output=True)
 
-        final_gif_path = gif_path
+        working_gif = gif_path
+
         if caption_text:
-            final_gif_path = add_caption_to_gif_frames(gif_path, caption_text, gif_with_caption_path)
-        if effect:
-            input_for_effect = final_gif_path
-            final_gif_path = add_effect_to_gif_frames(input_for_effect, gif_with_effect_path, effect)
+            captioned = tempfile.mktemp(suffix='.gif')
+            working_gif = add_caption_to_gif_frames(working_gif, caption_text, captioned)
 
-        gif_url = await upload_to_tmpfile(final_gif_path)
+        if effect:
+            effected = tempfile.mktemp(suffix='.gif')
+            working_gif = add_effect_to_gif_frames(working_gif, effected, effect)
+
+        compress_webp_sticker(working_gif, output_webp_path)
+
+        gif_url = await upload_to_tmpfile(output_webp_path)
         return gif_url
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr.decode() if e.stderr else str(e)
-        raise Exception(f"Erro ao processar mídia: {error_msg}")
-    except Exception as e:
-        raise Exception(f"Erro ao processar mídia: {str(e)}")
+
     finally:
-        for path in [webp_path, gif_path, gif_with_caption_path, gif_with_effect_path]:
+        for path in [webp_path, gif_path, output_webp_path]:
             if os.path.exists(path):
                 os.remove(path)
