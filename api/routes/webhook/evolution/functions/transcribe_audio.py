@@ -16,7 +16,7 @@ from external.evolution import download_media
 
 async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[int], command: bool = False) -> str:
     async with PgConnection() as db:
-        model_repo = ModelRepository(Model, db)
+        model_repo = ModelRepository(db)
         agent_repo = AgentRepository(Agent, db)
 
         transcriber_agent = await agent_repo.find_by_name("transcriber")
