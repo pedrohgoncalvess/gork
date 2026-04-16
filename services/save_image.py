@@ -23,7 +23,7 @@ async def describe_image(
         image_base64: bytes, group_id: Optional[int] = None,
         for_embeddings: bool = False) -> str:
     async with PgConnection() as db:
-        model_repo = ModelRepository(Model, db)
+        model_repo = ModelRepository(db)
         default_audio_model = await model_repo.get_default_audio_model()
         system = (
             "Descreva essa imagem em algumas palavras. Utilize no máximo 4-5 frases." if not for_embeddings
