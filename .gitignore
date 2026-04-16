@@ -12,6 +12,7 @@
 
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
+yoyo.ini
 
 # IPython
 profile_default/
