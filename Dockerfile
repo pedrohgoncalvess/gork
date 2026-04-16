@@ -32,7 +32,7 @@ RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/python313t /opt/python313t
 
-ENV PATH="/opt/python313t/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH"
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -41,7 +41,3 @@ COPY pyproject.toml uv.lock* ./
 RUN uv sync --frozen --no-cache
 
 COPY . .
-
-EXPOSE 9001
-
-CMD ["sh", "-c", "uv run uvicorn main:app --host 0.0.0.0 --port 9001 --workers 2"]
