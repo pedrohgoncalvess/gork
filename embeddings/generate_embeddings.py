@@ -11,7 +11,7 @@ async def generate_text_embeddings(text: str, message_id: str, db: AsyncSession)
     message_repo = MessageRepository(Message, db)
     message = await message_repo.find_by_message_id(message_id)
 
-    model_repo = ModelRepository(Model, db)
+    model_repo = ModelRepository(db)
     embedding_model = await model_repo.get_default_embedding_model()
 
     embedding_json = await embeddings(text, embedding_model.openrouter_id)
