@@ -6,6 +6,9 @@ from database.operations import BaseRepository
 
 
 class ModelRepository(BaseRepository[Model]):
+    def __init__(self, db):
+        super().__init__(Model, db)
+
     async def find_by_name(self, name: str) -> Optional[Model]:
         return await self.find_one_by(name=name)
 

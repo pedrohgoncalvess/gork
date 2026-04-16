@@ -17,7 +17,7 @@ async def manage_interaction(
         command: Optional[Command] = None,
 ) -> str:
 
-    model_repo = ModelRepository(Model, db)
+    model_repo = ModelRepository(db)
     agent_repo = AgentRepository(Agent, db)
 
     default_model = await model_repo.get_default_model()
