@@ -24,6 +24,12 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: webhook_fastapi
+    command: >
+      gunicorn main:app
+      -k uvicorn.workers.UvicornWorker
+      -w 4
+      -b 0.0.0.0:9001
+      --timeout 120
     ports:
       - "9001:9001"
     environment:
