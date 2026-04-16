@@ -1,6 +1,5 @@
 from services.manage_interaction import manage_interaction
 from services.remember import set_remembers, action_remember
-from services.translator import translate_to_pt
 from services.save_image import save_image, describe_image
 from services.message_context import verifiy_media
 from services.save_profile_pic import save_profile_pic
