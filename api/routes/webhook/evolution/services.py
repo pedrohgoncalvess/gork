@@ -1,4 +1,3 @@
-import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from api.routes.webhook.evolution.processors import process_group_message, process_private_message

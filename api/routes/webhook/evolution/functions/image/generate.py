@@ -28,7 +28,7 @@ async def generate_image(
     event_data = webhook_event["data"]
     message_id = event_data["key"]["id"]
 
-    with open(f"{project_root}/agents/modify_image.md", mode="r") as file:
+    with open(f"{project_root}/agents/prompts/modify-image.md", mode="r") as file:
         image_system_prompt = file.read()
 
     mention_photo: list[tuple[str, User]] = []
@@ -54,7 +54,7 @@ async def generate_image(
                         photo_base64 = await s3_client.get_image_base64("whatsapp", user_mentioned.profile_pic_path)
                         mention_photo.append((photo_base64, user_mentioned))
 
-        model_repo = ModelRepository(Model, db)
+        model_repo = ModelRepository(db)
         command_repo = CommandRepository(Command, db)
         new_command = await command_repo.create_command(
             command="image",

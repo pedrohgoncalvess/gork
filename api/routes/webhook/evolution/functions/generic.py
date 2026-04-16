@@ -7,6 +7,7 @@ from database.models.base import User
 from database.models.content import Message
 from database.operations.base.user import UserRepository
 from database.operations.content.message import MessageRepository
+from log import logger
 from services import manage_interaction
 from utils import get_env_var
 
@@ -16,10 +17,11 @@ async def generic_conversation(contact_id: int, user_name: str, last_message: st
 
     async with PgConnection() as db:
         user_repo = UserRepository(User, db)
-        user_gork = await user_repo.find_by_name("Gork")
-        # TODO: This SHOULD BE removed later. A better solution has to be implemented.
+        user_gork = await user_repo.find_by_phone(get_env_var("EVOLUTION_INSTANCE_NUMBER"))
+
         if not user_gork:
-            user_gork = await user_repo.insert(User(name="Gork", src_id=str(uuid4()), phone_number=get_env_var("EVOLUTION_INSTANCE_NUMBER")))
+            await logger.error("Agent", "Generic", "Instance user not found.")
+            return {}
 
         message_repo = MessageRepository(Message, db)
         if is_group:
@@ -30,7 +32,13 @@ async def generic_conversation(contact_id: int, user_name: str, last_message: st
         formatted_messages = []
         existing_messages = []
         for msg in messages:
-            sender_name = msg.sender.name or msg.sender.phone_jid or "Usuário Desconhecido"
+            if msg.sender.id == user_gork.id:
+                sender_name = "Você"
+            elif msg.sender.name:
+                sender_name = msg.sender.name
+            else:
+                sender_name = "Usuário Desconhecido."
+
             content = msg.content or ""
 
             if content.lower() in existing_messages:
@@ -44,27 +52,30 @@ async def generic_conversation(contact_id: int, user_name: str, last_message: st
             else:
                 timestamp = msg.created_at.strftime('%H:%M')
 
-            formatted_messages.append(f"{sender_name}: {content} - {timestamp}")
+            formatted_messages.append(f"{sender_name} - [{timestamp}]: {content}")
             existing_messages.append(content.lower())
 
         message = (
                 (f"Mensagem quotada: {quoted_text}\n" if quoted_text else "") +
-                "Última mensagem enviada e que dever ser respondida:\n"
-                f"{user_name}: {last_message} - {datetime.now().strftime('%H:%M')}"
+                f"{user_name} - [{datetime.now().strftime('%H:%M')}]: {last_message}"
         )
 
         formatted_messages.append(message)
         final_message = "\n".join(formatted_messages)
 
-        resp = await manage_interaction(db, final_message, agent_name="generic", user_id=user_id, group_id=contact_id if is_group else None)
+        resp = await manage_interaction(
+            db, final_message, agent_name="generic", user_id=user_id, group_id=contact_id if is_group else None
+        )
         formatted_resp = json.loads(f"""{resp}""")
 
-        _ = await message_repo.insert(Message(
-            message_id=str(uuid4()),
-            group_id = contact_id if is_group else None,
-            user_id=user_gork.id,
-            content=formatted_resp.get("text"),
-            created_at=datetime.now()
-        ))
+        _ = await message_repo.insert(
+            Message(
+                message_id=str(uuid4()),
+                group_id = contact_id if is_group else None,
+                user_id=user_gork.id,
+                content=formatted_resp.get("text"),
+                created_at=datetime.now()
+            )
+        )
 
         return formatted_resp

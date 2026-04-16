@@ -15,7 +15,7 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
 
     async with PgConnection() as db:
 
-        model_repo = ModelRepository(Model, db)
+        model_repo = ModelRepository(db)
         command_repo = CommandRepository(Command, db)
 
         if contact_id:
