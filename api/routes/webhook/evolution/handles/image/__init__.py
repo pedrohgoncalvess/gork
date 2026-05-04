@@ -3,11 +3,13 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.core import clean_text
-from api.routes.webhook.evolution.functions import (
-    generate_image, static, animated, list_images, search_images, get_pictures
-)
-from services import describe_image, parse_params
+from api.routes.webhook.evolution.handles.image.generate import generate_image
+from api.routes.webhook.evolution.handles.image.gallery import list_images, search_images
+from api.routes.webhook.evolution.handles.image.picture import get_pictures
+from api.routes.webhook.evolution.handles.image.sticker_static import static_sticker
+from api.routes.webhook.evolution.handles.image.sticker_animated import animated_sticker
 from external.evolution import send_message, send_image, send_sticker, send_animated_sticker, download_media
+from services import describe_image, parse_params
 
 
 async def handle_image_command(
@@ -44,12 +46,12 @@ async def handle_sticker_command(
             message_id = message_context.get("video_message")
         else:
             message_id = message_context.get("sticker_quote")
-        gif_url = await animated(message_id, treated_text, effect)
+        gif_url = await animated_sticker(message_id, treated_text, effect)
         await send_animated_sticker(remote_id, gif_url)
     else:
         is_random = True if params.get("random", "f") == "t" else False
         remove_background = True if params.get("no-background", "f") == "t" else False
-        webp_base64 = await static(
+        webp_base64 = await static_sticker(
             body, treated_text, db,
             message_context, is_random, remove_background
         )
