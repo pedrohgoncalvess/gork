@@ -10,6 +10,9 @@ from database.operations import BaseRepository
 
 
 class MessageRepository(BaseRepository[Message]):
+    def __init__(self, db):
+        super().__init__(Message, db)
+
     async def find_by_message_id(self, message_id: str) -> Optional[Message]:
         return await self.find_one_by(message_id=message_id)
 

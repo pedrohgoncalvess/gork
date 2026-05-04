@@ -18,3 +18,10 @@ CREATE TABLE "manager"."model_conversation" (
     CONSTRAINT model_conversation_agent_fk FOREIGN KEY (agent_id) REFERENCES "manager"."agent"(id),
     CONSTRAINT model_conversation_model_fk FOREIGN KEY (model_id) REFERENCES "manager"."model"(id)
 );
+
+ALTER TABLE "content"."message" ADD COLUMN quoted_message_id INTEGER;
+ALTER TABLE "content"."message" ADD CONSTRAINT quoted_message_message_fk FOREIGN KEY (quoted_message_id) REFERENCES "content"."message"(id);
+ALTER TABLE "content"."message" ADD COLUMN media_id INTEGER;
+ALTER TABLE "content"."message" ADD CONSTRAINT message_media_fk FOREIGN KEY (media_fk) REFERENCES "content"."media"(id);
+
+ALTER TABLE "base"."group" ADD COLUMN auto_message BOOLEAN NOT NULL DEFAULT FALSE;

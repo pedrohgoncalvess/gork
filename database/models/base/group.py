@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Text,
-    TIMESTAMP, func, UUID, text
+    TIMESTAMP, func, UUID, text, Boolean
 )
 from sqlalchemy.orm import relationship
 
@@ -17,6 +17,7 @@ class Group(Base):
     name = Column(String(255))
     description = Column(Text)
     profile_image_url = Column(Text)
+    auto_message = Column(Boolean, default=False, nullable=False)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
