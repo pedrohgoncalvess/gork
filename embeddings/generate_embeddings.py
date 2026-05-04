@@ -8,7 +8,7 @@ from external import embeddings
 
 
 async def generate_text_embeddings(text: str, message_id: str, db: AsyncSession) -> list[float]:
-    message_repo = MessageRepository(Message, db)
+    message_repo = MessageRepository(db)
     message = await message_repo.find_by_message_id(message_id)
 
     model_repo = ModelRepository(db)

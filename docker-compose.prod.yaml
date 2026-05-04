@@ -8,6 +8,8 @@ services:
       - "9001:9001"
     env_file:
       - .env
+    volumes:
+      - ./log:/app/log:rw
     networks:
       - dokploy-network
     restart: unless-stopped
