@@ -5,6 +5,9 @@ from database.operations import BaseRepository
 
 
 class AgentRepository(BaseRepository[Agent]):
+    def __init__(self, db):
+        super().__init__(Agent, db)
+
     async def find_by_name(self, name: str) -> Optional[Agent]:
         return await self.find_one_by(name=name)
 

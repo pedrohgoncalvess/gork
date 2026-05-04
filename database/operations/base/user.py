@@ -7,6 +7,9 @@ from database.operations import BaseRepository
 
 
 class UserRepository(BaseRepository[User]):
+    def __init__(self, db):
+        super().__init__(User, db)
+
     async def find_by_phone(self, phone_number: str) -> Optional[User]:
         return await self.find_one_by(phone_number=phone_number)
 
