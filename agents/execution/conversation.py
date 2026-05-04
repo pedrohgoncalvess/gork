@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models.manager import Model, Agent, Interaction, Command
+from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
 from database.operations.manager import ModelRepository, AgentRepository, InteractionRepository
@@ -22,7 +22,6 @@ async def conversation_agent(
     model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
     message_repo = MessageRepository(db)
-
     user_repo = UserRepository(db)
 
     user_gork = await user_repo.find_by_phone(get_env_var("EVOLUTION_INSTANCE_NUMBER"))
@@ -66,16 +65,22 @@ async def conversation_agent(
         existing_messages.append(content.lower())
 
     last_message = messages_rel.get(last_message_id)
-    quoted_message = messages_rel.get(last_message.quoted_message_id)
-    message = (
+    quoted_message = messages_rel.get(last_message.quoted_message_id) if last_message else None
+    current_message = (
             (f"Mensagem quotada: {quoted_message.content}\n" if quoted_message else "") +
-            f"{user_sender.name} - [{datetime.now().strftime('%H:%M')}]: {last_message}"
+            f"{user_sender.name} - [{datetime.now().strftime('%H:%M')}]: {last_message.content if last_message else ''}"
     )
 
     default_model = await model_repo.get_default_model()
     agent = await agent_repo.find_by_name("conversation")
 
     now = datetime.now(ZoneInfo("America/Sao_Paulo"))
+
+    conversation_history = "\n".join(formatted_messages)
+    system_prompt = agent.prompt.replace("$$CONVERSATION_HISTORY$$", conversation_history)
+    system_prompt = system_prompt.replace("{CURRENT_DATETIME}", now.strftime("%Y-%m-%d %H:%M:%S (%A)"))
+    system_prompt = system_prompt.replace("{CURRENT_DATE}", now.strftime("%B %d, %Y"))
+    system_prompt = system_prompt.replace("{CURRENT_YEAR}", str(now.year))
 
     payload_term_formatter = {
         "model": default_model.openrouter_id,
@@ -86,7 +91,7 @@ async def conversation_agent(
             },
             {
                 "role": "user",
-                "content": message,
+                "content": current_message,
             }
         ]
     }
@@ -100,7 +105,7 @@ async def conversation_agent(
         user_id=user_id,
         group_id=group_id,
         agent_id=agent.id,
-        user_prompt=last_message.message_id,
+        user_prompt=current_message,
         response=resp,
         input_tokens=req["usage"]["prompt_tokens"],
         output_tokens=req["usage"]["completion_tokens"],

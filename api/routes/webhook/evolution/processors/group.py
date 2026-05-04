@@ -59,7 +59,7 @@ async def process_group_message(
 
     conversation = context_message.get("text_message", "")
 
-    await message_repo.find_or_create(
+    db_message = await message_repo.find_or_create(
         message_id=message_id,
         sender_id=user.id,
         group_id=group.id,
@@ -102,5 +102,6 @@ async def process_group_message(
         group.id,
         db,
         scheduler,
-        context_message
+        context_message,
+        db_message,
     )
