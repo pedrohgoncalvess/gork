@@ -12,7 +12,7 @@ async def handle_favorite_message(
     db: AsyncSession
 ):
     message_id = context.get("quoted_message")
-    message_repo = MessageRepository(Message, db)
+    message_repo = MessageRepository(db)
     message = await message_repo.set_is_favorite(message_id)
 
     feedback_message = "✅ Mensagem favoritada." if message else "❌ Houve um erro ao favoritar a mensagem."
@@ -27,7 +27,7 @@ async def handle_list_favorites_message(
         group_id: Optional[int] = None, last_days: Optional[int] = None,
         user_name: Optional[str] = None
 ):
-    message_repo = MessageRepository(Message, db)
+    message_repo = MessageRepository(db)
     favorites = await message_repo.find_favorites_messages(
         last_days=last_days,
         group_id=group_id,
@@ -79,7 +79,7 @@ async def handle_remove_favorite(
         conversation: str, user_id: Optional[int] = None,
         group_id: Optional[int] = None
 ):
-    message_repo = MessageRepository(Message, db)
+    message_repo = MessageRepository(db)
     pattern = r"id:([^\s]+)"
     match_conversation = re.search(pattern, conversation)
     if match_conversation:
