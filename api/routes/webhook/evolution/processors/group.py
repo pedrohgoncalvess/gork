@@ -3,15 +3,14 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.functions.transcribe_audio import transcribe_audio
+from api.routes.webhook.evolution.handles import transcribe_audio
 from api.routes.webhook.evolution.handles import is_message_too_old
 from api.routes.webhook.evolution.processors.common import process_commands
 from database.models.base import User, Group, WhiteList
 from database.models.content import Message
 from database.operations.base import UserRepository, GroupRepository, WhiteListRepository
 from database.operations.content import MessageRepository
-from external import get_group_info
-from external.evolution import send_message
+from external.evolution import send_message, get_group_info
 from services import verifiy_media, save_profile_pic
 from utils import get_env_var
 
@@ -34,9 +33,9 @@ async def process_group_message(
     if await is_message_too_old(event_data["messageTimestamp"]):
         return
 
-    user_repo = UserRepository(User, db)
+    user_repo = UserRepository(db)
     group_repo = GroupRepository(Group, db)
-    message_repo = MessageRepository(Message, db)
+    message_repo = MessageRepository(db)
     whitelist_repo = WhiteListRepository(WhiteList, db)
     user_gork = await user_repo.find_by_name("Gork")
 
