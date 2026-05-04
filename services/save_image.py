@@ -121,7 +121,7 @@ async def save_image(
             group = await group_repo.find_by_id(group_id)
             ext_id = group.ext_id
         else:
-            user_repo = UserRepository(User, db)
+            user_repo = UserRepository(db)
             user = await user_repo.find_by_id(user_id)
             ext_id = user.ext_id
 
@@ -143,7 +143,7 @@ async def save_image(
         )
 
         media_repo = MediaRepository(Media, db)
-        message_repo = MessageRepository(Message, db)
+        message_repo = MessageRepository(db)
         message = await message_repo.find_by_message_id(message_id)
         new_media = await media_repo.insert(
             Media(

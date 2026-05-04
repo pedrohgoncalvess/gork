@@ -12,7 +12,7 @@ async def save_profile_pic(
         max_size: tuple[float, float] = (1920, 1920)
 ) -> None:
     async with PgConnection() as db:
-        user_repo = UserRepository(User, db)
+        user_repo = UserRepository(db)
         user = await user_repo.find_by_id(user_id)
         if user.profile_pic_path is not None:
             return user

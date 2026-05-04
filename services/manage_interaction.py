@@ -18,7 +18,7 @@ async def manage_interaction(
 ) -> str:
 
     model_repo = ModelRepository(db)
-    agent_repo = AgentRepository(Agent, db)
+    agent_repo = AgentRepository(db)
 
     default_model = await model_repo.get_default_model()
     agent = await agent_repo.find_by_name(agent_name) if agent_name else None
