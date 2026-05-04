@@ -43,7 +43,7 @@ async def process_private_message(
 
     conversation = context.get("text_message", "")
 
-    await message_repo.find_or_create(
+    db_message = await message_repo.find_or_create(
         message_id=message_id,
         sender_id=user.id,
         group_id=None,
@@ -70,5 +70,6 @@ async def process_private_message(
         None,
         db,
         scheduler,
-        context
+        context,
+        db_message,
     )

@@ -5,5 +5,5 @@ from api.routes.webhook.evolution.handles.search import handle_search_command
 from api.routes.webhook.evolution.handles.image import handle_image_command, handle_describe_image_command, handle_sticker_command, handle_list_images_command, handle_picture_command
 from api.routes.webhook.evolution.handles.reminder import handle_remember_command
 from api.routes.webhook.evolution.handles.social import handle_twitter_command, handle_instagram_command
-from api.routes.webhook.evolution.handles.chat import handle_generic_conversation
+from api.routes.webhook.evolution.handles.chat import handle_conversation_agent
 from api.routes.webhook.evolution.handles.favorite import handle_favorite_message, handle_list_favorites_message, handle_remove_favorite
