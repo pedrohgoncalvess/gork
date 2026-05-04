@@ -26,7 +26,7 @@ async def init_agents() -> None:
         return
 
     async with PgConnection() as db:
-        agent_repo = AgentRepository(Agent, db)
+        agent_repo = AgentRepository(db)
         model_repo = ModelRepository(db)
 
         all_models = await model_repo.find_all()
