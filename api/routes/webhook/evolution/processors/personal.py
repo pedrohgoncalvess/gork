@@ -3,7 +3,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.functions.transcribe_audio import transcribe_audio
+from api.routes.webhook.evolution.handles import transcribe_audio
 from api.routes.webhook.evolution.handles import is_message_too_old
 from api.routes.webhook.evolution.processors.common import process_commands
 from database.models.base import User, WhiteList
@@ -29,8 +29,8 @@ async def process_private_message(
     if await is_message_too_old(event_data["messageTimestamp"]):
         return
 
-    user_repo = UserRepository(User, db)
-    message_repo = MessageRepository(Message, db)
+    user_repo = UserRepository(db)
+    message_repo = MessageRepository(db)
     whitelist_repo = WhiteListRepository(WhiteList, db)
 
     user = await user_repo.find_or_create(name=contact_name, lid=remote_id, phone_number=number)

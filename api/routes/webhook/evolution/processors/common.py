@@ -2,11 +2,11 @@ from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.functions.intent import classify_intent
+from api.routes.webhook.evolution.processors.intent import classify_intent
 from api.routes.webhook.evolution.handles import (
     clean_text, has_explicit_command, handle_help_command,
     handle_generic_conversation, handle_remember_command, handle_sticker_command,
-    handle_image_command, handle_search_command, handle_transcribe_command,
+    handle_image_command, handle_transcribe_command,
     handle_resume_command, handle_model_command, COMMANDS,
     handle_consumption_command,
     handle_describe_image_command, handle_list_images_command, handle_favorite_message,
