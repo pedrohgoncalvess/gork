@@ -2,16 +2,14 @@ from typing import Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.processors.intent import classify_intent
 from api.routes.webhook.evolution.handles import (
     clean_text, has_explicit_command, handle_help_command,
     handle_conversation_agent, handle_remember_command, handle_sticker_command,
-    handle_image_command, handle_transcribe_command,
-    handle_resume_command, handle_model_command, COMMANDS,
-    handle_consumption_command,
-    handle_describe_image_command, handle_list_images_command, handle_favorite_message,
-    handle_list_favorites_message, handle_remove_favorite, handle_picture_command,
-    handle_twitter_command, handle_instagram_command
+    handle_image_command, handle_transcribe_command, handle_resume_command,
+    handle_model_command, handle_consumption_command, handle_describe_image_command,
+    handle_list_images_command, handle_favorite_message, handle_list_favorites_message,
+    handle_remove_favorite, handle_picture_command, handle_twitter_command,
+    handle_instagram_command
 )
 from database.models.base import User
 from database.models.content import Message
@@ -38,10 +36,11 @@ async def process_commands(
             body, group_id, treated_text, db, scheduler, context, db_message
         )
     else:
-        await process_intent_based_commands(
-            conversation, remote_id, message_id, user,
-            body, group_id, treated_text, db, scheduler, context, db_message
-        )
+        pass
+        # await process_intent_based_commands(
+        #     conversation, remote_id, message_id, user,
+        #     body, group_id, treated_text, db, scheduler, context, db_message
+        # )
 
 
 async def process_explicit_commands(
@@ -74,18 +73,12 @@ async def process_explicit_commands(
         await handle_transcribe_command(remote_id, message_id, body, user.id, group_id)
         return
 
-    if "!search" in lw_conversation:
-        from api.routes.webhook.evolution.handles.search import handle_search_command
-        group = True if group_id else False
-        await handle_search_command(remote_id, message_id, treated_text, group, user.id)
-        return
-
     if "!image" in lw_conversation:
         await handle_image_command(remote_id, user.id, conversation, body, group_id)
         return
 
     if "!describe" in lw_conversation:
-        await handle_describe_image_command(remote_id, user.id, treated_text, context, group_id)
+        await handle_describe_image_command(remote_id, user.id, treated_text, context, db, group_id)
         return
 
     if "!sticker" in lw_conversation:
@@ -147,47 +140,3 @@ async def process_explicit_commands(
         context=context,
         group_id=group_id,
     )
-
-
-async def process_intent_based_commands(
-        conversation: str,
-        remote_id: str,
-        message_id: str,
-        user: User,
-        body: dict,
-        group_id: Optional[int],
-        treated_text: str,
-        db: AsyncSession,
-        scheduler: AsyncIOScheduler,
-        context: dict[str, str],
-        db_message: Message,
-):
-    intent, wants_audio = await classify_intent(conversation, db, COMMANDS, context, user.id, group_id)
-    is_group = True if group_id else False
-
-    intent_handlers = {
-        "help": lambda: handle_help_command(remote_id, message_id),
-        "model": lambda: handle_model_command(remote_id, message_id, db),
-        "resume": lambda: handle_resume_command(remote_id, message_id, user.id, group_id),
-        "transcribe": lambda: handle_transcribe_command(remote_id, message_id, body, user.id, group_id),
-        "image": lambda: handle_image_command(remote_id, user.id, treated_text, body, group_id),
-        "sticker": lambda: handle_sticker_command(remote_id, body, treated_text, conversation, db, context),
-        "remember": lambda: handle_remember_command(scheduler, remote_id, message_id, user.id, treated_text, group_id),
-    }
-
-    handler = intent_handlers.get(intent)
-
-    if handler:
-        await handler()
-    else:
-        # Default: conversation agent handles everything (including search, twitter, etc via JSON actions)
-        await handle_conversation_agent(
-            remote_id=remote_id,
-            message_id=message_id,
-            user=user,
-            db_message=db_message,
-            db=db,
-            scheduler=scheduler,
-            context=context,
-            group_id=group_id,
-        )

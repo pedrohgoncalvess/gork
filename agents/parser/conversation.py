@@ -1,53 +1,49 @@
 import json
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
 from log import logger
 
 
-class GorkParserError(Exception):
-    """Raised when Gork response parsing fails"""
-    pass
-
-
-class GorkValidationError(Exception):
-    """Raised when Gork response structure is invalid"""
-    pass
-
-
-GorkResponseType = Dict[str, Any]
-
-
-async def parse_gork_response(llm_output: str) -> GorkResponseType:
+async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
     """
     Parse and validate Gork's JSON response.
 
-    Expected structure:
+    Expected Schema:
     {
-        "reasoning": "...",
-        "actions": [
-            {"action": "message", "content": "...", "language": "pt|en|es"},
-            {"action": "sticker", "parameters": {...}},
+        "reasoning": str,              # Required - Gork's thought process
+        "actions": [                   # Required - List of actions (min 1)
+            {
+                "action": str,         # Required - Action type
+                "content": str,        # Required for "message" action
+                "language": str,       # Required for "message" action ("pt"|"en"|"es")
+                "parameters": dict     # Optional - Action parameters
+            },
             ...
         ]
     }
+
+    Action Types:
+    - "message": Requires "content" and "language" fields
+    - "audio", "sticker", "picture", "image", "describe", "search",
+      "transcribe", "remember", "twitter", "instagram", "gallery", "favorite":
+      May have optional "parameters" dict
+    - "resume", "help", "model", "consumption": No parameters needed
 
     Args:
         llm_output: Raw string output from LLM
 
     Returns:
-        Validated Gork response dictionary
+        Dict with validated Gork response
 
     Raises:
-        GorkParserError: When JSON parsing fails
-        GorkValidationError: When structure is invalid
+        ValueError: When parsing fails or structure is invalid
     """
     if not isinstance(llm_output, str) or not llm_output.strip():
-        raise GorkParserError("Input must be a non-empty string")
+        raise ValueError("Input must be a non-empty string")
 
     text = llm_output.strip()
 
-    # Try candidates in order of likelihood
     for candidate in _candidate_json_strings(text):
         try:
             parsed = json.loads(candidate)
@@ -55,13 +51,11 @@ async def parse_gork_response(llm_output: str) -> GorkResponseType:
             return parsed
         except json.JSONDecodeError:
             continue
-        except GorkValidationError:
-            # Structure is wrong, but JSON is valid - might be partially correct
+        except ValueError:
             continue
 
-    # If all candidates fail, log and raise
     await logger.error("GorkParser", "ParseFailed", llm_output)
-    raise GorkParserError("Failed to parse valid Gork JSON response")
+    raise ValueError("Failed to parse valid Gork JSON response")
 
 
 def _candidate_json_strings(text: str) -> List[str]:
@@ -77,24 +71,19 @@ def _candidate_json_strings(text: str) -> List[str]:
             seen.add(candidate)
             candidates.append(candidate)
 
-    # 1. Try raw text first (most likely if LLM follows instructions)
     add_candidate(text)
 
-    # 2. Extract from code blocks (common LLM mistake)
     for block in _extract_code_blocks(text):
         add_candidate(block)
 
-    # 3. Try to find balanced JSON (handles extra text before/after)
     extracted = _extract_balanced_json(text)
     if extracted:
         add_candidate(extracted)
 
-    # 4. Light cleanup (remove trailing commas, extra whitespace)
     cleaned = _light_cleanup(text)
     if cleaned != text:
         add_candidate(cleaned)
 
-    # 5. Try to extract just the actions array if reasoning failed
     actions_only = _extract_actions_array(text)
     if actions_only:
         add_candidate(actions_only)
@@ -119,12 +108,11 @@ def _extract_balanced_json(text: str) -> Optional[str]:
     """
     start_idx = -1
     for i, c in enumerate(text):
-        if c == "{":  # Gork always returns object, prioritize {
+        if c == "{":
             start_idx = i
             break
 
     if start_idx == -1:
-        # Fallback to array if object not found
         for i, c in enumerate(text):
             if c == "[":
                 start_idx = i
@@ -199,13 +187,9 @@ def _extract_actions_array(text: str) -> Optional[str]:
 
 def _light_cleanup(text: str) -> str:
     """Remove common JSON formatting issues"""
-    # Remove text before first { or [
     text = re.sub(r"^[^{\[]*", "", text, flags=re.DOTALL)
-    # Remove text after last } or ]
     text = re.sub(r"[^\}\]]*$", "", text, flags=re.DOTALL)
-    # Remove trailing commas before closing brackets
     text = re.sub(r",\s*([\}\]])", r"\1", text)
-    # Remove multiple consecutive spaces
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
@@ -223,42 +207,39 @@ def _validate_gork_structure(response: Any) -> None:
     - "reasoning" key (recommended but not required for backward compat)
 
     Raises:
-        GorkValidationError: If structure is invalid
+        ValueError: If structure is invalid
     """
     if not isinstance(response, dict):
-        raise GorkValidationError(
+        raise ValueError(
             f"Response must be a dict, got {type(response).__name__}"
         )
 
-    # Check for actions key
     if "actions" not in response:
-        raise GorkValidationError("Response missing required 'actions' key")
+        raise ValueError("Response missing required 'actions' key")
 
     actions = response["actions"]
 
     if not isinstance(actions, list):
-        raise GorkValidationError(
+        raise ValueError(
             f"'actions' must be a list, got {type(actions).__name__}"
         )
 
     if not actions:
-        raise GorkValidationError("'actions' list cannot be empty")
+        raise ValueError("'actions' list cannot be empty")
 
-    # Validate each action
     for idx, action in enumerate(actions):
         if not isinstance(action, dict):
-            raise GorkValidationError(
+            raise ValueError(
                 f"Action at index {idx} must be a dict, got {type(action).__name__}"
             )
 
         if "action" not in action:
-            raise GorkValidationError(
+            raise ValueError(
                 f"Action at index {idx} missing required 'action' key"
             )
 
         action_type = action["action"]
 
-        # Validate action-specific requirements
         _validate_action_type(action_type, action, idx)
 
 
@@ -267,15 +248,15 @@ def _validate_action_type(action_type: str, action: Dict, idx: int) -> None:
 
     if action_type == "message":
         if "content" not in action:
-            raise GorkValidationError(
+            raise ValueError(
                 f"Message action at index {idx} missing 'content'"
             )
         if "language" not in action:
-            raise GorkValidationError(
+            raise ValueError(
                 f"Message action at index {idx} missing 'language'"
             )
         if action["language"] not in ["pt", "en", "es"]:
-            raise GorkValidationError(
+            raise ValueError(
                 f"Message action at index {idx} has invalid language: {action['language']}"
             )
 
@@ -284,61 +265,13 @@ def _validate_action_type(action_type: str, action: Dict, idx: int) -> None:
         "search", "transcribe", "remember", "twitter", "instagram",
         "gallery", "favorite"
     ]:
-        # These actions may have parameters
         if "parameters" in action and not isinstance(action["parameters"], dict):
-            raise GorkValidationError(
+            raise ValueError(
                 f"Action '{action_type}' at index {idx} has invalid parameters (must be dict)"
             )
 
     elif action_type in ["resume", "help", "model", "consumption"]:
-        # These actions don't need parameters
         pass
 
     else:
-        # Unknown action type - log warning but don't fail
-        # (allows for future extensibility)
         pass
-
-
-def extract_messages(gork_response: GorkResponseType) -> List[Dict[str, str]]:
-    """
-    Extract only message actions from Gork response.
-    Useful for quick message-only responses.
-
-    Returns:
-        List of dicts with 'content' and 'language' keys
-    """
-    messages = []
-    for action in gork_response.get("actions", []):
-        if action.get("action") == "message":
-            messages.append({
-                "content": action.get("content", ""),
-                "language": action.get("language", "pt")
-            })
-    return messages
-
-
-def extract_functions(gork_response: GorkResponseType) -> List[Dict[str, Any]]:
-    """
-    Extract only function/command actions from Gork response.
-    Excludes message actions.
-
-    Returns:
-        List of dicts with 'action' and optional 'parameters' keys
-    """
-    functions = []
-    for action in gork_response.get("actions", []):
-        if action.get("action") != "message":
-            functions.append(action)
-    return functions
-
-
-def get_reasoning(gork_response: GorkResponseType) -> Optional[str]:
-    """Extract reasoning from Gork response if present"""
-    return gork_response.get("reasoning")
-
-
-# Convenience function for backward compatibility
-async def parse_llm_json(llm_output: str) -> GorkResponseType:
-    """Alias for parse_gork_response for backward compatibility"""
-    return await parse_gork_response(llm_output)
