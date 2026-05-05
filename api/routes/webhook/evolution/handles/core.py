@@ -17,6 +17,7 @@ COMMANDS = [
         [
             (":no-background", "Remove fundo da imagem.", [("t", "Verdadeiro"),]),
             (":random", "Usa uma imagem aleatória", [("t", "Verdadeiro"),]),
+            (":fill", "Preenche todo o tamanho do sticker cortando o excesso da imagem.", [("true", "Verdadeiro"),]),
             (":effect", "Adiciona um efeito. *Apenas figurinhas animadas*", [
                 ("explosion", "Efeito de explosão"),
                 ("breathing", "Efeito de respiração (infla e desinfla)"),

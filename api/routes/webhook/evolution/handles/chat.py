@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -8,7 +7,6 @@ from agents.execution.conversation import conversation_agent
 from agents.parser.conversation import parse_gork_response
 from database.models.base import User
 from database.models.content import Message
-from database.operations.content import MessageRepository
 from external.evolution import send_message, send_audio
 from log import logger
 from tts import text_to_speech
@@ -107,6 +105,8 @@ async def _dispatch_action(
             caption_text = f"{caption_text} :effect={params['effect']}"
         if params.get("random"):
             caption_text = f"{caption_text} :random"
+        if params.get("fill"):
+            caption_text = f"{caption_text} :fill=true"
 
         await handle_sticker_command(
             remote_id=remote_id,
@@ -117,7 +117,6 @@ async def _dispatch_action(
             message_context=sticker_context,
         )
 
-    # ── picture ───────────────────────────────────────────────────────────────
     elif action_type == "picture":
         from api.routes.webhook.evolution.handles.image import handle_picture_command
         from database.operations.base import UserRepository
@@ -137,7 +136,6 @@ async def _dispatch_action(
 
         await handle_picture_command(remote_id=remote_id, context=picture_context, db=db)
 
-    # ── image ─────────────────────────────────────────────────────────────────
     elif action_type == "image":
         from api.routes.webhook.evolution.handles.image import handle_image_command
         prompt = params.get("prompt", "")
@@ -161,15 +159,9 @@ async def _dispatch_action(
             user_id=user.id,
             treated_text="",
             medias=describe_context,
+            db=db,
             group_id=group_id,
         )
-
-    # ── search ────────────────────────────────────────────────────────────────
-    elif action_type == "search":
-        from api.routes.webhook.evolution.handles.search import handle_search_command
-        query = params.get("query", "")
-        is_group = group_id is not None
-        await handle_search_command(remote_id, message_id, query, is_group, user.id)
 
     # ── transcribe ────────────────────────────────────────────────────────────
     elif action_type == "transcribe":

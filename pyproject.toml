@@ -13,6 +13,7 @@ dependencies = [
     "firecrawl-py>=4.9.0",
     "gunicorn>=25.3.0",
     "httpx>=0.28.1",
+    "imagehash>=4.3.2",
     "instaloader>=4.15.1",
     "minio>=7.2.20",
     "pgvector>=0.4.2",

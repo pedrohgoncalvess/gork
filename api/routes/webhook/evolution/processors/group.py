@@ -6,14 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.routes.webhook.evolution.handles import transcribe_audio
 from api.routes.webhook.evolution.handles import is_message_too_old
 from api.routes.webhook.evolution.processors.common import process_commands
-from database.models.base import User, Group, WhiteList
-from database.models.content import Message
 from database.operations.base import UserRepository, GroupRepository, WhiteListRepository
 from database.operations.content import MessageRepository
 from external.evolution import send_message, get_group_info
-from services import verifiy_media, save_profile_pic
+from services import verifiy_media, save_profile_pic, save_image_if_new
 from utils import get_env_var
 
+
+INSTANCE_NUMBER = get_env_var("EVOLUTION_INSTANCE_NUMBER")
 
 async def process_group_message(
         body: dict,
@@ -27,16 +27,15 @@ async def process_group_message(
     phone_number = event_data["key"].get("participantAlt", "").replace("@s.whatsapp.net", "")
     contact_name = event_data["pushName"]
     message_id = event_data["key"]["id"]
-    instance_number = get_env_var("EVOLUTION_INSTANCE_NUMBER")
     context_message = verifiy_media(body)
 
     if await is_message_too_old(event_data["messageTimestamp"]):
         return
 
     user_repo = UserRepository(db)
-    group_repo = GroupRepository(Group, db)
+    group_repo = GroupRepository(db)
     message_repo = MessageRepository(db)
-    whitelist_repo = WhiteListRepository(WhiteList, db)
+    whitelist_repo = WhiteListRepository(db)
     user_gork = await user_repo.find_by_name("Gork")
 
     user = await user_repo.find_or_create(name=contact_name, lid=contact_id, phone_number=phone_number)
@@ -67,6 +66,15 @@ async def process_group_message(
         created_at=datetime.fromtimestamp(event_data["messageTimestamp"])
     )
 
+    if context_message.get("image_message"):
+        await save_image_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            image_message_id=context_message["image_message"],
+            group_id=group.id,
+        )
+
     if not is_whitelisted:
         return
 
@@ -80,7 +88,7 @@ async def process_group_message(
                           .replace("s.whatsapp.net", "")
                           .replace("@", "")
                           ).strip()
-            if tt_mention == instance_number or tt_mention == user_gork.src_id:
+            if tt_mention == INSTANCE_NUMBER or tt_mention == user_gork.src_id:
                 is_mention = True
 
     if not is_mention:
@@ -89,7 +97,7 @@ async def process_group_message(
     if "audio_message" in context_message.keys():
         conversation = await transcribe_audio(body, user.id, group.id)
 
-    if conversation in [f"@{instance_number}", f"@{user_gork.src_id}"]:
+    if conversation in [f"@{INSTANCE_NUMBER}", f"@{user_gork.src_id}"]:
         await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
         return
 

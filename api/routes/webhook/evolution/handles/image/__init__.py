@@ -2,14 +2,20 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from agents.execution.describe_image import describe_image_agent
 from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.generate import generate_image
 from api.routes.webhook.evolution.handles.image.gallery import list_images, search_images
 from api.routes.webhook.evolution.handles.image.picture import get_pictures
 from api.routes.webhook.evolution.handles.image.sticker_static import static_sticker
 from api.routes.webhook.evolution.handles.image.sticker_animated import animated_sticker
-from external.evolution import send_message, send_image, send_sticker, send_animated_sticker, download_media
-from services import describe_image, parse_params
+from database.operations.content import MessageRepository
+from external.evolution import send_message, send_image, send_sticker, send_animated_sticker
+from services import parse_params
+
+
+def _param_enabled(value) -> bool:
+    return str(value).lower() in ["true", "t", "1", "yes", "y"]
 
 
 async def handle_image_command(
@@ -49,11 +55,12 @@ async def handle_sticker_command(
         gif_url = await animated_sticker(message_id, treated_text, effect)
         await send_animated_sticker(remote_id, gif_url)
     else:
-        is_random = True if params.get("random", "f") == "t" else False
-        remove_background = True if params.get("no-background", "f") == "t" else False
+        is_random = _param_enabled(params.get("random", "false"))
+        remove_background = _param_enabled(params.get("no-background", "false"))
+        fill = _param_enabled(params.get("fill", "false"))
         webp_base64 = await static_sticker(
             body, treated_text, db,
-            message_context, is_random, remove_background
+            message_context, is_random, remove_background, fill
         )
         await send_sticker(remote_id, webp_base64)
 
@@ -63,14 +70,21 @@ async def handle_describe_image_command(
         user_id: int,
         treated_text: str,
         medias: dict[str, str],
+        db: AsyncSession,
         group_id: Optional[int] = None
 ):
-    if "image_message" in medias.keys():
-        image_base64, _ = await download_media(medias["image_message"])
-    else:
-        image_base64, _ = await download_media(medias["image_quote"])
+    target_message_id = medias.get("image_message") or medias.get("image_quote")
+    if not target_message_id:
+        await send_message(remote_id, "Nao encontrei uma imagem para descrever.")
+        return
 
-    resume = await describe_image(user_id, treated_text, image_base64, group_id)
+    if str(target_message_id).isdigit():
+        message_repo = MessageRepository(db)
+        target_message = await message_repo.find_by_id(int(target_message_id))
+        if target_message:
+            target_message_id = target_message.message_id
+
+    resume = await describe_image_agent(db, user_id, str(target_message_id), group_id)
     await send_message(remote_id, resume)
     return
 
