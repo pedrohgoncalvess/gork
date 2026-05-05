@@ -3,8 +3,8 @@
 
 # Personal
 .env.docker
-**/.onnx
-**/onnx.json
+*.onnx
+*.onnx.json
 
 ### JupyterNotebooks ###
 # gitignore template for Jupyter Notebooks
