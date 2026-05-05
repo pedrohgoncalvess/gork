@@ -1,6 +1,7 @@
 from typing import Optional, List
 from datetime import datetime, timedelta
 
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 from sqlalchemy import select, and_, desc
 
@@ -12,6 +13,35 @@ from database.operations import BaseRepository
 class MessageRepository(BaseRepository[Message]):
     def __init__(self, db):
         super().__init__(Message, db)
+
+    async def insert_or_ignore(
+            self,
+            message_id: str,
+            sender_id: int,
+            content: str,
+            created_at: datetime,
+            group_id: int = None,
+            quoted_message_id = None
+    ) -> None:
+
+        stmt = (
+            insert(Message)
+            .values(
+                message_id=message_id,
+                user_id=sender_id,
+                group_id=group_id,
+                content=content if content else None,
+                created_at=created_at,
+                quoted_message_id=quoted_message_id
+            )
+            .on_conflict_do_nothing(index_elements=["message_id"])
+            .returning(Message)
+        )
+
+        _ = await self.db.execute(stmt)
+        _ = await self.db.commit()
+
+        return None
 
     async def find_by_message_id(self, message_id: str) -> Optional[Message]:
         return await self.find_one_by(message_id=message_id)

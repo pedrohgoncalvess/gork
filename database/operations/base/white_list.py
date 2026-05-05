@@ -5,13 +5,16 @@ from database.operations import BaseRepository
 
 
 class WhiteListRepository(BaseRepository[WhiteList]):
+    def __init__(self, db):
+        super().__init__(WhiteList, db)
+
     async def is_whitelisted(self, sender_type: str, sender_id: int) -> bool:
         result = await self.db.execute(
             select(WhiteList).filter(
                 and_(
                     WhiteList.sender_type == sender_type,
                     WhiteList.sender_id == sender_id,
-                    WhiteList.deleted_at.is_(None)  # Não foi deletado
+                    WhiteList.deleted_at.is_(None)
                 )
             )
         )
