@@ -9,6 +9,32 @@ from database.operations import BaseRepository
 
 
 class MediaRepository(BaseRepository[Media]):
+    async def find_by_hash(self, image_hash: bytes) -> Optional[Media]:
+        result = await self.db.execute(
+            select(Media).filter(Media.hash == image_hash).limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def find_by_similar_phash(
+            self,
+            phash: int,
+            max_distance: int = 8
+    ) -> Optional[Media]:
+        query = text("""
+            SELECT id
+            FROM content.media
+            WHERE phash IS NOT NULL
+              AND bit_count((phash # CAST(:phash AS bigint))::bit(64)) <= :max_distance
+            ORDER BY bit_count((phash # CAST(:phash AS bigint))::bit(64))
+            LIMIT 1
+        """)
+        result = await self.db.execute(
+            query,
+            {"phash": phash, "max_distance": max_distance}
+        )
+        media_id = result.scalar_one_or_none()
+        return await self.find_by_id(media_id) if media_id else None
+
     async def find_by_user(
             self,
             user_id: int,
@@ -20,12 +46,11 @@ class MediaRepository(BaseRepository[Media]):
 
         result = await self.db.execute(
             select(Media, User.name.label('user_name'))
-            .join(Message, Media.message_id == Message.id)
+            .join(Message, Message.media_id == Media.id)
             .join(User, Message.user_id == User.id)
             .filter(
                 and_(
                     Message.user_id == user_id,
-                    Media.deleted_at.is_(None),
                     Media.inserted_at > inserted_at
                 )
             )
@@ -40,7 +65,7 @@ class MediaRepository(BaseRepository[Media]):
                 "name": row.Media.name,
                 "size": float(row.Media.size),
                 "inserted_at": row.Media.inserted_at,
-                "format": row.Media.format,
+                "type": row.Media.type,
                 "path": row.Media.path,
                 "user_name": row.user_name
             }
@@ -58,12 +83,11 @@ class MediaRepository(BaseRepository[Media]):
 
         result = await self.db.execute(
             select(Media, User.name.label('user_name'))
-            .join(Message, Media.message_id == Message.id)
+            .join(Message, Message.media_id == Media.id)
             .join(User, Message.user_id == User.id)
             .filter(
                 and_(
                     Message.group_id == group_id,
-                    Media.deleted_at.is_(None),
                     Media.inserted_at > inserted_at
                 )
             )
@@ -78,7 +102,7 @@ class MediaRepository(BaseRepository[Media]):
                 "name": row.Media.name,
                 "size": float(row.Media.size),
                 "inserted_at": row.Media.inserted_at,
-                "format": row.Media.format,
+                "type": row.Media.type,
                 "path": row.Media.path,
                 "user_name": row.user_name
             }
@@ -102,7 +126,7 @@ class MediaRepository(BaseRepository[Media]):
                 content.media.description,
                 content.media.size,
                 content.media.inserted_at,
-                content.media.format,
+                content.media.type as media_type,
                 content.media.path,
                 content.media.bucket,
                 base."user".name as user_name,
@@ -119,10 +143,9 @@ class MediaRepository(BaseRepository[Media]):
                     1 - (content.media.image_embedding <=> {embedding_str}::vector)
                 ) as best_similarity
             FROM content.media
-            JOIN content.message ON content.media.message_id = content.message.id
+            JOIN content.message ON content.message.media_id = content.media.id
             JOIN base."user" ON content.message.user_id = base."user".id
             WHERE content.message.user_id = :user_id
-              AND content.media.deleted_at IS NULL
             ORDER BY best_distance
             LIMIT :limit
         """)
@@ -141,7 +164,7 @@ class MediaRepository(BaseRepository[Media]):
                 "name": row.name,
                 "size": float(row.size),
                 "inserted_at": row.inserted_at,
-                "format": row.format,
+                "type": row.media_type,
                 "path": row.path,
                 "bucket": row.bucket,
                 "user_name": row.user_name,
@@ -168,12 +191,11 @@ class MediaRepository(BaseRepository[Media]):
                 User.name.label('user_name'),
                 Media.description_embedding.cosine_distance(query_embedding).label('distance')
             )
-            .join(Message, Media.message_id == Message.id)
+            .join(Message, Message.media_id == Media.id)
             .join(User, Message.user_id == User.id)
             .filter(
                 and_(
                     Message.group_id == group_id,
-                    Media.deleted_at.is_(None),
                     Media.description_embedding.is_not(None)
                 )
             )
@@ -188,7 +210,7 @@ class MediaRepository(BaseRepository[Media]):
                 "name": row.Media.name,
                 "size": float(row.Media.size),
                 "inserted_at": row.Media.inserted_at,
-                "format": row.Media.format,
+                "type": row.Media.type,
                 "path": row.Media.path,
                 "bucket": row.Media.bucket,
                 "user_name": row.user_name,
@@ -211,11 +233,10 @@ class MediaRepository(BaseRepository[Media]):
             Media,
             User.name.label('user_name'),
             Media.image_embedding.cosine_distance(image_embedding).label('distance')
-        ).join(Message, Media.message_id == Message.id).join(
+        ).join(Message, Message.media_id == Media.id).join(
             User, Message.user_id == User.id
         ).filter(
             and_(
-                Media.deleted_at.is_(None),
                 Media.image_embedding.is_not(None)
             )
         )
@@ -235,7 +256,7 @@ class MediaRepository(BaseRepository[Media]):
                 "name": row.Media.name,
                 "size": float(row.Media.size),
                 "inserted_at": row.Media.inserted_at,
-                "format": row.Media.format,
+                "type": row.Media.type,
                 "path": row.Media.path,
                 "bucket": row.Media.bucket,
                 "user_name": row.user_name,

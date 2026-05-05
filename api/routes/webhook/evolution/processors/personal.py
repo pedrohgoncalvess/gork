@@ -6,12 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.routes.webhook.evolution.handles import transcribe_audio
 from api.routes.webhook.evolution.handles import is_message_too_old
 from api.routes.webhook.evolution.processors.common import process_commands
-from database.models.base import User, WhiteList
-from database.models.content import Message
 from database.operations.base import UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
 from external.evolution import send_message
-from services import verifiy_media, save_profile_pic
+from services import verifiy_media, save_profile_pic, save_image_if_new
 
 
 async def process_private_message(
@@ -31,7 +29,7 @@ async def process_private_message(
 
     user_repo = UserRepository(db)
     message_repo = MessageRepository(db)
-    whitelist_repo = WhiteListRepository(WhiteList, db)
+    whitelist_repo = WhiteListRepository(db)
 
     user = await user_repo.find_or_create(name=contact_name, lid=remote_id, phone_number=number)
     _ = await save_profile_pic(user.id)
@@ -50,6 +48,15 @@ async def process_private_message(
         content=conversation,
         created_at=datetime.fromtimestamp(event_data["messageTimestamp"])
     )
+
+    if context.get("image_message"):
+        await save_image_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            image_message_id=context["image_message"],
+            group_id=None,
+        )
 
     if not is_whitelisted:
         return

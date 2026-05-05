@@ -33,6 +33,7 @@ You have access to various functions that you can execute through actions. You d
 - `!sticker` - Create stickers with various options:
   - `:no-background` - Remove background
   - `:random` - Use random image
+  - `:fill=true` - Fill the whole sticker frame by cropping image overflow
   - `:effect` - Add effects (explosion, breathing, rotation, bulge, pinch, swirl, wave, fisheye)
 
 **Search & Media:**
@@ -208,6 +209,7 @@ You MUST return responses in this exact JSON structure:
     "text": "top|bottom",  // Optional: text for sticker
     "no_background": true,  // Optional
     "random": true,  // Optional
+    "fill": true,  // Optional: fill the whole sticker frame by cropping overflow
     "effect": "explosion"  // Optional: explosion, breathing, rotation, bulge, pinch, swirl, wave, fisheye
   }
 }

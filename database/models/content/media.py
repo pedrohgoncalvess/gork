@@ -1,6 +1,6 @@
 from sqlalchemy import (
-    Column, Integer, String, DECIMAL, ForeignKey,
-    TIMESTAMP, func, text, UUID, Text
+    BigInteger, Column, Integer, String, DECIMAL,
+    TIMESTAMP, func, text, UUID, Text, LargeBinary
 )
 from pgvector.sqlalchemy import Vector
 
@@ -15,16 +15,19 @@ class Media(Base):
     ext_id = Column(UUID, unique=True, nullable=False, server_default=text("uuid_generate_v4()"))
 
     name = Column(String(150), nullable=False)
-    description = Column(Text, nullable=False)
-    message_id = Column(Integer, ForeignKey("content.message.id"), nullable=True)
-    description_embedding = Column(Vector(2560), nullable=False)
-
     bucket = Column(String(30), nullable=False)
     path = Column(String(200), nullable=False)
+    type = Column(String(20))
 
-    format = Column(String(20))
     size = Column(DECIMAL)
+    description = Column(Text)
+    description_embedding = Column(Vector(1024), nullable=False)
+    image_embedding = Column(Vector(1024), nullable=False)
+    hash = Column(LargeBinary, nullable=False, unique=True)
+    phash = Column(BigInteger)
 
-    inserted_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
-    updated_at = Column(TIMESTAMP, onupdate=func.now())
-    deleted_at = Column(TIMESTAMP)
+    inserted_at = Column(
+        TIMESTAMP(timezone=True),
+        server_default=func.timezone("America/Sao_Paulo", func.now()),
+        nullable=False,
+    )

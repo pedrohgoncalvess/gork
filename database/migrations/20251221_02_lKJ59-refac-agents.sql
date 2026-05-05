@@ -25,3 +25,23 @@ ALTER TABLE "content"."message" ADD COLUMN media_id INTEGER;
 ALTER TABLE "content"."message" ADD CONSTRAINT message_media_fk FOREIGN KEY (media_fk) REFERENCES "content"."media"(id);
 
 ALTER TABLE "base"."group" ADD COLUMN auto_message BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE "content"."media" RENAME TO "dep_media";
+
+CREATE TABLE "content"."media" (
+    id SERIAL,
+    ext_id UUID UNIQUE NOT NULL DEFAULT uuid_generate_v4(),
+    name VARCHAR(150) NOT NULL,
+    bucket VARCHAR(30) NOT NULL,
+    "path" VARCHAR(200) NOT NULL,
+    "type" VARCHAR(20), --audio, image, sticker, profile pic, video
+    "size" DECIMAL,
+    description TEXT,
+    description_embedding VECTOR(1024) NOT NULL,
+    image_embedding VECTOR(1024) NOT NULL,
+    hash BYTEA NOT NULL UNIQUE,
+    phash BIGINT,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
+
+    CONSTRAINT media_pk PRIMARY KEY (id)
+);

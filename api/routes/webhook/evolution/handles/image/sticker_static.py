@@ -31,10 +31,24 @@ def _resize_contain_transparent(img: Image.Image, size: tuple) -> Image.Image:
     return canvas
 
 
+def _resize_cover(img: Image.Image, size: tuple) -> Image.Image:
+    target_w, target_h = size
+    scale = max(target_w / img.width, target_h / img.height)
+    resized_w = round(img.width * scale)
+    resized_h = round(img.height * scale)
+
+    resized = img.resize((resized_w, resized_h), Image.Resampling.LANCZOS)
+    left = (resized_w - target_w) // 2
+    top = (resized_h - target_h) // 2
+
+    return resized.crop((left, top, left + target_w, top + target_h))
+
+
 async def static_sticker(
         webhook_event: dict, caption_text: str,
         db: AsyncSession, medias: dict,
-        random_image: bool = False, remove_background: bool = False
+        random_image: bool = False, remove_background: bool = False,
+        fill: bool = False
 ) -> str:
     event_data = webhook_event["data"]
     message_id = event_data["key"]["id"]
@@ -83,7 +97,10 @@ async def static_sticker(
     if img.mode != 'RGBA':
         img = img.convert('RGBA')
 
-    img = _resize_contain_transparent(img, (512, 512))
+    if fill:
+        img = _resize_cover(img, (512, 512))
+    else:
+        img = _resize_contain_transparent(img, (512, 512))
 
     if caption_text:
         img = add_caption_to_image(img, caption_text)

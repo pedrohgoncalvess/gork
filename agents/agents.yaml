@@ -23,3 +23,8 @@ agents:
     description: Agent specialized in transcribing audio files.
     model: google/gemini-2.0-flash-lite-001
     prompt_path: agents/prompts/transcriber.md
+
+  - name: describe-image
+    description: Agent responsible for describing images with WhatsApp conversation context.
+    model: google/gemini-2.0-flash-lite-001
+    prompt_path: agents/prompts/describe-image.md

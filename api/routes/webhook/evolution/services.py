@@ -1,6 +1,10 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
-from api.routes.webhook.evolution.processors import process_group_message, process_private_message
+from api.routes.webhook.evolution.processors import (
+    process_group_message,
+    process_private_message,
+    process_sent_message,
+)
 from database import PgConnection
 from external.evolution import send_message
 from log import logger
@@ -15,7 +19,8 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
         event_type = body.get("event")
         event_data = body.get("data")
 
-        if event_type != "messages.upsert":
+        valid_events = ["messages.upsert", "send.messages"]
+        if event_type not in valid_events:
             return
 
         await logger.info("Request", body.get("instance"), body)
@@ -33,6 +38,7 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
             remote_id = remote_id.replace("@lid", "")
         elif remote_id.endswith("@g.us"):
             is_private = False
+            remote_id = remote_id.replace("@g.us", "")
 
         if maintenance:
             if phone_number != maintenance_number:
@@ -40,6 +46,10 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
                 return
             else:
                 return
+
+        if event_type == "send.messages":
+            await process_sent_message(body, remote_id, db, not is_private)
+            return
 
         if not is_private:
             await process_group_message(
