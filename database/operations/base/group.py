@@ -5,6 +5,9 @@ from database.operations import BaseRepository
 
 
 class GroupRepository(BaseRepository[Group]):
+    def __init__(self, db):
+        super().__init__(Group, db)
+
     async def find_by_src_id(self, group_jid: str) -> Optional[Group]:
         return await self.find_one_by(src_id=group_jid)
 

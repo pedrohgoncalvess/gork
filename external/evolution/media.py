@@ -5,7 +5,7 @@ import httpx
 from external.evolution.base import evolution_instance_name, evolution_api_key, evolution_api
 
 
-async def download_media(message_id: str, convert_to_mp4: bool = False) -> tuple[bytes, str]:
+async def download_media(message_id: str, convert_to_mp4: bool = False) -> tuple[str, str]:
     media_url = f"{evolution_api}/chat/getBase64FromMediaMessage/{evolution_instance_name}"
 
     payload = {
