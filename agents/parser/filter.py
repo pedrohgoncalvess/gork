@@ -1,107 +1,66 @@
 import json
 import re
-from typing import Any, Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional
 
 from log import logger
 
 
-class GorkFilterParserError(Exception):
-    """Raised when filter response parsing fails"""
-    pass
-
-
-class GorkFilterValidationError(Exception):
-    """Raised when filter response structure is invalid"""
-    pass
-
-
-TriggerType = Literal[
-    "direct_mention",
-    "command",
-    "fact_check",
-    "question",
-    "information_gap",
-    "research",
-    "technical",
-    "conversation_gap"
-]
-
-ConfidenceLevel = Literal["high", "medium", "low"]
-
-
-class GorkFilterResponse:
-    """Structured response from Gork filter agent"""
-
-    def __init__(
-            self,
-            reasoning: str,
-            should_respond: bool,
-            confidence: ConfidenceLevel,
-            trigger_type: Optional[TriggerType] = None
-    ):
-        self.reasoning = reasoning
-        self.should_respond = should_respond
-        self.confidence = confidence
-        self.trigger_type = trigger_type
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "reasoning": self.reasoning,
-            "should_respond": self.should_respond,
-            "confidence": self.confidence,
-            "trigger_type": self.trigger_type
-        }
-
-    def __repr__(self) -> str:
-        return (
-            f"GorkFilterResponse("
-            f"should_respond={self.should_respond}, "
-            f"confidence={self.confidence}, "
-            f"trigger_type={self.trigger_type})"
-        )
-
-
-async def parse_filter_response(llm_output: str) -> GorkFilterResponse:
+async def parse_filter_response(llm_output: str) -> Dict[str, Any]:
     """
     Parse and validate Gork filter's JSON response.
 
-    Expected structure:
+    Expected Schema:
     {
-        "reasoning": "...",
-        "should_respond": true/false,
-        "confidence": "high|medium|low",
-        "trigger_type": "direct_mention|command|..." or null
+        "reasoning": str,              # Required - Filter's thought process
+        "should_respond": bool,        # Required - Whether Gork should respond
+        "confidence": str,             # Required - "high"|"medium"|"low"
+        "trigger_type": str | None     # Required - Trigger type or null
     }
+
+    Trigger Types (required when should_respond=true, null when false):
+    - "direct_mention": Gork was explicitly mentioned
+    - "command": Message contains a command (!sticker, !audio, etc.)
+    - "fact_check": Opportunity to verify factual claims or data
+    - "question": Direct question that Gork should answer
+    - "information_gap": Clear need for information that Gork can provide
+    - "research": Request for research or data lookup
+    - "technical": Technical/educational question
+    - "conversation_gap": Dead-end where Gork could help
+
+    Validation Rules:
+    - If should_respond=true, trigger_type MUST be specified (cannot be null)
+    - If should_respond=false, trigger_type MUST be null
 
     Args:
         llm_output: Raw string output from LLM
 
     Returns:
-        GorkFilterResponse object
+        Dict with validated filter response
 
     Raises:
-        GorkFilterParserError: When JSON parsing fails
-        GorkFilterValidationError: When structure is invalid
+        ValueError: When parsing fails or structure is invalid
     """
     if not isinstance(llm_output, str) or not llm_output.strip():
-        raise GorkFilterParserError("Input must be a non-empty string")
+        raise ValueError("Input must be a non-empty string")
 
     text = llm_output.strip()
 
     for candidate in _candidate_json_strings(text):
         try:
             parsed = json.loads(candidate)
-            return _validate_and_build_response(parsed)
+            _validate_filter_structure(parsed)
+            return parsed
         except json.JSONDecodeError:
             continue
-        except GorkFilterValidationError:
+        except ValueError:
             continue
 
     await logger.error("GorkFilter", "ParseFailed", llm_output)
-    raise GorkFilterParserError("Failed to parse valid filter JSON response")
+    raise ValueError("Failed to parse valid filter JSON response")
 
 
 def _candidate_json_strings(text: str) -> List[str]:
+    """Generate candidate JSON strings from LLM output"""
     seen = set()
     candidates: List[str] = []
 
@@ -190,26 +149,26 @@ def _light_cleanup(text: str) -> str:
     return text.strip()
 
 
-def _validate_and_build_response(data: Any) -> GorkFilterResponse:
+def _validate_filter_structure(data: Any) -> None:
     """
-    Validate parsed JSON and build GorkFilterResponse object.
+    Validate parsed JSON structure.
 
     Raises:
-        GorkFilterValidationError: If structure is invalid
+        ValueError: If structure is invalid
     """
     if not isinstance(data, dict):
-        raise GorkFilterValidationError(
+        raise ValueError(
             f"Response must be a dict, got {type(data).__name__}"
         )
 
     if "reasoning" not in data:
-        raise GorkFilterValidationError("Missing required field 'reasoning'")
+        raise ValueError("Missing required field 'reasoning'")
 
     if "should_respond" not in data:
-        raise GorkFilterValidationError("Missing required field 'should_respond'")
+        raise ValueError("Missing required field 'should_respond'")
 
     if "confidence" not in data:
-        raise GorkFilterValidationError("Missing required field 'confidence'")
+        raise ValueError("Missing required field 'confidence'")
 
     reasoning = data["reasoning"]
     should_respond = data["should_respond"]
@@ -217,18 +176,18 @@ def _validate_and_build_response(data: Any) -> GorkFilterResponse:
     trigger_type = data.get("trigger_type")
 
     if not isinstance(reasoning, str):
-        raise GorkFilterValidationError(
+        raise ValueError(
             f"'reasoning' must be a string, got {type(reasoning).__name__}"
         )
 
     if not isinstance(should_respond, bool):
-        raise GorkFilterValidationError(
+        raise ValueError(
             f"'should_respond' must be a boolean, got {type(should_respond).__name__}"
         )
 
     valid_confidence = ["high", "medium", "low"]
     if confidence not in valid_confidence:
-        raise GorkFilterValidationError(
+        raise ValueError(
             f"'confidence' must be one of {valid_confidence}, got '{confidence}'"
         )
 
@@ -245,23 +204,16 @@ def _validate_and_build_response(data: Any) -> GorkFilterResponse:
     ]
 
     if trigger_type not in valid_triggers:
-        raise GorkFilterValidationError(
+        raise ValueError(
             f"'trigger_type' must be one of {valid_triggers}, got '{trigger_type}'"
         )
 
     if should_respond and trigger_type is None:
-        raise GorkFilterValidationError(
+        raise ValueError(
             "When 'should_respond' is true, 'trigger_type' must be specified"
         )
 
     if not should_respond and trigger_type is not None:
-        raise GorkFilterValidationError(
+        raise ValueError(
             "When 'should_respond' is false, 'trigger_type' must be null"
         )
-
-    return GorkFilterResponse(
-        reasoning=reasoning,
-        should_respond=should_respond,
-        confidence=confidence,
-        trigger_type=trigger_type
-    )
