@@ -1,18 +1,18 @@
+import base64
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
-import base64
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.execution.describe_image import describe_image_agent
+from database import PgConnection
 from database.models.content import Media
 from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MediaRepository, MessageRepository
 from embeddings import generate_text_embeddings
 from external.evolution import download_media
 from s3 import S3Client
-from database import PgConnection
 from services.message_context import verifiy_media
 from utils import get_image_hash, get_phash
 
@@ -26,27 +26,6 @@ def _fit_media_embedding(embedding: list[float]) -> list[float]:
     if len(embedding) > MEDIA_EMBEDDING_DIMENSION:
         return embedding[:MEDIA_EMBEDDING_DIMENSION]
     return embedding + [0.0] * (MEDIA_EMBEDDING_DIMENSION - len(embedding))
-
-
-async def save_image(
-        user_id: int,
-        message_id: str,
-        body: dict,
-        image_base64: Optional[str] = None,
-        group_id: Optional[int] = None,
-) -> Media | None:
-    medias = verifiy_media(body)
-    if not medias.get("image_message") and not image_base64:
-        return
-
-    async with PgConnection() as db:
-        return await save_image_if_new(
-            db=db,
-            user_id=user_id,
-            message_id=message_id,
-            image_message_id=medias.get("image_message"),
-            group_id=group_id,
-        )
 
 
 async def save_image_if_new(

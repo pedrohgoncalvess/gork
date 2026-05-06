@@ -25,7 +25,7 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
 
     Action Types:
     - "message": Requires "content" and "language" fields
-    - "audio", "sticker", "picture", "image", "describe", "search",
+    - "audio", "sticker", "picture", "image", "describe", "web_search",
       "transcribe", "remember", "twitter", "instagram", "gallery", "favorite":
       May have optional "parameters" dict
     - "resume", "help", "model", "consumption": No parameters needed
@@ -262,7 +262,7 @@ def _validate_action_type(action_type: str, action: Dict, idx: int) -> None:
 
     elif action_type in [
         "sticker", "audio", "picture", "image", "describe",
-        "search", "transcribe", "remember", "twitter", "instagram",
+        "search", "web_search", "transcribe", "remember", "twitter", "instagram",
         "gallery", "favorite"
     ]:
         if "parameters" in action and not isinstance(action["parameters"], dict):

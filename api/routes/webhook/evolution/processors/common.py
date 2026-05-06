@@ -1,15 +1,28 @@
 from typing import Optional
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles import (
-    clean_text, has_explicit_command, handle_help_command,
-    handle_conversation_agent, handle_remember_command, handle_sticker_command,
-    handle_image_command, handle_transcribe_command, handle_resume_command,
-    handle_model_command, handle_consumption_command, handle_describe_image_command,
-    handle_list_images_command, handle_favorite_message, handle_list_favorites_message,
-    handle_remove_favorite, handle_picture_command, handle_twitter_command,
-    handle_instagram_command
+    clean_text,
+    handle_consumption_command,
+    handle_conversation_agent,
+    handle_describe_image_command,
+    handle_favorite_message,
+    handle_help_command,
+    handle_image_command,
+    handle_instagram_command,
+    handle_list_favorites_message,
+    handle_list_images_command,
+    handle_model_command,
+    handle_picture_command,
+    handle_remember_command,
+    handle_remove_favorite,
+    handle_resume_command,
+    handle_sticker_command,
+    handle_transcribe_command,
+    handle_twitter_command,
+    has_explicit_command,
 )
 from database.models.base import User
 from database.models.content import Message
@@ -74,15 +87,15 @@ async def process_explicit_commands(
         return
 
     if "!image" in lw_conversation:
-        await handle_image_command(remote_id, user.id, conversation, body, group_id)
+        await handle_image_command(remote_id, user.id, db_message, context, group_id)
         return
 
     if "!describe" in lw_conversation:
-        await handle_describe_image_command(remote_id, user.id, treated_text, context, db, group_id)
+        await handle_describe_image_command(remote_id, user.id, context, db, group_id)
         return
 
     if "!sticker" in lw_conversation:
-        await handle_sticker_command(remote_id, body, treated_text, conversation, db, context)
+        await handle_sticker_command(remote_id, db_message, db, context)
         return
 
     if "!remember" in lw_conversation:
@@ -129,7 +142,6 @@ async def process_explicit_commands(
         await handle_instagram_command(remote_id, conversation, message_id)
         return
 
-    # Fallback: no known explicit command matched — use conversation agent
     await handle_conversation_agent(
         remote_id=remote_id,
         message_id=message_id,

@@ -4,7 +4,7 @@ from io import BytesIO
 
 import httpx
 from PIL import Image
-from rembg import remove, new_session
+from rembg import new_session, remove
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
@@ -45,13 +45,12 @@ def _resize_cover(img: Image.Image, size: tuple) -> Image.Image:
 
 
 async def static_sticker(
-        webhook_event: dict, caption_text: str,
+        db_message: Message, caption_text: str,
         db: AsyncSession, medias: dict,
         random_image: bool = False, remove_background: bool = False,
         fill: bool = False
 ) -> str:
-    event_data = webhook_event["data"]
-    message_id = event_data["key"]["id"]
+
     image_base64 = None
     available_medias = list(medias.keys())
     if "text_quote" in available_medias:
@@ -62,7 +61,7 @@ async def static_sticker(
     else:
         message = None
     if "image_message" in available_medias and image_base64 is None:
-        image_base64, _ = await download_media(message_id)
+        image_base64, _ = await download_media(db_message.message_id)
     if "image_quote" in available_medias and image_base64 is None:
         image_base64, _ = await download_media(medias["image_quote"])
     if image_base64 is None and message:
