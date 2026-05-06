@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
-from database.operations.manager import ModelRepository, AgentRepository, InteractionRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelRepository
 from external import completions
 from log import logger
 from utils import get_env_var
@@ -18,6 +18,7 @@ async def conversation_agent(
         user_id: int,
         last_message_id: int,
         group_id: Optional[int] = None,
+        additional_context: str = "",
 ) -> str:
     model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
@@ -78,9 +79,8 @@ async def conversation_agent(
 
     conversation_history = "\n".join(formatted_messages)
     system_prompt = agent.prompt.replace("$$CONVERSATION_HISTORY$$", conversation_history)
-    system_prompt = system_prompt.replace("{CURRENT_DATETIME}", now.strftime("%Y-%m-%d %H:%M:%S (%A)"))
-    system_prompt = system_prompt.replace("{CURRENT_DATE}", now.strftime("%B %d, %Y"))
-    system_prompt = system_prompt.replace("{CURRENT_YEAR}", str(now.year))
+    system_prompt = system_prompt.replace("$$ADDITIONAL_CONTEXT$$", additional_context)
+    system_prompt = system_prompt.replace("$$CURRENT_DATE$$", now.strftime("%B %d, %Y"))
 
     payload_term_formatter = {
         "model": default_model.openrouter_id,
