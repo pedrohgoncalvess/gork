@@ -21,11 +21,11 @@ await logger.info("ModuleName", "OperationType", "Detailed message")
 await logger.error("ModuleName", "ErrorType", "Exception details")
 """
 import functools
-import re
 import os
+import re
 from datetime import datetime
-from string import Template
 from functools import reduce
+from string import Template
 from typing import Optional
 
 import aiofiles

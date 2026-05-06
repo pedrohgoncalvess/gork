@@ -3,13 +3,9 @@ from __future__ import annotations
 from typing import Optional
 
 import httpx
-from log import logger
 
-from external.evolution.base import (
-    evolution_instance_name,
-    evolution_api_key,
-    evolution_api,
-)
+from external.evolution.base import evolution_api, evolution_api_key, evolution_instance_name
+from log import logger
 
 
 DEFAULT_TIMEOUT = 60.0

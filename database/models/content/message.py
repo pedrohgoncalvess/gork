@@ -1,8 +1,4 @@
-from sqlalchemy import (
-    Column, Integer, String, Text,
-    TIMESTAMP, func, ForeignKey,
-    UUID, text, BOOLEAN
-)
+from sqlalchemy import BOOLEAN, Column, ForeignKey, func, Integer, String, text, Text, TIMESTAMP, UUID
 from sqlalchemy.orm import relationship
 
 from database.models import Base

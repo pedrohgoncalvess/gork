@@ -1,12 +1,12 @@
-from typing import List, Optional
 from datetime import datetime, timedelta
-from sqlalchemy import select, and_, desc, func as sql_func
+from typing import List, Optional
+
+from sqlalchemy import and_, desc, func as sql_func, select
 from sqlalchemy.orm import joinedload
 
-from database.models.manager import Interaction
-from database.operations import BaseRepository
 from database.models.base import User
-from database.models.manager import Model
+from database.models.manager import Interaction, Model
+from database.operations import BaseRepository
 
 
 class InteractionRepository(BaseRepository[Interaction]):

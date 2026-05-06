@@ -1,8 +1,5 @@
-from sqlalchemy import (
-    BigInteger, Column, Integer, String, DECIMAL,
-    TIMESTAMP, func, text, UUID, Text, LargeBinary
-)
 from pgvector.sqlalchemy import Vector
+from sqlalchemy import BigInteger, Column, DECIMAL, func, Integer, LargeBinary, String, text, Text, TIMESTAMP, UUID
 
 from database.models import Base
 

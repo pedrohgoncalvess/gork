@@ -1,12 +1,12 @@
-from typing import Optional
 from datetime import datetime, timedelta
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.core import COMMANDS
 from database import PgConnection
 from database.models.content import Message
-from database.models.manager import Model, Command
+from database.models.manager import Command, Model
 from database.models.manager.interaction import Interaction
 from database.operations.content.message import MessageRepository
 from database.operations.manager import ModelRepository

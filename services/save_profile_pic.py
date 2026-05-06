@@ -1,8 +1,8 @@
 import httpx
 
 from database import PgConnection
-from database.operations.base import UserRepository
 from database.models.base import User
+from database.operations.base import UserRepository
 from external.evolution import get_profile_info
 from s3 import S3Client
 

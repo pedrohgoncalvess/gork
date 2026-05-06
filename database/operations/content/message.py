@@ -1,9 +1,9 @@
-from typing import Optional, List
 from datetime import datetime, timedelta
+from typing import List, Optional
 
+from sqlalchemy import and_, desc, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
-from sqlalchemy import select, and_, desc
 
 from database.models.base import User
 from database.models.content import Message

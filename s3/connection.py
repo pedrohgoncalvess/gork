@@ -1,9 +1,9 @@
 import asyncio
 import base64
 import uuid
-from io import BytesIO
-from typing import Optional, List
 from datetime import timedelta
+from io import BytesIO
+from typing import List, Optional
 
 from minio import Minio
 from minio.error import S3Error

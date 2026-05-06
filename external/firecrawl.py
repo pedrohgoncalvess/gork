@@ -1,6 +1,6 @@
+import trafilatura
 from firecrawl import Firecrawl
 from firecrawl.v2.utils.error_handler import WebsiteNotSupportedError
-import trafilatura
 
 from utils import get_env_var
 

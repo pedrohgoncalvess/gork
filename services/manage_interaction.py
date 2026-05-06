@@ -2,8 +2,8 @@ from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from database.models.manager import Model, Agent, Interaction, Command
-from database.operations.manager import ModelRepository, AgentRepository, InteractionRepository
+from database.models.manager import Agent, Command, Interaction, Model
+from database.operations.manager import AgentRepository, InteractionRepository, ModelRepository
 from external import completions
 
 
