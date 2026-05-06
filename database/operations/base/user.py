@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import select, or_
+from sqlalchemy import or_, select
 
 from database.models.base import User
 from database.operations import BaseRepository

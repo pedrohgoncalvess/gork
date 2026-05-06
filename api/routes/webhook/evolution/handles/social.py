@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 import instaloader
 import requests
 
-from external.evolution import send_message, send_video, send_image
+from external.evolution import send_image, send_message, send_video
 
 
 # ── Twitter ──────────────────────────────────────────────────────────────────

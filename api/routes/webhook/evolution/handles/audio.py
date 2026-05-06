@@ -5,11 +5,8 @@ from typing import Optional
 import soundfile as sf
 
 from database import PgConnection
-from database.models.manager import Interaction, Model, Agent, Command
-from database.operations.manager import (
-    InteractionRepository, ModelRepository,
-    AgentRepository, CommandRepository
-)
+from database.models.manager import Agent, Command, Interaction, Model
+from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelRepository
 from external import completions
 from external.evolution import download_media, send_message
 

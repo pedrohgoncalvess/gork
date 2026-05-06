@@ -3,13 +3,12 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.handles import transcribe_audio
-from api.routes.webhook.evolution.handles import is_message_too_old
+from api.routes.webhook.evolution.handles import is_message_too_old, transcribe_audio
 from api.routes.webhook.evolution.processors.common import process_commands
-from database.operations.base import UserRepository, GroupRepository, WhiteListRepository
+from database.operations.base import GroupRepository, UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
-from external.evolution import send_message, get_group_info
-from services import verifiy_media, save_profile_pic, save_image_if_new
+from external.evolution import get_group_info, send_message
+from services import save_image_if_new, save_profile_pic, verifiy_media
 from utils import get_env_var
 
 

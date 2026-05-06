@@ -1,8 +1,8 @@
 import base64
+import math
+import os
 import subprocess
 import tempfile
-import os
-import math
 from io import BytesIO
 
 import httpx

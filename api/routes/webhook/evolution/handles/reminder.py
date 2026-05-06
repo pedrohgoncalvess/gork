@@ -10,7 +10,7 @@ from database.models.manager import Command, Remember
 from database.operations.manager import CommandRepository
 from database.operations.manager.remember import RememberRepository
 from external.evolution import send_message
-from services import manage_interaction, action_remember
+from services import action_remember, manage_interaction
 
 
 async def remember_generator(user_id: int, message: str, group_id: int = None) -> tuple[Remember, str]:

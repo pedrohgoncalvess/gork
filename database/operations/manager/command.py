@@ -1,6 +1,6 @@
 from typing import List
 
-from sqlalchemy import select, and_, desc
+from sqlalchemy import and_, desc, select
 
 from database.models.manager import Command
 from database.operations import BaseRepository

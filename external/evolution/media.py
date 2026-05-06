@@ -2,7 +2,7 @@ import base64
 
 import httpx
 
-from external.evolution.base import evolution_instance_name, evolution_api_key, evolution_api
+from external.evolution.base import evolution_api, evolution_api_key, evolution_instance_name
 
 
 async def download_media(message_id: str, convert_to_mp4: bool = False) -> tuple[str, str]:

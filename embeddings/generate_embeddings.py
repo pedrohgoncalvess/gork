@@ -1,9 +1,9 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models.content import Message
-from database.models.manager import Model, Interaction
+from database.models.manager import Interaction, Model
 from database.operations.content import MessageRepository
-from database.operations.manager import ModelRepository, InteractionRepository
+from database.operations.manager import InteractionRepository, ModelRepository
 from external import embeddings
 
 

@@ -1,7 +1,7 @@
 import asyncio
+from pathlib import Path
 
 import yaml
-from pathlib import Path
 
 from database import PgConnection
 from database.models.manager import Agent
