@@ -372,9 +372,6 @@ Options:
 }
 ```
 
-## Conversation History
-$$CONVERSATION_HISTORY$$
-
 ## Final Reminders
 
 - **Always return valid JSON** in the specified format
