@@ -18,7 +18,7 @@ from utils import get_image_hash, get_phash
 
 
 PHASH_MAX_DISTANCE = 8
-MEDIA_EMBEDDING_DIMENSION = 1024
+MEDIA_EMBEDDING_DIMENSION = 2560
 
 def _fit_media_embedding(embedding: list[float]) -> list[float]:
     if len(embedding) == MEDIA_EMBEDDING_DIMENSION:
@@ -90,7 +90,6 @@ async def save_image_if_new(
             path=path,
             type=media_type,
             description_embedding=text_emb,
-            image_embedding=text_emb,
             description=description,
             hash=image_hash,
             phash=phash,

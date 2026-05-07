@@ -118,17 +118,25 @@ async def handle_describe_image_command(
 
 
 async def handle_list_images_command(
-        remote_id: str, treated_text: Optional[str],
+        remote_id: str, db_message: Message,
         db: AsyncSession, user_id: Optional[int] = None,
         group_id: Optional[int] = None
 ):
+    treated_text = clean_text(db_message.content)
     if treated_text:
-        message = await search_images(treated_text, user_id=user_id, group_id=group_id, db=db)
+        message = await search_images(
+            treated_text, message_id=db_message.message_id,
+            user_id=user_id, group_id=group_id, db=db
+        )
     else:
+        params = parse_params(db_message.content)
+
+        total_param = _param_enabled(params.get("total", "false"))
+
         message = await list_images(
             user_id=user_id if not group_id else None,
             group_id=group_id,
-            db=db
+            db=db, total=total_param
         )
     await send_message(remote_id, message)
     return

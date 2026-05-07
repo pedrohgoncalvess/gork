@@ -42,10 +42,14 @@ class MediaRepository(BaseRepository[Media]):
             self,
             user_id: int,
             limit: int = 50,
+            total: bool = False,
             inserted_at: Optional[datetime] = None
     ) -> List[dict]:
-        if not inserted_at:
+        if not inserted_at and not total:
             inserted_at = datetime.now() - timedelta(days=1)
+
+        if total:
+            inserted_at = None
 
         result = await self.db.execute(
             select(Media, User.name.label('user_name'))
@@ -54,7 +58,7 @@ class MediaRepository(BaseRepository[Media]):
             .filter(
                 and_(
                     Message.user_id == user_id,
-                    Media.inserted_at > inserted_at
+                    Media.inserted_at > inserted_at if inserted_at else 1==1
                 )
             )
             .order_by(desc(Media.inserted_at))
@@ -79,10 +83,14 @@ class MediaRepository(BaseRepository[Media]):
             self,
             group_id: int,
             limit: int = 50,
+            total: bool = False,
             inserted_at: Optional[datetime] = None
     ) -> List[dict]:
-        if not inserted_at:
+        if not inserted_at and not total:
             inserted_at = datetime.now() - timedelta(days=1)
+
+        if total:
+            inserted_at = None
 
         result = await self.db.execute(
             select(Media, User.name.label('user_name'))
@@ -91,7 +99,7 @@ class MediaRepository(BaseRepository[Media]):
             .filter(
                 and_(
                     Message.group_id == group_id,
-                    Media.inserted_at > inserted_at
+                    Media.inserted_at > inserted_at if inserted_at else 1==1
                 )
             )
             .order_by(desc(Media.inserted_at))
@@ -133,23 +141,14 @@ class MediaRepository(BaseRepository[Media]):
                 content.media.path,
                 content.media.bucket,
                 base."user".name as user_name,
-                content.media.description_embedding <=> {embedding_str}::vector as desc_distance,
-                content.media.image_embedding <=> {embedding_str}::vector as image_distance,
-                1 - (content.media.description_embedding <=> {embedding_str}::vector) as desc_similarity,
-                1 - (content.media.image_embedding <=> {embedding_str}::vector) as image_similarity,
-                LEAST(
-                    content.media.description_embedding <=> {embedding_str}::vector,
-                    content.media.image_embedding <=> {embedding_str}::vector
-                ) as best_distance,
-                GREATEST(
-                    1 - (content.media.description_embedding <=> {embedding_str}::vector),
-                    1 - (content.media.image_embedding <=> {embedding_str}::vector)
-                ) as best_similarity
+                content.media.description_embedding <=> {embedding_str}::vector as distance,
+                1 - (content.media.description_embedding <=> {embedding_str}::vector) as similarity
             FROM content.media
             JOIN content.message ON content.message.media_id = content.media.id
             JOIN base."user" ON content.message.user_id = base."user".id
             WHERE content.message.user_id = :user_id
-            ORDER BY best_distance
+              AND content.media.description_embedding IS NOT NULL
+            ORDER BY distance
             LIMIT :limit
         """)
 
@@ -171,14 +170,12 @@ class MediaRepository(BaseRepository[Media]):
                 "path": row.path,
                 "bucket": row.bucket,
                 "user_name": row.user_name,
-                "desc_similarity": float(row.desc_similarity),
-                "image_similarity": float(row.image_similarity),
-                "best_similarity": float(row.best_similarity),
-                "best_distance": float(row.best_distance),
-                "matched_by": "name" if row.desc_similarity > row.image_similarity else "image"
+                "similarity": float(row.similarity),
+                "distance": float(row.distance),
+                "matched_by": "description"
             }
             for row in rows
-            if float(row.desc_similarity) >= min_similarity or float(row.image_similarity) >= min_similarity
+            if float(row.similarity) >= min_similarity
         ]
 
     async def semantic_search_by_group(
@@ -205,52 +202,6 @@ class MediaRepository(BaseRepository[Media]):
             .order_by('distance')
             .limit(limit)
         )
-
-        return [
-            {
-                "id": row.Media.id,
-                "ext_id": row.Media.ext_id,
-                "name": row.Media.name,
-                "size": float(row.Media.size),
-                "inserted_at": row.Media.inserted_at,
-                "type": row.Media.type,
-                "path": row.Media.path,
-                "bucket": row.Media.bucket,
-                "user_name": row.user_name,
-                "similarity": 1 - float(row.distance),
-                "distance": float(row.distance)
-            }
-            for row in result.all()
-            if (1 - float(row.distance)) >= min_similarity
-        ]
-
-    async def semantic_search_by_image(
-            self,
-            user_id: Optional[int],
-            group_id: Optional[int],
-            image_embedding: List[float],
-            limit: int = 10,
-            min_similarity: float = 0.6
-    ) -> List[dict]:
-        query = select(
-            Media,
-            User.name.label('user_name'),
-            Media.image_embedding.cosine_distance(image_embedding).label('distance')
-        ).join(Message, Message.media_id == Media.id).join(
-            User, Message.user_id == User.id
-        ).filter(
-            and_(
-                Media.image_embedding.is_not(None)
-            )
-        )
-
-        if user_id:
-            query = query.filter(Message.user_id == user_id)
-        if group_id:
-            query = query.filter(Message.group_id == group_id)
-
-        query = query.order_by('distance').limit(limit)
-        result = await self.db.execute(query)
 
         return [
             {
