@@ -9,6 +9,7 @@ from database.operations.base import GroupRepository, UserRepository, WhiteListR
 from database.operations.content import MessageRepository
 from external.evolution import get_group_info, send_message
 from services import save_image_if_new, save_profile_pic, verifiy_media
+from services.message_buffer import buffer_group_message, clear_group_message_buffer
 from utils import get_env_var
 
 
@@ -56,13 +57,20 @@ async def process_group_message(
     )
 
     conversation = context_message.get("text_message", "")
+    quoted_message_ext_id = context_message.get("quoted_message")
+    quoted_message = (
+        await message_repo.find_by_message_id(quoted_message_ext_id)
+        if quoted_message_ext_id
+        else None
+    )
 
     db_message = await message_repo.find_or_create(
         message_id=message_id,
         sender_id=user.id,
         group_id=group.id,
         content=conversation,
-        created_at=datetime.fromtimestamp(event_data["messageTimestamp"])
+        created_at=datetime.fromtimestamp(event_data["messageTimestamp"]),
+        quoted_message_id=quoted_message.id if quoted_message else None,
     )
 
     if context_message.get("image_message"):
@@ -87,16 +95,37 @@ async def process_group_message(
                           .replace("s.whatsapp.net", "")
                           .replace("@", "")
                           ).strip()
-            if tt_mention == INSTANCE_NUMBER or tt_mention == user_gork.src_id:
+            if tt_mention == INSTANCE_NUMBER or (user_gork and tt_mention == user_gork.src_id):
                 is_mention = True
 
-    if not is_mention:
+    is_reply_to_gork = bool(
+        quoted_message
+        and user_gork
+        and quoted_message.user_id == user_gork.id
+    )
+
+    if is_mention or is_reply_to_gork:
+        if group.auto_message:
+            await clear_group_message_buffer(group.id)
+
+    if not is_mention and not is_reply_to_gork:
+        if group.auto_message:
+            await buffer_group_message(
+                group_id=group.id,
+                message_db_id=db_message.id,
+                remote_id=remote_id,
+                scheduler=scheduler,
+            )
         return
 
     if "audio_message" in context_message.keys():
         conversation = await transcribe_audio(body, user.id, group.id)
 
-    if conversation in [f"@{INSTANCE_NUMBER}", f"@{user_gork.src_id}"]:
+    bare_mentions = [f"@{INSTANCE_NUMBER}"]
+    if user_gork:
+        bare_mentions.append(f"@{user_gork.src_id}")
+
+    if conversation in bare_mentions:
         await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
         return
 

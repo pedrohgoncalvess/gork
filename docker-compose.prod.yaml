@@ -8,11 +8,16 @@ services:
       - "9001:9001"
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./log:/app/log:rw
     networks:
       - dokploy-network
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     command: >
       gunicorn main:app
       -k uvicorn.workers.UvicornWorker
@@ -20,6 +25,24 @@ services:
       -b 0.0.0.0:9001
       --timeout 120
 
+  redis:
+    container_name: gork_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dokploy-network
+
 networks:
   dokploy-network:
     external: true
+
+volumes:
+  redis_data:
