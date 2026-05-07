@@ -125,8 +125,7 @@ async def handle_list_images_command(
     treated_text = clean_text(db_message.content)
     if treated_text:
         message = await search_images(
-            treated_text, message_id=db_message.message_id,
-            user_id=user_id, group_id=group_id, db=db
+            treated_text, user_id=user_id, group_id=group_id, db=db
         )
     else:
         params = parse_params(db_message.content)
