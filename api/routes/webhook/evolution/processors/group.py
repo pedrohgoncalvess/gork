@@ -64,6 +64,18 @@ async def process_group_message(
         else None
     )
 
+    if context_message.get("image_message"):
+        media_message = await save_image_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            image_message_id=context_message["image_message"],
+            group_id=group.id,
+        )
+        media_id = media_message.id if media_message else None
+    else:
+        media_id = None
+
     db_message = await message_repo.find_or_create(
         message_id=message_id,
         sender_id=user.id,
@@ -71,16 +83,8 @@ async def process_group_message(
         content=conversation,
         created_at=datetime.fromtimestamp(event_data["messageTimestamp"]),
         quoted_message_id=quoted_message.id if quoted_message else None,
+        media_id=media_id
     )
-
-    if context_message.get("image_message"):
-        await save_image_if_new(
-            db=db,
-            user_id=user.id,
-            message_id=message_id,
-            image_message_id=context_message["image_message"],
-            group_id=group.id,
-        )
 
     if not is_whitelisted:
         return
