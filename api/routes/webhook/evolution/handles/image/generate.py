@@ -10,7 +10,10 @@ from database.models.content import Message
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
 from database.operations.manager import (
-    CommandRepository, InteractionRepository, ModelRepository, AgentRepository
+    AgentRepository,
+    CommandRepository,
+    InteractionRepository,
+    ModelConversationRepository,
 )
 from external import completions
 from external.evolution import download_media
@@ -29,10 +32,13 @@ async def generate_image(
         agent_repo = AgentRepository(db)
         user_repo = UserRepository(db)
         message_repo = MessageRepository(db)
-        model_repo = ModelRepository(db)
+        model_conversation_repo = ModelConversationRepository(db)
         command_repo = CommandRepository(Command, db)
 
         modify_image_agent = await agent_repo.find_by_name("modify-image")
+        if not modify_image_agent:
+            return "Agente de imagem não configurado.", True
+
         image_system_prompt = modify_image_agent.prompt
 
         gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
@@ -62,7 +68,13 @@ async def generate_image(
 
         interaction_repo = InteractionRepository(Interaction, db)
 
-        default_image_model = await model_repo.get_default_image_model()
+        image_model = await model_conversation_repo.resolve_agent_model(
+            modify_image_agent,
+            user_id=user_id,
+            group_id=db_message.group_id,
+        )
+        if not image_model:
+            return "Modelo de imagem não configurado.", True
 
         quoted_message_id = await message_repo.find_by_id(db_message.quoted_message_id) if db_message.quoted_message_id else None
 
@@ -132,7 +144,7 @@ async def generate_image(
         ]
 
         payload = {
-            "model": default_image_model.openrouter_id,
+            "model": image_model.openrouter_id,
             "messages": messages
         }
 
@@ -146,7 +158,7 @@ async def generate_image(
                     image = image.split(",")[1]
             else:
                 _ = await interaction_repo.create_interaction(
-                    model_id=default_image_model.id,
+                    model_id=image_model.id,
                     user_id=user_id,
                     command_id=new_command.id,
                     user_prompt=user_message,
@@ -170,7 +182,7 @@ async def generate_image(
         webp_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
 
         _ = await interaction_repo.create_interaction(
-            model_id=default_image_model.id,
+            model_id=image_model.id,
             user_id=user_id,
             command_id=new_command.id,
             user_prompt=user_message,

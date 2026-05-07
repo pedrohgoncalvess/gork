@@ -8,7 +8,7 @@ from agents.parser.filter import parse_filter_response
 from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
-from database.operations.manager import AgentRepository, InteractionRepository, ModelRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from log import logger
 from utils import get_env_var
@@ -50,8 +50,8 @@ async def filter_agent(
         }
 
     agent_repo = AgentRepository(db)
-    model_repo = ModelRepository(db)
     user_repo = UserRepository(db)
+    model_conversation_repo = ModelConversationRepository(db)
 
     agent = await agent_repo.find_by_name("filter")
     if not agent:
@@ -63,7 +63,12 @@ async def filter_agent(
             "trigger_type": None,
         }
 
-    model = await model_repo.find_by_id(agent.model_id)
+    last_message = messages[-1]
+    model = await model_conversation_repo.resolve_agent_model(
+        agent,
+        user_id=last_message.user_id,
+        group_id=last_message.group_id,
+    )
     if not model:
         await logger.error("Agent", "Filter", f"Model not found for agent {agent.name}.")
         return {
@@ -108,7 +113,6 @@ async def filter_agent(
     raw_response = req["choices"][0]["message"]["content"]
     response = await parse_filter_response(raw_response)
 
-    last_message = messages[-1]
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(
         model_id=model.id,

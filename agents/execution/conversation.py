@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
-from database.operations.manager import AgentRepository, InteractionRepository, ModelRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from log import logger
 from utils import get_env_var
@@ -20,8 +20,8 @@ async def conversation_agent(
         group_id: Optional[int] = None,
         additional_context: str = "",
 ) -> str:
-    model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
+    model_conversation_repo = ModelConversationRepository(db)
     message_repo = MessageRepository(db)
     user_repo = UserRepository(db)
 
@@ -72,8 +72,15 @@ async def conversation_agent(
             f"{user_sender.name} - [{datetime.now().strftime('%H:%M')}]: {last_message.content if last_message else ''}"
     )
 
-    default_model = await model_repo.get_default_model()
     agent = await agent_repo.find_by_name("conversation")
+    if not agent:
+        await logger.error("Agent", "Conversation", "Conversation agent not found.")
+        return ""
+
+    model = await model_conversation_repo.resolve_agent_model(agent, user_id=user_id, group_id=group_id)
+    if not model:
+        await logger.error("Agent", "Conversation", f"Model not found for agent {agent.name}.")
+        return ""
 
     now = datetime.now(ZoneInfo("America/Sao_Paulo"))
 
@@ -83,7 +90,7 @@ async def conversation_agent(
     system_prompt = system_prompt.replace("$$CURRENT_DATE$$", now.strftime("%B %d, %Y"))
 
     payload_term_formatter = {
-        "model": default_model.openrouter_id,
+        "model": model.openrouter_id,
         "messages": [
             {
                 "role": "system",
@@ -101,7 +108,7 @@ async def conversation_agent(
 
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(
-        model_id=default_model.id,
+        model_id=model.id,
         user_id=user_id,
         group_id=group_id,
         agent_id=agent.id,

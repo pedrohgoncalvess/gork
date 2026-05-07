@@ -3,7 +3,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from database.models.manager import Agent, Command, Interaction, Model
-from database.operations.manager import AgentRepository, InteractionRepository, ModelRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository, ModelRepository
 from external import completions
 
 
@@ -19,9 +19,15 @@ async def manage_interaction(
 
     model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
+    model_conversation_repo = ModelConversationRepository(db)
 
     default_model = await model_repo.get_default_model()
     agent = await agent_repo.find_by_name(agent_name) if agent_name else None
+    model = (
+        await model_conversation_repo.resolve_agent_model(agent, user_id=user_id, group_id=group_id)
+        if agent
+        else default_model
+    )
 
     if system_prompt is not None and agent_name is not None:
         system_prompt = f"{agent.prompt}\n\n{system_prompt}"
@@ -37,7 +43,7 @@ async def manage_interaction(
     system_prompt = system_prompt.replace("{CURRENT_MONTH_YEAR}", now.strftime("%B %Y"))
 
     payload_term_formatter = {
-        "model": default_model.openrouter_id,
+        "model": model.openrouter_id,
         "messages": [
             {
                 "role": "system",
@@ -55,7 +61,7 @@ async def manage_interaction(
 
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(
-        model_id=default_model.id,
+        model_id=model.id,
         user_id=user_id,
         group_id=group_id,
         agent_id=agent.id if agent_name else None,
