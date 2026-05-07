@@ -1,3 +1,14 @@
+import re
+from typing import List
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from database.models.base import User
+from database.models.content import Message
+from database.operations.base import UserRepository
+from database.operations.content import MessageRepository
+
+
 def verifiy_media(body: dict) -> dict[str, str]:
     event_data = body.get("data")
     message_id = event_data["key"]["id"]
@@ -132,3 +143,29 @@ def verifiy_media(body: dict) -> dict[str, str]:
         medias.update({"mentions": tt_mentions})
 
     return medias
+
+
+async def get_mentions_from_content(db_message: Message, db: AsyncSession) -> List[User]:
+    content = db_message.content or ""
+
+    pattern = re.compile(r'@(\d{7,25})')
+
+    mentions = pattern.findall(content)
+    _all = "@all" in content
+
+    if not mentions or _all or not db_message.group_id:
+        return []
+
+    if _all:
+        message_repo = MessageRepository(db)
+        return await message_repo.get_users_by_group(db_message.group_id)
+
+    mentioned_user = []
+    for mention in mentions:
+        user_repo = UserRepository(db)
+        user = await user_repo.find_by_phone_or_id(mention)
+
+        if user:
+            mentioned_user.append(user)
+
+    return mentioned_user

@@ -1,8 +1,4 @@
-from sqlalchemy import (
-    Column, Integer, String, Text,
-    TIMESTAMP, func, ForeignKey,
-    UUID, text, BOOLEAN
-)
+from sqlalchemy import BOOLEAN, Column, ForeignKey, func, Integer, String, text, Text, TIMESTAMP, UUID
 from sqlalchemy.orm import relationship
 
 from database.models import Base
@@ -18,9 +14,9 @@ class Message(Base):
     message_id = Column(String(255), unique=True, nullable=False)
 
     user_id = Column(Integer, ForeignKey("base.user.id"))
-
+    quoted_message_id = Column(Integer, ForeignKey("content.message.id"))
+    media_id = Column(Integer, ForeignKey("content.media.id"))
     group_id = Column(Integer, ForeignKey("base.group.id"))
-
     content = Column(Text)
     created_at = Column(TIMESTAMP, nullable=False)
     is_favorite = Column(BOOLEAN, default=False)

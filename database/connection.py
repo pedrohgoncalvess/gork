@@ -5,17 +5,14 @@ Provides an async SQLAlchemy session manager using context manager semantics.
 Automatically loads PostgreSQL credentials from environment variables and
 initializes an async engine with SQLAlchemy 2.0 style.
 """
-
 import asyncio
 import sys
-from sqlalchemy.ext.asyncio import (
-    create_async_engine,
-    async_sessionmaker,
-    AsyncSession
-)
+
+from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession, create_async_engine
 
 from log import logger
 from utils import get_env_var
+
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())

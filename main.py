@@ -1,9 +1,9 @@
-from scheduler import scheduler
 from fastapi import FastAPI
 
-from database import init_agents
-from services import set_remembers
 from api import webhook_evolution_router
+from database import init_agents
+from scheduler import scheduler
+from services import set_remembers
 
 
 app = FastAPI()

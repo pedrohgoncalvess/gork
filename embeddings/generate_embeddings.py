@@ -1,17 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models.content import Message
-from database.models.manager import Model, Interaction
+from database.models.manager import Interaction, Model
 from database.operations.content import MessageRepository
-from database.operations.manager import ModelRepository, InteractionRepository
+from database.operations.manager import InteractionRepository, ModelRepository
 from external import embeddings
 
 
 async def generate_text_embeddings(text: str, message_id: str, db: AsyncSession) -> list[float]:
-    message_repo = MessageRepository(Message, db)
+    message_repo = MessageRepository(db)
     message = await message_repo.find_by_message_id(message_id)
 
-    model_repo = ModelRepository(Model, db)
+    model_repo = ModelRepository(db)
     embedding_model = await model_repo.get_default_embedding_model()
 
     embedding_json = await embeddings(text, embedding_model.openrouter_id)

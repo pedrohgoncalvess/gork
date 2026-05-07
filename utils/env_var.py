@@ -7,10 +7,10 @@ from a .env file. Uses python-dotenv for environment variable management.
 Functions:
     get_env_var(var: str) -> str | None: Retrieves environment variables.
 """
-
+import os
 
 from dotenv import load_dotenv
-import os
+
 
 load_dotenv() # TODO: Change .env file depending on the environment.
 

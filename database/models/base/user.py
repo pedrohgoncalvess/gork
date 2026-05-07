@@ -1,7 +1,4 @@
-from sqlalchemy import (
-    Column, Integer, String,
-    TIMESTAMP, func, UUID, text, Text
-)
+from sqlalchemy import Column, func, Integer, String, text, Text, TIMESTAMP, UUID
 from sqlalchemy.orm import relationship
 
 from database.models import Base
@@ -18,6 +15,7 @@ class User(Base):
     phone_number = Column(String(20))
     name = Column(String(255))
     profile_pic_path = Column(Text, nullable=True)
+    last_att_profile_pic = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())

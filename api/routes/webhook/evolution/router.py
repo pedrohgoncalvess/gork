@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Request, HTTPException
-from starlette import status
 import asyncio
 
-from scheduler import scheduler
+from fastapi import APIRouter, HTTPException, Request
+from starlette import status
+
 from api.routes.webhook.evolution.services import process_webhook
 from log import logger, other_webhooks_logger
+from scheduler import scheduler
 from utils import get_env_var
 
 

@@ -1,7 +1,4 @@
-from sqlalchemy import (
-    Column, Integer, Text,
-    TIMESTAMP, func, Boolean, Numeric
-)
+from sqlalchemy import Boolean, Column, func, Integer, Numeric, Text, TIMESTAMP
 
 from database.models import Base
 
@@ -13,5 +10,6 @@ class Agent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False, unique=True)
     prompt = Column(Text, nullable=False)
+    model_id = Column(Integer, nullable=False)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())
