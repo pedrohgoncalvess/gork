@@ -34,6 +34,7 @@ services:
       - "9001:9001"
     environment:
       - ENV_FILE=.env
+      - REDIS_URL=redis://redis:6379/0
     volumes:
       - hf_cache:/root/.cache/huggingface
       - ./.env:/app/.env:ro
@@ -54,6 +55,9 @@ services:
     networks:
       - dokploy-network
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
 
   s3-minio:
     image: minio/minio
@@ -70,6 +74,23 @@ services:
       - dokploy-network
     restart: unless-stopped
 
+  redis:
+    container_name: gork_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dokploy-network
+
 networks:
   dokploy-network:
     external: true
@@ -78,3 +99,4 @@ volumes:
   postgres_data:
   minio_data:
   hf_cache:
+  redis_data:

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, desc, select, distinct
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 
@@ -45,6 +45,33 @@ class MessageRepository(BaseRepository[Message]):
 
     async def find_by_message_id(self, message_id: str) -> Optional[Message]:
         return await self.find_one_by(message_id=message_id)
+
+    async def get_users_by_group(self, group_id: int) -> list[User]:
+        result = await self.db.execute(
+            select(User)
+            .join(Message, Message.user_id == User.id)
+            .filter(
+                and_(
+                    Message.group_id == group_id,
+                    Message.deleted_at.is_(None)
+                )
+            )
+            .distinct()
+        )
+
+        return list(result.scalars().all())
+
+    async def find_by_ids(self, message_ids: list[int]) -> List[Message]:
+        if not message_ids:
+            return []
+
+        result = await self.db.execute(
+            select(Message)
+            .options(joinedload(Message.sender))
+            .filter(Message.id.in_(message_ids))
+            .order_by(Message.created_at)
+        )
+        return list(result.unique().scalars().all())
 
     async def find_by_sender(self, sender_id: int, limit: int = 50) -> List[Message]:
         result = await self.db.execute(
@@ -167,7 +194,8 @@ class MessageRepository(BaseRepository[Message]):
             sender_id: int,
             content: str,
             created_at: datetime,
-            group_id: int = None
+            group_id: int = None,
+            quoted_message_id: int = None,
     ) -> Message:
         message = await self.find_by_message_id(message_id)
 
@@ -175,6 +203,8 @@ class MessageRepository(BaseRepository[Message]):
             update_data = {}
             if content and message.content != content:
                 update_data["content"] = content
+            if quoted_message_id and message.quoted_message_id != quoted_message_id:
+                update_data["quoted_message_id"] = quoted_message_id
 
             if update_data:
                 return await self.update(message.id, update_data)
@@ -185,7 +215,8 @@ class MessageRepository(BaseRepository[Message]):
             user_id=sender_id,
             group_id=group_id,
             content=content if content else None,
-            created_at=created_at
+            created_at=created_at,
+            quoted_message_id=quoted_message_id,
         )
         return await self.insert(new_message)
 
