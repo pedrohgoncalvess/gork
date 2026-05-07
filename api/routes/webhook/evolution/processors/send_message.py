@@ -6,10 +6,8 @@ from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MessageRepository
 from log import logger
 from services import save_image_if_new, verifiy_media
-from utils import get_env_var
+from utils import INSTANCE_NUMBER
 
-
-INSTANCE_NUMBER = get_env_var("EVOLUTION_INSTANCE_NUMBER")
 
 async def process_sent_message(
         body: dict,
@@ -44,7 +42,7 @@ async def process_sent_message(
     else:
         group_id = None
 
-    await message_repo.insert_or_ignore(
+    db_message = await message_repo.find_or_create(
         message_id=message_id,
         sender_id=user_gork.id,
         content=content,
@@ -54,10 +52,18 @@ async def process_sent_message(
     )
 
     if context_message.get("image_message"):
-        await save_image_if_new(
+        media = await save_image_if_new(
             db=db,
             user_id=user_gork.id,
             message_id=message_id,
             image_message_id=context_message["image_message"],
             group_id=group_id,
         )
+        media_id = media.id
+    else:
+        media_id = None
+
+    if media_id:
+        await message_repo.update(db_message.id, {"media_id": media_id})
+
+    return
