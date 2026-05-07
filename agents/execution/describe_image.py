@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
@@ -37,9 +38,8 @@ def _format_message(message, gork_user_id: Optional[int]) -> str:
 async def describe_image_agent(
         db: AsyncSession,
         user_id: int,
-        message_id: str,
+        db_message: Message,
         image_base64: Optional[str] = None,
-        group_id: Optional[int] = None,
 ) -> str:
     model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
@@ -59,8 +59,8 @@ async def describe_image_agent(
     user_gork = await user_repo.find_by_phone(get_env_var("EVOLUTION_INSTANCE_NUMBER"))
     user_sender = await user_repo.find_by_id(user_id)
 
-    if group_id:
-        messages = await message_repo.find_by_group(group_id, 10)
+    if db_message.group_id:
+        messages = await message_repo.find_by_group(db_message.group_id, 10)
     else:
         messages = await message_repo.find_by_sender(user_id, 5)
 
@@ -78,9 +78,9 @@ async def describe_image_agent(
         if content:
             existing_messages.add(content.lower())
 
-    image_message = next((message for message in messages if message.message_id == message_id), None)
+    image_message = next((message for message in messages if message.message_id == db_message.message_id), None)
     if not image_message:
-        image_message = await message_repo.find_by_message_id(message_id)
+        image_message = await message_repo.find_by_message_id(db_message.message_id)
 
     quoted_message = (
         messages_rel.get(image_message.quoted_message_id)
@@ -92,9 +92,9 @@ async def describe_image_agent(
         image_sender = "Voce"
     elif image_message and image_message.user_id:
         image_sender_user = await user_repo.find_by_id(image_message.user_id)
-        image_sender = image_sender_user.name if image_sender_user and image_sender_user.name else "Usuario Desconhecido."
+        image_sender = image_sender_user.name if image_sender_user and image_sender_user.name else "Usuário Desconhecido."
     else:
-        image_sender = user_sender.name if user_sender and user_sender.name else "Usuario Desconhecido."
+        image_sender = user_sender.name if user_sender and user_sender.name else "Usuário Desconhecido."
 
     image_content = image_message.content if image_message and image_message.content else "[imagem sem legenda]"
     image_timestamp = _format_timestamp(image_message.created_at) if image_message else datetime.now().strftime("%H:%M")
@@ -109,7 +109,7 @@ async def describe_image_agent(
     system_prompt = agent.prompt.replace("$$CONVERSATION_HISTORY$$", conversation_history)
 
     if not image_base64:
-        image_base64, _ = await download_media(message_id)
+        image_base64, _ = await download_media(db_message.message_id)
 
     messages_content = [
         {
@@ -145,7 +145,7 @@ async def describe_image_agent(
     _ = await interaction_repo.create_interaction(
         model_id=model.id,
         user_id=user_id,
-        group_id=group_id,
+        group_id=db_message.group_id,
         agent_id=agent.id,
         user_prompt=current_context,
         response=resp,

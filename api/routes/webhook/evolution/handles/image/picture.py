@@ -1,25 +1,20 @@
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import List
 
+from api.routes.webhook.evolution.processors.group import INSTANCE_NUMBER
 from database.models.base import User
-from database.operations.base import UserRepository
 from s3 import S3Client
 
 
-async def get_pictures(message_context: dict[str, any], db: AsyncSession) -> list[tuple[str, str]]:
-
-    mentions = message_context.get("mentions")
-    user_repo = UserRepository(db)
-
+async def get_pictures(mentions: List[User]) -> list[tuple[str, str]]:
     s3_client = S3Client()
     pictures = []
     for mention in mentions:
-        user = await user_repo.find_by_phone_or_id(mention)
-        if user.profile_pic_path:
-            if not user.name == "Gork":
+        if mention.profile_pic_path:
+            if not mention.phone_number == INSTANCE_NUMBER:
                 _ = await s3_client.connect()
-                image_base64 = await s3_client.get_image_base64("whatsapp", user.profile_pic_path)
+                image_base64 = await s3_client.get_image_base64("whatsapp", mention.profile_pic_path)
                 pictures.append(("picture", image_base64))
         else:
-            pictures.append((None, f"O vagabundo {user.name} não tem foto salva."))
+            pictures.append((None, f"O vagabundo {mention.name} não tem foto salva."))
 
     return pictures
