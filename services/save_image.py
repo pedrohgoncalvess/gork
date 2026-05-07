@@ -1,157 +1,103 @@
+import base64
 from datetime import datetime
 from typing import Optional
 from uuid import uuid4
-import base64
 
-from database.models.base import Group, User
-from database.models.content import Media, Message
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from agents.execution.describe_image import describe_image_agent
+from database import PgConnection
+from database.models.content import Media
 from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MediaRepository, MessageRepository
 from embeddings import generate_text_embeddings
 from external.evolution import download_media
 from s3 import S3Client
-from database import PgConnection
-from database.models.manager import Model, Interaction, Command
-from database.operations.manager import ModelRepository, InteractionRepository, CommandRepository
-from external import completions
 from services.message_context import verifiy_media
-from utils import generate_random_name
+from utils import get_image_hash, get_phash
 
 
-async def describe_image(
-        user_id: int, message: str,
-        image_base64: bytes, group_id: Optional[int] = None,
-        for_embeddings: bool = False) -> str:
-    async with PgConnection() as db:
-        model_repo = ModelRepository(Model, db)
-        default_audio_model = await model_repo.get_default_audio_model()
-        system = (
-            "Descreva essa imagem em algumas palavras. Utilize no máximo 4-5 frases." if not for_embeddings
-            else """Descreva esta imagem em 1-2 frases curtas, incluindo:
-                    1. Tipo de conteúdo (screenshot, foto, arte)
-                    2. Jogo/aplicativo (se reconhecível)
-                    3. Elementos principais
-                    4. Palavras-chave importantes
-                    Exemplo: "Minecraft screenshot do jogo de video game mostrando o personagem olhando para vila com montanhas e o por do sol."
-                    """
-        )
+PHASH_MAX_DISTANCE = 8
+MEDIA_EMBEDDING_DIMENSION = 2560
 
-        messages_content = [
-            {
-                "type": "text",
-                "text": message
-            }
-        ]
-
-        if image_base64:
-            data_url = f"data:image/jpeg;base64,{image_base64}"
-            messages_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": data_url
-                    }
-                }
-            )
-
-        messages = [
-            {
-                "role": "system",
-                "content": system
-            },
-            {
-                "role": "user",
-                "content": messages_content
-            }
-        ]
-
-        payload = {
-            "model": default_audio_model.openrouter_id,
-            "messages": messages
-            }
-
-        req = await completions(payload)
-
-        resume = req["choices"][0]["message"]["content"]
-
-        command_repo = CommandRepository(Command, db)
-
-        if for_embeddings:
-            new_command = await command_repo.create_command(
-                command="describe",
-                user_id=user_id,
-                group_id=group_id,
-            )
-            new_command_id = new_command.id
-        else:
-            new_command_id = None
-
-        interaction_repo = InteractionRepository(Interaction, db)
-        _ = await interaction_repo.create_interaction(
-            model_id=default_audio_model.id,
-            user_id=user_id,
-            command_id=new_command_id,
-            user_prompt=message,
-            response=resume,
-            input_tokens=req["usage"]["prompt_tokens"],
-            output_tokens=req["usage"]["completion_tokens"],
-            group_id=group_id,
-            system_behavior=system
-        )
-
-        return resume
+def _fit_media_embedding(embedding: list[float]) -> list[float]:
+    if len(embedding) == MEDIA_EMBEDDING_DIMENSION:
+        return embedding
+    if len(embedding) > MEDIA_EMBEDDING_DIMENSION:
+        return embedding[:MEDIA_EMBEDDING_DIMENSION]
+    return embedding + [0.0] * (MEDIA_EMBEDDING_DIMENSION - len(embedding))
 
 
-async def save_image(
+async def save_image_if_new(
+        db: AsyncSession,
         user_id: int,
         message_id: str,
-        body: dict,
-        image_base64: Optional[str] = None,
+        image_message_id: str,
         group_id: Optional[int] = None,
+        media_type: str = "image",
 ) -> Media | None:
-    medias = verifiy_media(body)
-    if not medias.get("image_message") and not image_base64:
-        return
+
+    image_base64, name = await download_media(image_message_id)
+
+    decoded = base64.b64decode(image_base64)
+    image_hash = get_image_hash(image_base64)
+    media_repo = MediaRepository(db)
+    message_repo = MessageRepository(db)
+    message = await message_repo.find_by_message_id(message_id)
+
+    existing_media = await media_repo.find_by_hash(image_hash)
+    if existing_media:
+        if message and message.media_id != existing_media.id:
+            await message_repo.update(message.id, {"media_id": existing_media.id})
+        return existing_media
+
+    phash = get_phash(image_base64)
+    similar_media = await media_repo.find_by_similar_phash(phash, PHASH_MAX_DISTANCE)
+    if similar_media:
+        if message and message.media_id != similar_media.id:
+            await message_repo.update(message.id, {"media_id": similar_media.id})
+        return similar_media
+
+    if group_id is not None:
+        group_repo = GroupRepository(db)
+        group = await group_repo.find_by_id(group_id)
+        ext_id = group.ext_id
+    else:
+        user_repo = UserRepository(db)
+        user = await user_repo.find_by_id(user_id)
+        ext_id = user.ext_id
+
+    description = await describe_image_agent(db, user_id, image_message_id, image_base64, group_id)
+
+    text_emb = _fit_media_embedding(
+        await generate_text_embeddings(description, message_id, db)
+    )
 
     s3_conn = S3Client()
     _ = await s3_conn.connect()
-    async with PgConnection() as db:
-        if group_id is not None:
-            group_repo = GroupRepository(Group, db)
-            group = await group_repo.find_by_id(group_id)
-            ext_id = group.ext_id
-        else:
-            user_repo = UserRepository(User, db)
-            user = await user_repo.find_by_id(user_id)
-            ext_id = user.ext_id
+    image_id = uuid4()
+    path = f"{ext_id}/{datetime.now().strftime('%Y-%m-%d')}/{image_id}.png"
+    _ = await s3_conn.upload_image(
+        decoded,
+        object_name=path
+    )
 
-        if not image_base64:
-            image_base64, name = await download_media(medias["image_message"])
-        else:
-            name = generate_random_name()
-
-        description = await describe_image(user_id, message_id, image_base64, group_id, for_embeddings=True)
-
-        decoded = base64.b64decode(image_base64)
-        text_emb = await generate_text_embeddings(description, message_id, db)
-
-        image_id = uuid4()
-        path = f"{ext_id}/{datetime.now().strftime("%Y-%m-%d")}/{image_id}.png"
-        _ = await s3_conn.upload_image(
-            decoded,
-            object_name = path
+    new_media = await media_repo.insert(
+        Media(
+            ext_id=image_id,
+            name=name,
+            bucket="whatsapp",
+            path=path,
+            type=media_type,
+            description_embedding=text_emb,
+            description=description,
+            hash=image_hash,
+            phash=phash,
+            size=len(decoded) / (1024 * 1024),
         )
+    )
 
-        media_repo = MediaRepository(Media, db)
-        message_repo = MessageRepository(Message, db)
-        message = await message_repo.find_by_message_id(message_id)
-        new_media = await media_repo.insert(
-            Media(
-                ext_id=image_id, name=name, message_id=message.id,
-                bucket="whatsapp", path=path, format="png",
-                description_embedding=text_emb, description=description,
-                size=len(decoded) / (1024 * 1024)
-            )
-        )
+    if message:
+        await message_repo.update(message.id, {"media_id": new_media.id})
 
-        return new_media
+    return new_media

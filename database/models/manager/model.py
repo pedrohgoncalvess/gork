@@ -1,7 +1,4 @@
-from sqlalchemy import (
-    Column, Integer, Text,
-    TIMESTAMP, func, Boolean, Numeric
-)
+from sqlalchemy import Boolean, Column, func, Integer, Numeric, Text, TIMESTAMP
 
 from database.models import Base
 

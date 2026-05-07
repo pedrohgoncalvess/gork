@@ -1,14 +1,6 @@
 -- 
 -- depends:
 
--- DROP SCHEMA BASE CASCADE;
--- DROP SCHEMA CONTENT CASCADE;
--- DROP SCHEMA COMMAND CASCADE;
--- DROP TABLE yoyo_lock;
--- DROP TABLE _yoyo_log;
--- DROP TABLE _yoyo_migration;
--- DROP TABLE _yoyo_version;
-
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE SCHEMA "manager";

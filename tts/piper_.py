@@ -1,11 +1,12 @@
-import io
-import re
-import os
-import wave
 import base64
+import io
+import os
+import re
+import wave
 from datetime import datetime
 
-from piper import SynthesisConfig, PiperVoice
+from piper import PiperVoice, SynthesisConfig
+
 from utils import project_root
 
 

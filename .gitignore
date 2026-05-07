@@ -3,8 +3,8 @@
 
 # Personal
 .env.docker
-**/.onnx
-**/onnx.json
+*.onnx
+*.onnx.json
 
 ### JupyterNotebooks ###
 # gitignore template for Jupyter Notebooks
@@ -12,6 +12,7 @@
 
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
+yoyo.ini
 
 # IPython
 profile_default/

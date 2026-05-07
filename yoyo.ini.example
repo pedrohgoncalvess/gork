@@ -1,0 +1,5 @@
+[DEFAULT]
+sources = database/migrations
+batch_mode = off
+verbosity = 0
+database = postgresql+psycopg://admin:admin@localhost:5435/postgres
