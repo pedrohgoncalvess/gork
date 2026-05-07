@@ -18,8 +18,7 @@ class Media(Base):
 
     size = Column(DECIMAL)
     description = Column(Text)
-    description_embedding = Column(Vector(1024), nullable=False)
-    image_embedding = Column(Vector(1024), nullable=False)
+    description_embedding = Column(Vector(2560))
     hash = Column(LargeBinary, nullable=False, unique=True)
     phash = Column(BigInteger)
 
