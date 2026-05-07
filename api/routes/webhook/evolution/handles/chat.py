@@ -48,13 +48,11 @@ DATABASE_QUERY_STOP_ITERATION = 7
 
 async def handle_conversation_agent(
         remote_id: str,
-        message_id: str,
         user: User,
         db_message: Message,
         db: AsyncSession,
         scheduler: AsyncIOScheduler,
-        context: dict,
-        group_id: Optional[int] = None,
+        context: dict
 ):
     """
     Main handle for the conversation agent (refactored from generic_conversation).
@@ -66,19 +64,19 @@ async def handle_conversation_agent(
         db=db,
         user_id=user.id,
         last_message_id=db_message.id,
-        group_id=group_id,
+        group_id=db_message.group_id,
     )
 
     await _dispatch_gork_response(
         raw_response=raw_response,
         remote_id=remote_id,
-        message_id=message_id,
+        message_id=db_message.message_id,
         user=user,
         db=db,
         db_message=db_message,
         scheduler=scheduler,
         context=context,
-        group_id=group_id,
+        group_id=db_message.group_id,
     )
 
 
@@ -100,7 +98,7 @@ async def _dispatch_gork_response(
         parsed = await parse_gork_response(raw_response)
     except ValueError as e:
         await logger.error("ConversationHandle", "ParseError", str(e))
-        await send_message(remote_id, "Desculpa, tive um problema interno. Tenta de novo?", message_id)
+        await send_message(remote_id, "Desculpa, tive um problema interno. Tenta de novo", message_id)
         return
 
     queries = parsed.get("queries", [])
@@ -121,6 +119,7 @@ async def _dispatch_gork_response(
         )
         return
 
+    message_type = 0
     for action in parsed.get("actions", []):
         action_type = action.get("action")
 
@@ -138,7 +137,12 @@ async def _dispatch_gork_response(
                 web_search_depth=web_search_depth,
                 database_query_iteration=database_query_iteration,
                 database_context=database_context,
+                is_first_message=message_type == 0
             )
+
+            if action_type == "message":
+                message_type += 1
+
             if not should_continue:
                 return
         except Exception as e:
@@ -399,12 +403,13 @@ async def _dispatch_action(
         web_search_depth: int = 0,
         database_query_iteration: int = 0,
         database_context: str = "",
+        is_first_message: bool = True
 ) -> bool:
     params = action.get("parameters", {}) or {}
     message_repo = MessageRepository(db)
 
     if action_type == "message":
-        await send_message(remote_id, action.get("content", ""), db_message.message_id)
+        await send_message(remote_id, action.get("content", ""), db_message.message_id, is_first_message)
         return True
 
     elif action_type == "audio":
