@@ -1,4 +1,4 @@
--- expensive control
+-- big refactor
 -- depends: 20251221_01_7rSRX-favorite-message
 
 ALTER TABLE "manager"."agent" ADD COLUMN "model_id" INTEGER;
@@ -37,11 +37,44 @@ CREATE TABLE "content"."media" (
     "type" VARCHAR(20), --audio, image, sticker, profile pic, video
     "size" DECIMAL,
     description TEXT,
-    description_embedding VECTOR(1024) NOT NULL,
-    image_embedding VECTOR(1024) NOT NULL,
+    description_embedding VECTOR(2560),
     hash BYTEA NOT NULL UNIQUE,
     phash BIGINT,
     inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
 
     CONSTRAINT media_pk PRIMARY KEY (id)
+);
+
+ALTER TABLE "base"."user" ADD COLUMN "last_att_profile_pic" TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo');
+
+CREATE TABLE "manager"."embedding" (
+    id SERIAL,
+    term TEXT NOT NULL,
+    embedding VECTOR(2560) NOT NULL,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
+
+    CONSTRAINT embedding_pk PRIMARY KEY (id)
+);
+
+UPDATE "manager"."model" SET text_default = false;
+
+INSERT INTO "manager"."model" (name, openrouter_id, input_price, output_price, text_default)
+VALUES (
+        'DeepSeek: DeepSeek V4 Flash',
+        'deepseek/deepseek-v4-flash',
+        0.14,
+        0.28,
+        true
+       );
+
+CREATE TABLE "manager"."collection" (
+    id SERIAL,
+    user_id INTEGER NOT NULL,
+    group_id INTEGER,
+    message_id INTEGER NOT NULL,
+    context TEXT,
+    embedding VECTOR(2560) NOT NULL,
+    inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
+
+    CONSTRAINT embedding_pk PRIMARY KEY (id)
 );
