@@ -111,7 +111,16 @@ async def filter_agent(
 
     req = await completions(payload)
     raw_response = req["choices"][0]["message"]["content"]
-    response = await parse_filter_response(raw_response)
+    try:
+        response = await parse_filter_response(raw_response)
+    except ValueError as error:
+        await logger.error("Agent", "FilterParseError", f"{error}. Raw response: {raw_response}")
+        response = {
+            "reasoning": "Filter parser failed; defaulting to no response.",
+            "should_respond": False,
+            "confidence": "low",
+            "trigger_type": None,
+        }
 
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(
