@@ -6,18 +6,27 @@ import soundfile as sf
 
 from database import PgConnection
 from database.models.manager import Agent, Command, Interaction, Model
-from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelRepository
+from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from external.evolution import download_media, send_message
 
 
 async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[int], command: bool = False) -> str:
     async with PgConnection() as db:
-        model_repo = ModelRepository(db)
         agent_repo = AgentRepository(db)
+        model_conversation_repo = ModelConversationRepository(db)
 
         transcriber_agent = await agent_repo.find_by_name("transcriber")
-        audio_model = await model_repo.get_default_audio_model()
+        if not transcriber_agent:
+            return ""
+
+        audio_model = await model_conversation_repo.resolve_agent_model(
+            transcriber_agent,
+            user_id=user_id,
+            group_id=group_id,
+        )
+        if not audio_model:
+            return ""
 
         event_data = webhook_data["data"]
         context_info = event_data.get("contextInfo", {}) if event_data.get("contextInfo") is not None else {}

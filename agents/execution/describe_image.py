@@ -7,7 +7,7 @@ from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
-from database.operations.manager import AgentRepository, InteractionRepository, ModelRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from external.evolution import download_media
 from log import logger
@@ -41,8 +41,8 @@ async def describe_image_agent(
         db_message: Message,
         image_base64: Optional[str] = None,
 ) -> str:
-    model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
+    model_conversation_repo = ModelConversationRepository(db)
     message_repo = MessageRepository(db)
     user_repo = UserRepository(db)
 
@@ -51,7 +51,11 @@ async def describe_image_agent(
         await logger.error("Agent", "DescribeImage", "Describe image agent not found.")
         return ""
 
-    model = await model_repo.find_by_id(agent.model_id)
+    model = await model_conversation_repo.resolve_agent_model(
+        agent,
+        user_id=user_id,
+        group_id=db_message.group_id,
+    )
     if not model:
         await logger.error("Agent", "DescribeImage", f"Model not found for agent {agent.name}.")
         return ""
