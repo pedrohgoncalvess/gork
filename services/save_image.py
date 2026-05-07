@@ -41,7 +41,7 @@ async def save_image_if_new(
 
     decoded = base64.b64decode(image_base64)
     image_hash = get_image_hash(image_base64)
-    media_repo = MediaRepository(Media, db)
+    media_repo = MediaRepository(db)
     message_repo = MessageRepository(db)
     message = await message_repo.find_by_message_id(message_id)
 

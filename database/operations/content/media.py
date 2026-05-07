@@ -9,6 +9,9 @@ from database.operations import BaseRepository
 
 
 class MediaRepository(BaseRepository[Media]):
+    def __init__(self, db):
+        super().__init__(Media, db)
+
     async def find_by_hash(self, image_hash: bytes) -> Optional[Media]:
         result = await self.db.execute(
             select(Media).filter(Media.hash == image_hash).limit(1)
