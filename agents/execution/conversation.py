@@ -10,7 +10,7 @@ from database.operations.content import MessageRepository
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from log import logger
-from utils import get_env_var
+from utils import INSTANCE_NUMBER
 
 
 async def conversation_agent(
@@ -25,7 +25,7 @@ async def conversation_agent(
     message_repo = MessageRepository(db)
     user_repo = UserRepository(db)
 
-    user_gork = await user_repo.find_by_phone(get_env_var("EVOLUTION_INSTANCE_NUMBER"))
+    user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
     user_sender = await user_repo.find_by_id(user_id)
 
     if not user_gork:
