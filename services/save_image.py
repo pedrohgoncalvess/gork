@@ -67,7 +67,7 @@ async def save_image_if_new(
         user = await user_repo.find_by_id(user_id)
         ext_id = user.ext_id
 
-    description = await describe_image_agent(db, user_id, image_message_id, image_base64, group_id)
+    description = await describe_image_agent(db, user_id, message, image_base64)
 
     text_emb = _fit_media_embedding(
         await generate_text_embeddings(description, message_id, db)

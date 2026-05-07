@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import and_, desc, select, distinct
+from sqlalchemy import and_, desc, distinct, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 
@@ -196,29 +196,41 @@ class MessageRepository(BaseRepository[Message]):
             created_at: datetime,
             group_id: int = None,
             quoted_message_id: int = None,
+            media_id: int = None
     ) -> Message:
-        message = await self.find_by_message_id(message_id)
-
-        if message:
-            update_data = {}
-            if content and message.content != content:
-                update_data["content"] = content
-            if quoted_message_id and message.quoted_message_id != quoted_message_id:
-                update_data["quoted_message_id"] = quoted_message_id
-
-            if update_data:
-                return await self.update(message.id, update_data)
-            return message
-
-        new_message = Message(
-            message_id=message_id,
-            user_id=sender_id,
-            group_id=group_id,
-            content=content if content else None,
-            created_at=created_at,
-            quoted_message_id=quoted_message_id,
+        stmt = insert(Message).values(
+                message_id=message_id,
+                user_id=sender_id,
+                group_id=group_id,
+                content=content if content else None,
+                created_at=created_at,
+                quoted_message_id=quoted_message_id,
+                media_id=media_id
         )
-        return await self.insert(new_message)
+
+        excluded = stmt.excluded
+        stmt = (
+            stmt.on_conflict_do_update(
+                index_elements=["message_id"],
+                set_={
+                    "user_id": excluded.user_id,
+                    "group_id": excluded.group_id,
+                    "content": func.coalesce(excluded.content, Message.content),
+                    "created_at": excluded.created_at,
+                    "quoted_message_id": func.coalesce(
+                        excluded.quoted_message_id,
+                        Message.quoted_message_id,
+                    ),
+                    "media_id": func.coalesce(excluded.media_id, Message.media_id),
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(Message)
+        )
+
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.scalar_one()
 
     async def set_is_favorite(
             self,
