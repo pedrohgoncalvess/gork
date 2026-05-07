@@ -26,6 +26,7 @@ from api.routes.webhook.evolution.handles import (
 )
 from database.models.base import User
 from database.models.content import Message
+from services import get_mentions_from_content
 
 
 async def process_commands(
@@ -87,15 +88,15 @@ async def process_explicit_commands(
         return
 
     if "!image" in lw_conversation:
-        await handle_image_command(remote_id, user.id, db_message, context, group_id)
+        await handle_image_command(remote_id, user.id, db_message)
         return
 
     if "!describe" in lw_conversation:
-        await handle_describe_image_command(remote_id, user.id, context, db, group_id)
+        await handle_describe_image_command(remote_id, db_message, db_message.user_id, db, group_id)
         return
 
     if "!sticker" in lw_conversation:
-        await handle_sticker_command(remote_id, db_message, db, context)
+        await handle_sticker_command(remote_id, db_message, db)
         return
 
     if "!remember" in lw_conversation:
@@ -119,7 +120,8 @@ async def process_explicit_commands(
         return
 
     if "!picture" in lw_conversation:
-        await handle_picture_command(remote_id, context, db)
+        mentions = await get_mentions_from_content(db_message, db)
+        await handle_picture_command(remote_id, mentions)
         return
 
     if "!favorite" in lw_conversation:

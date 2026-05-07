@@ -7,8 +7,8 @@ from PIL import Image
 from rembg import new_session, remove
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from api.routes.webhook.evolution.handles import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
-from database.models.base import User
 from database.models.content import Message
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
@@ -16,6 +16,8 @@ from external.evolution import download_media
 from s3 import S3Client
 from utils import get_env_var
 
+
+NINJA_KEY = get_env_var("NINJA_KEY")
 
 def _resize_contain_transparent(img: Image.Image, size: tuple) -> Image.Image:
     target_w, target_h = size
@@ -45,28 +47,30 @@ def _resize_cover(img: Image.Image, size: tuple) -> Image.Image:
 
 
 async def static_sticker(
-        db_message: Message, caption_text: str,
-        db: AsyncSession, medias: dict,
-        random_image: bool = False, remove_background: bool = False,
-        fill: bool = False
+        db_message: Message,
+        db: AsyncSession, random_image: bool = False,
+        remove_background: bool = False, fill: bool = False,
+        gork_req: bool = False
 ) -> str:
+    message_repo = MessageRepository(db)
+
+    quoted_message = await message_repo.find_by_id(
+        db_message.quoted_message_id
+    ) if db_message.quoted_message_id else None
+
+    caption_text = clean_text(db_message.content)
+    if not caption_text:
+        caption_text = quoted_message.content
 
     image_base64 = None
-    available_medias = list(medias.keys())
-    if "text_quote" in available_medias:
-        message_text, quoted_message_id = medias["text_quote"]
-        message_repo = MessageRepository(db)
-        message = await message_repo.find_by_message_id(quoted_message_id)
-        caption_text = message_text if message_text else caption_text
-    else:
-        message = None
-    if "image_message" in available_medias and image_base64 is None:
+
+    if db_message.media_id:
         image_base64, _ = await download_media(db_message.message_id)
-    if "image_quote" in available_medias and image_base64 is None:
-        image_base64, _ = await download_media(medias["image_quote"])
-    if image_base64 is None and message:
+    if quoted_message.media_id and image_base64 is None:
+        image_base64, _ = await download_media(quoted_message.message_id)
+    if image_base64 is None and quoted_message:
         user_repo = UserRepository(db)
-        user = await user_repo.find_by_id(message.user_id)
+        user = await user_repo.find_by_id(quoted_message.user_id) if not gork_req else user_repo.find_by_id(db_message.user_id)
         if caption_text:
             pattern = r'@(\d+)'
             mentions = re.findall(pattern, caption_text)
@@ -80,7 +84,9 @@ async def static_sticker(
             image_base64 = await s3_client.get_image_base64("whatsapp", user.profile_pic_path)
     if random_image or image_base64 is None:
         async with httpx.AsyncClient() as client:
-            response = await client.get("https://api.api-ninjas.com/v1/randomimage", headers={"X-Api-Key": get_env_var("NINJA_KEY")})
+            response = await client.get(
+                "https://api.api-ninjas.com/v1/randomimage", headers={"X-Api-Key": NINJA_KEY}
+            )
             image_base64 = response.content
 
     image_bytes = base64.b64decode(image_base64)

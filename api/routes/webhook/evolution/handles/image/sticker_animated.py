@@ -9,7 +9,9 @@ import httpx
 import numpy as np
 from PIL import Image
 
+from api.routes.webhook.evolution.handles import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
+from database.models.content import Message
 from external.evolution import download_media
 
 
@@ -55,8 +57,6 @@ def _resize_cover(frame: Image.Image, size: tuple) -> Image.Image:
     top = (new_h - target_h) // 2
     return frame.crop((left, top, left + target_w, top + target_h))
 
-
-# ── Effects ──────────────────────────────────────────────────────────────────
 
 def _apply_bulge_effect(frame: Image.Image, intensity: float = 0.5) -> Image.Image:
     img_array = np.array(frame)
@@ -180,9 +180,6 @@ def _apply_explosion_effect(frame: Image.Image, progress: float, explosion_frame
         return explosion_frames[min(explosion_index, len(explosion_frames) - 1)]
     return frame
 
-
-# ── GIF processing ───────────────────────────────────────────────────────────
-
 def _add_caption_to_gif_frames(gif_path: str, caption_text: str, output_path: str) -> str:
     gif = Image.open(gif_path)
     frames = []
@@ -281,9 +278,6 @@ def _add_effect_to_gif_frames(gif_path: str, output_path: str, effect: str) -> s
         optimize=False
     )
     return output_path
-
-
-# ── Compression ──────────────────────────────────────────────────────────────
 
 def _compress_gif_to_limit(input_path: str, output_path: str, max_bytes: int = 900_000) -> str:
     configs = [
@@ -408,10 +402,11 @@ def _compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 4
     return output_path
 
 
-# ── Main entry point ─────────────────────────────────────────────────────────
-
-async def animated_sticker(message_id: str, caption_text: str = None, effect: str = None) -> str:
-    media_data = await download_media(message_id, True)
+async def animated_sticker(
+        db_message: Message, effect: str = None
+) -> str:
+    caption_text = clean_text(db_message.content)
+    media_data = await download_media(db_message.message_id, True)
     media_bytes = base64.b64decode(media_data[0])
 
     with tempfile.NamedTemporaryFile(suffix='.webp', delete=False) as f:
