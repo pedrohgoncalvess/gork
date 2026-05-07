@@ -115,7 +115,6 @@ async def list_images(
 
 async def search_images(
         query: str,
-        message_id: str,
         user_id: Optional[int],
         group_id: Optional[int],
         db: AsyncSession
@@ -128,14 +127,14 @@ async def search_images(
             user_id=user_id,
             query_embedding=query_embedding,
             limit=10,
-            min_similarity=0.5,
+            min_similarity=0.3,
         )
     else:
         results = await media_repo.semantic_search_by_group(
             group_id=group_id,
             query_embedding=query_embedding,
             limit=10,
-            min_similarity=0.5,
+            min_similarity=0.3,
         )
 
     if not results:

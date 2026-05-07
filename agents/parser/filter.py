@@ -5,6 +5,15 @@ from typing import Any, Dict, List, Optional
 from log import logger
 
 
+def _empty_filter_response(reasoning: str = "") -> Dict[str, Any]:
+    return {
+        "reasoning": reasoning,
+        "should_respond": False,
+        "confidence": "high",
+        "trigger_type": None,
+    }
+
+
 async def parse_filter_response(llm_output: str) -> Dict[str, Any]:
     """
     Parse and validate Gork filter's JSON response.
@@ -41,22 +50,37 @@ async def parse_filter_response(llm_output: str) -> Dict[str, Any]:
         ValueError: When parsing fails or structure is invalid
     """
     if not isinstance(llm_output, str) or not llm_output.strip():
-        raise ValueError("Input must be a non-empty string")
+        return _empty_filter_response("Model returned an empty response.")
 
     text = llm_output.strip()
 
-    for candidate in _candidate_json_strings(text):
+    for attempt, candidate in enumerate(_candidate_json_strings(text), 1):
         try:
             parsed = json.loads(candidate)
             _validate_filter_structure(parsed)
             return parsed
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as error:
+            await _log_parse_attempt_error("JsonDecodeError", attempt, candidate, error)
             continue
-        except ValueError:
+        except ValueError as error:
+            await _log_parse_attempt_error("ValidationError", attempt, candidate, error)
             continue
 
     await logger.error("GorkFilter", "ParseFailed", llm_output)
     raise ValueError("Failed to parse valid filter JSON response")
+
+
+async def _log_parse_attempt_error(
+        error_type: str,
+        attempt: int,
+        candidate: str,
+        error: Exception,
+) -> None:
+    await logger.error(
+        "GorkFilter",
+        f"ParseAttempt{attempt}{error_type}",
+        f"{error}. Candidate: {candidate[:1000]}",
+    )
 
 
 def _candidate_json_strings(text: str) -> List[str]:
@@ -160,6 +184,10 @@ def _validate_filter_structure(data: Any) -> None:
         raise ValueError(
             f"Response must be a dict, got {type(data).__name__}"
         )
+
+    if not data:
+        data.update(_empty_filter_response())
+        return
 
     if "reasoning" not in data:
         raise ValueError("Missing required field 'reasoning'")
