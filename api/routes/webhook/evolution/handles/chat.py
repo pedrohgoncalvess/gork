@@ -231,7 +231,7 @@ async def _execute_database_query(
         query: dict,
 ) -> dict[str, Any]:
     query_type = query.get("query_type")
-    params = query.get("parameters", {}) or {}
+    params = _query_parameters(query)
 
     if group_id is None:
         return {
@@ -254,18 +254,16 @@ async def _execute_database_query(
                 group_id=group_id,
                 query=params.get("query") or params.get("search") or params.get("text"),
                 limit=params.get("limit"),
-                user_id=params.get("user_id"),
+                user_id=_optional_int_param(params, "user_id"),
                 media_type=params.get("media_type"),
                 include_deleted=bool(params.get("include_deleted", False)),
             )
         elif query_type == "get_user_messages":
-            user_id = params.get("user_id") or params.get("id")
-            if not user_id:
-                raise ValueError("Missing required parameter: user_id")
+            user_id = _required_user_id(params)
             result = await get_user_messages(
                 db=db,
                 group_id=group_id,
-                user_id=int(user_id),
+                user_id=user_id,
                 query=params.get("query") or params.get("search") or params.get("text"),
                 limit=params.get("limit"),
                 include_deleted=bool(params.get("include_deleted", False)),
@@ -279,18 +277,16 @@ async def _execute_database_query(
                 group_id=group_id,
                 query=search_query,
                 limit=params.get("limit"),
-                user_id=params.get("user_id"),
+                user_id=_optional_int_param(params, "user_id"),
                 media_type=params.get("media_type"),
                 include_deleted=bool(params.get("include_deleted", False)),
             )
         elif query_type == "get_user_images":
-            user_id = params.get("user_id") or params.get("id")
-            if not user_id:
-                raise ValueError("Missing required parameter: user_id")
+            user_id = _required_user_id(params)
             result = await get_user_images(
                 db=db,
                 group_id=group_id,
-                user_id=int(user_id),
+                user_id=user_id,
                 limit=params.get("limit"),
             )
         else:
@@ -308,6 +304,26 @@ async def _execute_database_query(
             "parameters": params,
             "error": str(error),
         }
+
+
+def _query_parameters(query: dict) -> dict[str, Any]:
+    params = dict(query.get("parameters", {}) or {})
+    params.pop("group_id", None)
+    return params
+
+
+def _optional_int_param(params: dict[str, Any], key: str) -> int | None:
+    value = params.get(key)
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _required_user_id(params: dict[str, Any]) -> int:
+    user_id = _optional_int_param(params, "user_id")
+    if user_id is None:
+        raise ValueError("Missing required parameter: user_id")
+    return user_id
 
 
 def _format_database_query_context(
