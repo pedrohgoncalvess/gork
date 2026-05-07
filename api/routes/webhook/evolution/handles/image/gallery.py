@@ -8,7 +8,7 @@ from embeddings import generate_text_embeddings
 
 
 async def list_images(db: AsyncSession, user_id: Optional[int], group_id: Optional[int],) -> str:
-    media_repo = MediaRepository(Media, db)
+    media_repo = MediaRepository(db)
 
     if user_id:
         medias = await media_repo.find_by_user(user_id)
@@ -92,7 +92,7 @@ async def search_images(
         db: AsyncSession
 ) -> str:
     query_embedding = await generate_text_embeddings(query)
-    media_repo = MediaRepository(Media, db)
+    media_repo = MediaRepository(db)
 
     if user_id:
         results = await media_repo.semantic_search_by_user(
