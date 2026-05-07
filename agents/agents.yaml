@@ -1,17 +1,12 @@
 agents:
   - name: conversation
     description: Agent responsible for natural conversation and chatting.
-    model: deepseek/deepseek-chat-v3.1
+    model: deepseek/deepseek-v4-flash
     prompt_path: agents/prompts/conversation.md
-
-  - name: intent-classifier
-    description: Agent that classifies user intent to trigger the correct action.
-    model: deepseek/deepseek-chat-v3.1
-    prompt_path: agents/prompts/intent-classifier.md
 
   - name: filter
     description: Agent that decides whether Gork should respond to a conversation.
-    model: deepseek/deepseek-chat-v3.1
+    model: deepseek/deepseek-v4-flash
     prompt_path: agents/prompts/filter.md
 
   - name: modify-image
@@ -21,7 +16,7 @@ agents:
 
   - name: remember-formatter
     description: Agent assigned to extract dates, times, and messages to schedule reminders.
-    model: deepseek/deepseek-chat-v3.1
+    model: deepseek/deepseek-v4-flash
     prompt_path: agents/prompts/remember-formatter.md
 
   - name: transcriber
