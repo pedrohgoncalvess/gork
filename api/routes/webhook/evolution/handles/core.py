@@ -18,6 +18,7 @@ COMMANDS = [
             (":no-background", "Remove fundo da imagem.", [("t", "Verdadeiro"),]),
             (":random", "Usa uma imagem aleatória", [("t", "Verdadeiro"),]),
             (":fill", "Preenche todo o tamanho do sticker cortando o excesso da imagem.", [("true", "Verdadeiro"),]),
+            (":url", "Usa uma URL do Twitter/X como fonte do sticker.", [("https://x.com/usuario/status/12345", "Link do post"),]),
             (":effect", "Adiciona um efeito. *Apenas figurinhas animadas*", [
                 ("explosion", "Efeito de explosão"),
                 ("breathing", "Efeito de respiração (infla e desinfla)"),

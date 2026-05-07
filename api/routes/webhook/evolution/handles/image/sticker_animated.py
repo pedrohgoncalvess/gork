@@ -402,14 +402,12 @@ def _compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 4
     return output_path
 
 
-async def animated_sticker(
-        db_message: Message, effect: str = None
+async def animated_sticker_from_bytes(
+        media_bytes: bytes,
+        caption_text: str = None,
+        effect: str = None,
 ) -> str:
-    caption_text = clean_text(db_message.content)
-    media_data = await download_media(db_message.message_id, True)
-    media_bytes = base64.b64decode(media_data[0])
-
-    with tempfile.NamedTemporaryFile(suffix='.webp', delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix='.media', delete=False) as f:
         f.write(media_bytes)
         webp_path = f.name
 
@@ -448,3 +446,12 @@ async def animated_sticker(
         for path in [webp_path, gif_path, output_webp_path]:
             if os.path.exists(path):
                 os.remove(path)
+
+
+async def animated_sticker(
+        db_message: Message, effect: str = None
+) -> str:
+    caption_text = clean_text(db_message.content)
+    media_data = await download_media(db_message.message_id, True)
+    media_bytes = base64.b64decode(media_data[0])
+    return await animated_sticker_from_bytes(media_bytes, caption_text, effect)
