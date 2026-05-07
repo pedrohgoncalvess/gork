@@ -1,4 +1,5 @@
-from typing import Optional
+import json
+from typing import Any, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,14 +27,24 @@ from database.models.base import User
 from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
+from database.operations.content import MessageRepository
 from database.operations.manager import InteractionRepository, ModelRepository
 from external import completions
 from external.evolution import send_audio, send_message
+from llm_access import (
+    get_group_messages,
+    get_group_users,
+    get_user_images,
+    get_user_messages,
+    search_messages,
+)
 from log import logger
 from tts import text_to_speech
 
 
 MAX_WEB_SEARCH_DEPTH = 2
+MAX_DATABASE_QUERY_ITERATIONS = 10
+DATABASE_QUERY_STOP_ITERATION = 7
 
 async def handle_conversation_agent(
         remote_id: str,
@@ -82,12 +93,32 @@ async def _dispatch_gork_response(
         context: dict,
         group_id: Optional[int],
         web_search_depth: int = 0,
+        database_query_iteration: int = 0,
+        database_context: str = "",
 ):
     try:
         parsed = await parse_gork_response(raw_response)
     except ValueError as e:
         await logger.error("ConversationHandle", "ParseError", str(e))
         await send_message(remote_id, "Desculpa, tive um problema interno. Tenta de novo?", message_id)
+        return
+
+    queries = parsed.get("queries", [])
+    if queries:
+        await _continue_with_database_queries(
+            parsed=parsed,
+            remote_id=remote_id,
+            message_id=message_id,
+            user=user,
+            db=db,
+            db_message=db_message,
+            scheduler=scheduler,
+            context=context,
+            group_id=group_id,
+            web_search_depth=web_search_depth,
+            database_query_iteration=database_query_iteration,
+            database_context=database_context,
+        )
         return
 
     for action in parsed.get("actions", []):
@@ -105,11 +136,193 @@ async def _dispatch_gork_response(
                 context=context,
                 group_id=group_id,
                 web_search_depth=web_search_depth,
+                database_query_iteration=database_query_iteration,
+                database_context=database_context,
             )
             if not should_continue:
                 return
         except Exception as e:
             await logger.error("ConversationHandle", f"ActionError:{action_type}", str(e))
+
+
+async def _continue_with_database_queries(
+        parsed: dict,
+        remote_id: str,
+        message_id: str,
+        user: User,
+        db: AsyncSession,
+        db_message: Message,
+        scheduler: AsyncIOScheduler,
+        context: dict,
+        group_id: Optional[int],
+        web_search_depth: int,
+        database_query_iteration: int,
+        database_context: str,
+) -> None:
+    next_iteration = database_query_iteration + 1
+    if next_iteration >= DATABASE_QUERY_STOP_ITERATION:
+        await logger.error(
+            "ConversationHandle",
+            "DatabaseQueryLimit",
+            f"Stopped database query recursion at iteration {next_iteration}."
+        )
+        await send_message(
+            remote_id,
+            "Nao consegui concluir essa consulta com seguranca. Tenta pedir de um jeito mais especifico?",
+            message_id,
+        )
+        return
+
+    if next_iteration > MAX_DATABASE_QUERY_ITERATIONS:
+        await logger.error(
+            "ConversationHandle",
+            "DatabaseQueryLimit",
+            f"Exceeded max database query iterations: {MAX_DATABASE_QUERY_ITERATIONS}."
+        )
+        return
+
+    query_results = []
+    for query in parsed.get("queries", []):
+        query_results.append(
+            await _execute_database_query(
+                db=db,
+                group_id=group_id,
+                query=query,
+            )
+        )
+
+    context_chunk = _format_database_query_context(
+        iteration=next_iteration,
+        reasoning=parsed.get("reasoning", ""),
+        next_call_instruction=parsed.get("next_call_instruction", ""),
+        query_results=query_results,
+    )
+    additional_context = "\n\n".join(
+        part for part in [database_context, context_chunk] if part
+    )
+
+    raw_response = await conversation_agent(
+        db=db,
+        user_id=user.id,
+        last_message_id=db_message.id,
+        group_id=group_id,
+        additional_context=additional_context,
+    )
+
+    await _dispatch_gork_response(
+        raw_response=raw_response,
+        remote_id=remote_id,
+        message_id=message_id,
+        user=user,
+        db=db,
+        db_message=db_message,
+        scheduler=scheduler,
+        context=context,
+        group_id=group_id,
+        web_search_depth=web_search_depth,
+        database_query_iteration=next_iteration,
+        database_context=additional_context,
+    )
+
+
+async def _execute_database_query(
+        db: AsyncSession,
+        group_id: Optional[int],
+        query: dict,
+) -> dict[str, Any]:
+    query_type = query.get("query_type")
+    params = query.get("parameters", {}) or {}
+
+    if group_id is None:
+        return {
+            "query_type": query_type,
+            "parameters": params,
+            "error": "Database queries are only available inside a group context.",
+        }
+
+    try:
+        if query_type == "get_group_users":
+            result = await get_group_users(
+                db=db,
+                group_id=group_id,
+                query=params.get("query") or params.get("search") or params.get("name"),
+                limit=params.get("limit"),
+            )
+        elif query_type in {"get_group_messages", "get_messages"}:
+            result = await get_group_messages(
+                db=db,
+                group_id=group_id,
+                query=params.get("query") or params.get("search") or params.get("text"),
+                limit=params.get("limit"),
+                user_id=params.get("user_id"),
+                media_type=params.get("media_type"),
+                include_deleted=bool(params.get("include_deleted", False)),
+            )
+        elif query_type == "get_user_messages":
+            user_id = params.get("user_id") or params.get("id")
+            if not user_id:
+                raise ValueError("Missing required parameter: user_id")
+            result = await get_user_messages(
+                db=db,
+                group_id=group_id,
+                user_id=int(user_id),
+                query=params.get("query") or params.get("search") or params.get("text"),
+                limit=params.get("limit"),
+                include_deleted=bool(params.get("include_deleted", False)),
+            )
+        elif query_type == "search_messages":
+            search_query = params.get("query") or params.get("search") or params.get("text")
+            if not search_query:
+                raise ValueError("Missing required parameter: query")
+            result = await search_messages(
+                db=db,
+                group_id=group_id,
+                query=search_query,
+                limit=params.get("limit"),
+                user_id=params.get("user_id"),
+                media_type=params.get("media_type"),
+                include_deleted=bool(params.get("include_deleted", False)),
+            )
+        elif query_type == "get_user_images":
+            user_id = params.get("user_id") or params.get("id")
+            if not user_id:
+                raise ValueError("Missing required parameter: user_id")
+            result = await get_user_images(
+                db=db,
+                group_id=group_id,
+                user_id=int(user_id),
+                limit=params.get("limit"),
+            )
+        else:
+            raise ValueError(f"Unknown query_type: {query_type}")
+
+        return {
+            "query_type": query_type,
+            "parameters": params,
+            "result": result,
+        }
+    except Exception as error:
+        await logger.error("ConversationHandle", "DatabaseQueryError", str(error))
+        return {
+            "query_type": query_type,
+            "parameters": params,
+            "error": str(error),
+        }
+
+
+def _format_database_query_context(
+        iteration: int,
+        reasoning: str,
+        next_call_instruction: str,
+        query_results: list[dict[str, Any]],
+) -> str:
+    return (
+        f"## Database Query Iteration {iteration}\n"
+        f"Model reasoning before query:\n{reasoning or '[EMPTY]'}\n\n"
+        f"Next call instruction from model:\n{next_call_instruction or '[EMPTY]'}\n\n"
+        "[DATABASE QUERY RESULTS]\n"
+        f"{json.dumps(query_results, ensure_ascii=False, default=str)}"
+    )
 
 
 async def _run_web_search(
@@ -168,8 +381,11 @@ async def _dispatch_action(
         context: dict,
         group_id: Optional[int],
         web_search_depth: int = 0,
+        database_query_iteration: int = 0,
+        database_context: str = "",
 ) -> bool:
     params = action.get("parameters", {}) or {}
+    message_repo = MessageRepository(db)
 
     if action_type == "message":
         await send_message(remote_id, action.get("content", ""), db_message.message_id)
@@ -183,17 +399,13 @@ async def _dispatch_action(
         return True
 
     elif action_type == "sticker":
-
-        sticker_context = dict(context)
-        quoted_id = params.get("message_id")
-        if quoted_id:
-            sticker_context["image_quote"] = str(quoted_id)
+        message_id = params.get("message_id")
+        referred_message = await message_repo.find_by_id(message_id)
 
         await handle_sticker_command(
             remote_id=remote_id,
-            db_message=db_message,
+            db_message=referred_message,
             db=db,
-            message_context=sticker_context,
         )
         return True
 
@@ -201,41 +413,35 @@ async def _dispatch_action(
         users_requested = params.get("users", [])
         user_repo = UserRepository(db)
 
-        picture_context = dict(context)
         resolved_mentions = []
-        for name in users_requested:
-            found = await user_repo.find_by_name(name)
-            if found:
-                resolved_mentions.append(found.src_id or found.phone_number)
+        for user_id in users_requested:
+            user = await user_repo.find_by_id(user_id)
+            if user:
+                resolved_mentions.append(user)
 
-        picture_context["mentions"] = resolved_mentions
-        picture_context["quoted_message"] = db_message.message_id
-
-        await handle_picture_command(remote_id=remote_id, context=picture_context, db=db)
+        await handle_picture_command(remote_id=remote_id, mentions=resolved_mentions)
         return True
 
     elif action_type == "image":
-        prompt = params.get("prompt", "")
+        message_id = params.get("message_id")
+        referred_message = await message_repo.find_by_id(message_id)
+
         await handle_image_command(
             remote_id=remote_id,
             user_id=user.id,
-            db_message=db_message,
-            context=context,
-            group_id=group_id,
+            db_message=referred_message,
         )
         return True
 
     elif action_type == "describe":
-        quoted_msg_id = params.get("message_id")
-        describe_context = dict(context)
-        if quoted_msg_id:
-            describe_context["image_quote"] = str(quoted_msg_id)
+        message_id = params.get("message_id")
+        referred_message = await message_repo.find_by_id(message_id)
         await handle_describe_image_command(
             remote_id=remote_id,
             user_id=user.id,
-            medias=describe_context,
             db=db,
             group_id=group_id,
+            db_message=referred_message,
         )
         return True
 
@@ -259,7 +465,7 @@ async def _dispatch_action(
 
     elif action_type == "web_search":
         if web_search_depth >= MAX_WEB_SEARCH_DEPTH:
-            await send_message(remote_id, "Nao consegui concluir a busca agora. Tenta de novo em instantes?", db_message.message_id)
+            await send_message(remote_id, "Nao consegui concluir a busca agora. Tenta de novo outra hora")
             return False
 
         query = params.get("query") or params.get("term") or params.get("search")
@@ -268,10 +474,13 @@ async def _dispatch_action(
             return False
 
         search_result = await _run_web_search(db, user, query, group_id)
-        additional_context = (
+        web_search_context = (
             "## Web Search Result\n"
             f"Query: {query}\n\n"
             f"{search_result}"
+        )
+        additional_context = "\n\n".join(
+            part for part in [database_context, web_search_context] if part
         )
         raw_response = await conversation_agent(
             db=db,
@@ -291,6 +500,8 @@ async def _dispatch_action(
             context=context,
             group_id=group_id,
             web_search_depth=web_search_depth + 1,
+            database_query_iteration=database_query_iteration,
+            database_context=database_context,
         )
         return False
 
