@@ -9,7 +9,7 @@ import httpx
 import numpy as np
 from PIL import Image
 
-from api.routes.webhook.evolution.handles import clean_text
+from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
 from database.models.content import Message
 from external.evolution import download_media

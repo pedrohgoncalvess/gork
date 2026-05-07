@@ -1,8 +1,8 @@
 from typing import List
 
-from api.routes.webhook.evolution.processors.group import INSTANCE_NUMBER
 from database.models.base import User
 from s3 import S3Client
+from utils import INSTANCE_NUMBER
 
 
 async def get_pictures(mentions: List[User]) -> list[tuple[str, str]]:

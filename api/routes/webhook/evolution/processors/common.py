@@ -50,11 +50,10 @@ async def process_commands(
             body, group_id, treated_text, db, scheduler, context, db_message
         )
     else:
-        pass
-        # await process_intent_based_commands(
-        #     conversation, remote_id, message_id, user,
-        #     body, group_id, treated_text, db, scheduler, context, db_message
-        # )
+        await handle_conversation_agent(
+            remote_id, user, db_message,
+            db, scheduler, context
+        )
 
 
 async def process_explicit_commands(
@@ -114,9 +113,9 @@ async def process_explicit_commands(
 
     if "!gallery" in lw_conversation:
         if group_id:
-            await handle_list_images_command(remote_id, treated_text, db, group_id=group_id)
+            await handle_list_images_command(remote_id, db_message, db, group_id=group_id)
         else:
-            await handle_list_images_command(remote_id, treated_text, db, user_id=user.id)
+            await handle_list_images_command(remote_id, db_message, db, user_id=user.id)
         return
 
     if "!picture" in lw_conversation:
@@ -146,11 +145,9 @@ async def process_explicit_commands(
 
     await handle_conversation_agent(
         remote_id=remote_id,
-        message_id=message_id,
         user=user,
         db_message=db_message,
         db=db,
         scheduler=scheduler,
         context=context,
-        group_id=group_id,
     )

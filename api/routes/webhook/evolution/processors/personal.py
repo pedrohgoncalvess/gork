@@ -3,7 +3,8 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.handles import is_message_too_old, transcribe_audio
+from api.routes.webhook.evolution.handles.audio import transcribe_audio
+from api.routes.webhook.evolution.handles.core import is_message_too_old
 from api.routes.webhook.evolution.processors.common import process_commands
 from database.operations.base import UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
@@ -45,17 +46,23 @@ async def process_private_message(
         sender_id=user.id,
         group_id=None,
         content=conversation,
-        created_at=datetime.fromtimestamp(event_data["messageTimestamp"])
+        created_at=datetime.fromtimestamp(event_data["messageTimestamp"]),
     )
 
     if context.get("image_message"):
-        await save_image_if_new(
+        media = await save_image_if_new(
             db=db,
             user_id=user.id,
             message_id=message_id,
             image_message_id=context["image_message"],
             group_id=None,
         )
+        media_id = media.id if media else None
+    else:
+        media_id = None
+
+    if media_id:
+        db_message = await message_repo.update(db_message.id, {"media_id": media_id})
 
     if not is_whitelisted:
         return

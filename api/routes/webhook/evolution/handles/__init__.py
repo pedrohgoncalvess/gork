@@ -14,7 +14,6 @@ from api.routes.webhook.evolution.handles.image import (
     handle_sticker_command,
 )
 from api.routes.webhook.evolution.handles.reminder import handle_remember_command
-from api.routes.webhook.evolution.handles.search import handle_search_command
 from api.routes.webhook.evolution.handles.social import handle_instagram_command, handle_twitter_command
 from api.routes.webhook.evolution.handles.utility import (
     handle_consumption_command,
