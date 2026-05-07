@@ -50,7 +50,9 @@ async def static_sticker(
         db_message: Message,
         db: AsyncSession, random_image: bool = False,
         remove_background: bool = False, fill: bool = False,
-        gork_req: bool = False
+        gork_req: bool = False,
+        source_image_bytes: bytes | None = None,
+        caption_text: str | None = None,
 ) -> str:
     message_repo = MessageRepository(db)
 
@@ -58,19 +60,20 @@ async def static_sticker(
         db_message.quoted_message_id
     ) if db_message.quoted_message_id else None
 
-    caption_text = clean_text(db_message.content)
-    if not caption_text:
+    if caption_text is None:
+        caption_text = clean_text(db_message.content)
+    if not caption_text and quoted_message:
         caption_text = quoted_message.content
 
     image_base64 = None
 
-    if db_message.media_id:
+    if db_message.media_id and source_image_bytes is None:
         image_base64, _ = await download_media(db_message.message_id)
-    if quoted_message.media_id and image_base64 is None:
+    if quoted_message and quoted_message.media_id and image_base64 is None and source_image_bytes is None:
         image_base64, _ = await download_media(quoted_message.message_id)
-    if image_base64 is None and quoted_message:
+    if image_base64 is None and source_image_bytes is None and quoted_message:
         user_repo = UserRepository(db)
-        user = await user_repo.find_by_id(quoted_message.user_id) if not gork_req else user_repo.find_by_id(db_message.user_id)
+        user = await user_repo.find_by_id(quoted_message.user_id) if not gork_req else await user_repo.find_by_id(db_message.user_id)
         if caption_text:
             pattern = r'@(\d+)'
             mentions = re.findall(pattern, caption_text)
@@ -87,9 +90,9 @@ async def static_sticker(
             response = await client.get(
                 "https://api.api-ninjas.com/v1/randomimage", headers={"X-Api-Key": NINJA_KEY}
             )
-            image_base64 = response.content
+            source_image_bytes = response.content
 
-    image_bytes = base64.b64decode(image_base64)
+    image_bytes = source_image_bytes or base64.b64decode(image_base64)
     img = Image.open(BytesIO(image_bytes))
 
     if remove_background:

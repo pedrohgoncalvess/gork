@@ -3,11 +3,13 @@ from typing import Optional, List
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.execution.describe_image import describe_image_agent
+from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.gallery import list_images, search_images
 from api.routes.webhook.evolution.handles.image.generate import generate_image
 from api.routes.webhook.evolution.handles.image.picture import get_pictures
-from api.routes.webhook.evolution.handles.image.sticker_animated import animated_sticker
+from api.routes.webhook.evolution.handles.image.sticker_animated import animated_sticker, animated_sticker_from_bytes
 from api.routes.webhook.evolution.handles.image.sticker_static import static_sticker
+from api.routes.webhook.evolution.handles.social import download_twitter_media, extract_twitter_url
 from database.models.base import User
 from database.models.content import Message
 from database.operations.content import MessageRepository, MediaRepository
@@ -40,6 +42,34 @@ async def handle_sticker_command(
 ):
     message_repo = MessageRepository(db)
     params = parse_params(db_message.content)
+    twitter_url = params.get("url") or extract_twitter_url(db_message.content or "")
+    if twitter_url:
+        result = await download_twitter_media(twitter_url)
+        if not result.is_success:
+            await send_message(remote_id, f"Erro ao baixar midia do Twitter/X: {result.error}")
+            return
+
+        effect = params.get("effect")
+        caption_text = clean_text(db_message.content).replace(twitter_url, "").strip()
+        if result.media_type == "video":
+            sticker_url = await animated_sticker_from_bytes(result.media_bytes, caption_text, effect)
+            await send_animated_sticker(remote_id, sticker_url)
+        else:
+            is_random = _param_enabled(params.get("random", "false"))
+            remove_background = _param_enabled(params.get("no-background", "false"))
+            fill = _param_enabled(params.get("fill", "false"))
+            webp_base64 = await static_sticker(
+                db_message,
+                db,
+                is_random,
+                remove_background,
+                fill,
+                source_image_bytes=result.media_bytes,
+                caption_text=caption_text,
+            )
+            await send_sticker(remote_id, webp_base64)
+        return
+
     message_to_use = db_message if db_message.media_id else await message_repo.find_by_id(db_message.quoted_message_id)
     if message_to_use.media_id:
         media_repo = MediaRepository(db)
