@@ -5,6 +5,14 @@ from typing import Any, Dict, List, Optional
 from log import logger
 
 
+def _empty_gork_response(reasoning: str = "") -> Dict[str, Any]:
+    return {
+        "reasoning": reasoning,
+        "queries": [],
+        "actions": [],
+    }
+
+
 async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
     """
     Parse and validate Gork's JSON response.
@@ -57,25 +65,40 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
         ValueError: When parsing fails or structure is invalid
     """
     if not isinstance(llm_output, str) or not llm_output.strip():
-        raise ValueError("Input must be a non-empty string")
+        return _empty_gork_response("Model returned an empty response.")
 
     text = llm_output.strip()
 
     # Try candidates in order of likelihood
-    for candidate in _candidate_json_strings(text):
+    for attempt, candidate in enumerate(_candidate_json_strings(text), 1):
         try:
             parsed = json.loads(candidate)
             _validate_gork_structure(parsed)
             return parsed
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as error:
+            await _log_parse_attempt_error("JsonDecodeError", attempt, candidate, error)
             continue
-        except ValueError:
+        except ValueError as error:
             # Structure is wrong, but JSON is valid - might be partially correct
+            await _log_parse_attempt_error("ValidationError", attempt, candidate, error)
             continue
 
     # If all candidates fail, log and raise
     await logger.error("GorkParser", "ParseFailed", llm_output)
     raise ValueError("Failed to parse valid Gork JSON response")
+
+
+async def _log_parse_attempt_error(
+        error_type: str,
+        attempt: int,
+        candidate: str,
+        error: Exception,
+) -> None:
+    await logger.error(
+        "GorkParser",
+        f"ParseAttempt{attempt}{error_type}",
+        f"{error}. Candidate: {candidate[:1000]}",
+    )
 
 
 def _candidate_json_strings(text: str) -> List[str]:
@@ -247,6 +270,10 @@ def _validate_gork_structure(response: Any) -> None:
             f"Response must be a dict, got {type(response).__name__}"
         )
 
+    if not response:
+        response.update(_empty_gork_response())
+        return
+
     # Check for required keys
     if "queries" not in response:
         raise ValueError("Response missing required 'queries' key")
@@ -275,9 +302,7 @@ def _validate_gork_structure(response: Any) -> None:
         )
 
     if not queries and not actions:
-        raise ValueError(
-            "Either 'queries' or 'actions' must be non-empty"
-        )
+        return
 
     # Validate next_call_instruction when queries present
     if queries:
