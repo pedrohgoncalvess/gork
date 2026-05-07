@@ -19,10 +19,8 @@ from external import completions
 from external.evolution import download_media
 from s3 import S3Client
 from services import get_mentions_from_content
-from utils import get_env_var
+from utils import INSTANCE_NUMBER
 
-
-INSTANCE_NUMBER = get_env_var("EVOLUTION_INSTANCE_NUMBER")
 
 async def generate_image(
         user_id: int, db_message: Message,

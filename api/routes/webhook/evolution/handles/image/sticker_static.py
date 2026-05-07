@@ -7,7 +7,7 @@ from PIL import Image
 from rembg import new_session, remove
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.handles import clean_text
+from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
 from database.models.content import Message
 from database.operations.base import UserRepository

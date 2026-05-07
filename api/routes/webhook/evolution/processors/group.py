@@ -3,17 +3,17 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.evolution.handles import is_message_too_old, transcribe_audio
+from api.routes.webhook.evolution.handles.audio import transcribe_audio
+from api.routes.webhook.evolution.handles.core import is_message_too_old
 from api.routes.webhook.evolution.processors.common import process_commands
 from database.operations.base import GroupRepository, UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
 from external.evolution import get_group_info, send_message
+from log import logger
 from services import save_image_if_new, save_profile_pic, verifiy_media
 from services.message_buffer import buffer_group_message, clear_group_message_buffer
-from utils import get_env_var
+from utils import INSTANCE_NUMBER
 
-
-INSTANCE_NUMBER = get_env_var("EVOLUTION_INSTANCE_NUMBER")
 
 async def process_group_message(
         body: dict,
@@ -36,7 +36,7 @@ async def process_group_message(
     group_repo = GroupRepository(db)
     message_repo = MessageRepository(db)
     whitelist_repo = WhiteListRepository(db)
-    user_gork = await user_repo.find_by_name("Gork")
+    user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
 
     user = await user_repo.find_or_create(name=contact_name, lid=contact_id, phone_number=phone_number)
     _ = await save_profile_pic(user.id)
@@ -64,6 +64,15 @@ async def process_group_message(
         else None
     )
 
+    db_message = await message_repo.find_or_create(
+        message_id=message_id,
+        sender_id=user.id,
+        group_id=group.id,
+        content=conversation,
+        created_at=datetime.fromtimestamp(event_data["messageTimestamp"]),
+        quoted_message_id=quoted_message.id if quoted_message else None
+    )
+
     if context_message.get("image_message"):
         media_message = await save_image_if_new(
             db=db,
@@ -76,15 +85,8 @@ async def process_group_message(
     else:
         media_id = None
 
-    db_message = await message_repo.find_or_create(
-        message_id=message_id,
-        sender_id=user.id,
-        group_id=group.id,
-        content=conversation,
-        created_at=datetime.fromtimestamp(event_data["messageTimestamp"]),
-        quoted_message_id=quoted_message.id if quoted_message else None,
-        media_id=media_id
-    )
+    if media_id:
+        db_message = await message_repo.update(db_message.id, {"media_id": media_id})
 
     if not is_whitelisted:
         return
@@ -108,6 +110,8 @@ async def process_group_message(
         and quoted_message.user_id == user_gork.id
     )
 
+    await logger.info("Conversation", "Reply Gork", f"{is_reply_to_gork} | {user_gork.id} | {quoted_message.user_id if quoted_message else None}")
+
     if is_mention or is_reply_to_gork:
         if group.auto_message:
             await clear_group_message_buffer(group.id)
@@ -125,11 +129,7 @@ async def process_group_message(
     if "audio_message" in context_message.keys():
         conversation = await transcribe_audio(body, user.id, group.id)
 
-    bare_mentions = [f"@{INSTANCE_NUMBER}"]
-    if user_gork:
-        bare_mentions.append(f"@{user_gork.src_id}")
-
-    if conversation in bare_mentions:
+    if "!status" in conversation:
         await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
         return
 

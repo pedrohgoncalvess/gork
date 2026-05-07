@@ -19,7 +19,7 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
         event_type = body.get("event")
         event_data = body.get("data")
 
-        valid_events = ["messages.upsert", "send.messages"]
+        valid_events = ["messages.upsert", "send.message"]
         if event_type not in valid_events:
             return
 
@@ -47,7 +47,7 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
             else:
                 return
 
-        if event_type == "send.messages":
+        if event_type == "send.message":
             await process_sent_message(body, remote_id, db, not is_private)
             return
 
