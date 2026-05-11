@@ -35,7 +35,6 @@ async def evolution_webhook(request: Request):
             detail="Invalid API key"
         )
 
-    await other_webhooks_logger.info("Webhook", "Evolution", body)
     asyncio.create_task(process_webhook(body, scheduler))
 
     return {"status": "received"}
