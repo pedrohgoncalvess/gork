@@ -10,7 +10,7 @@ from database.operations.base import GroupRepository, UserRepository, WhiteListR
 from database.operations.content import MessageRepository
 from external.evolution import get_group_info, send_message
 from log import logger
-from services import save_image_if_new, save_profile_pic, verifiy_media
+from services import save_image_if_new, save_profile_pic, save_video_if_new, verifiy_media
 from services.message_buffer import buffer_group_message, clear_group_message_buffer
 from utils import INSTANCE_NUMBER
 
@@ -82,6 +82,16 @@ async def process_group_message(
             group_id=group.id,
         )
         media_id = media_message.id if media_message else None
+    elif context_message.get("video_message"):
+        video_id = context_message.get("video_message")
+        media_message = await save_video_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            video_message_id=video_id,
+            group_id=group.id,
+        )
+        media_id = media_message.id if media_message else None
     else:
         media_id = None
 
@@ -109,8 +119,6 @@ async def process_group_message(
         and user_gork
         and quoted_message.user_id == user_gork.id
     )
-
-    await logger.info("Conversation", "Reply Gork", f"{is_reply_to_gork} | {user_gork.id} | {quoted_message.user_id if quoted_message else None}")
 
     if is_mention or is_reply_to_gork:
         if group.auto_message:
