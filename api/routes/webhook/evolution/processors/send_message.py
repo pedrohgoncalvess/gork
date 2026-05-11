@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MessageRepository
 from log import logger
-from services import save_image_if_new, verifiy_media
+from services import save_image_if_new, save_video_if_new, verifiy_media
 from utils import INSTANCE_NUMBER
 
 
@@ -60,6 +60,16 @@ async def process_sent_message(
             group_id=group_id,
         )
         media_id = media.id
+    elif context_message.get("video_message") or context_message.get("video_quote"):
+        video_id = context_message.get("video_message") or context_message.get("video_quote")
+        media = await save_video_if_new(
+            db=db,
+            user_id=user_gork.id,
+            message_id=message_id,
+            video_message_id=video_id,
+            group_id=group_id,
+        )
+        media_id = media.id if media else None
     else:
         media_id = None
 

@@ -297,8 +297,8 @@ def _compress_gif_to_limit(input_path: str, output_path: str, max_bytes: int = 9
                 '-i', input_path,
                 '-vf',
                 f'fps={cfg["fps"]},'
-                f'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
-                f'scale={cfg["scale"]}:{cfg["scale"]},'
+                f'scale={cfg["scale"]}:{cfg["scale"]}:force_original_aspect_ratio=decrease,'
+                f'pad={cfg["scale"]}:{cfg["scale"]}:(ow-iw)/2:(oh-ih)/2:color=white@0,'
                 f'split[s0][s1];'
                 f'[s0]palettegen=max_colors={cfg["colors"]}[p];'
                 f'[s1][p]paletteuse=dither=bayer:bayer_scale=5',
@@ -325,8 +325,8 @@ def _compress_gif_to_limit(input_path: str, output_path: str, max_bytes: int = 9
         '-i', input_path,
         '-vf',
         f'fps={cfg["fps"]},'
-        f'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
-        f'scale={cfg["scale"]}:{cfg["scale"]},'
+        f'scale={cfg["scale"]}:{cfg["scale"]}:force_original_aspect_ratio=decrease,'
+        f'pad={cfg["scale"]}:{cfg["scale"]}:(ow-iw)/2:(oh-ih)/2:color=white@0,'
         f'split[s0][s1];'
         f'[s0]palettegen=max_colors={cfg["colors"]}[p];'
         f'[s1][p]paletteuse=dither=bayer:bayer_scale=5',
@@ -357,8 +357,8 @@ def _compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 4
                 '-i', input_path,
                 '-vf',
                 f'fps={cfg["fps"]},'
-                f'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
-                f'scale={cfg["scale"]}:{cfg["scale"]}:flags=lanczos',
+                f'scale={cfg["scale"]}:{cfg["scale"]}:force_original_aspect_ratio=decrease:flags=lanczos,'
+                f'pad={cfg["scale"]}:{cfg["scale"]}:(ow-iw)/2:(oh-ih)/2:color=white@0',
                 '-vcodec', 'libwebp',
                 '-lossless', '0',
                 '-compression_level', '6',
@@ -386,8 +386,8 @@ def _compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 4
         'ffmpeg', '-i', input_path,
         '-vf',
         f'fps={cfg["fps"]},'
-        f'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
-        f'scale={cfg["scale"]}:{cfg["scale"]}:flags=lanczos',
+        f'scale={cfg["scale"]}:{cfg["scale"]}:force_original_aspect_ratio=decrease:flags=lanczos,'
+        f'pad={cfg["scale"]}:{cfg["scale"]}:(ow-iw)/2:(oh-ih)/2:color=white@0',
         '-vcodec', 'libwebp',
         '-lossless', '0',
         '-compression_level', '6',
@@ -419,8 +419,8 @@ async def animated_sticker_from_bytes(
             'ffmpeg', '-i', webp_path,
             '-vf',
             'fps=30,'
-            'crop=min(iw\\,ih):min(iw\\,ih):(iw-min(iw\\,ih))/2:(ih-min(iw\\,ih))/2,'
-            'scale=512:512:flags=lanczos,'
+            'scale=512:512:force_original_aspect_ratio=decrease:flags=lanczos,'
+            'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white@0,'
             'split[s0][s1];[s0]palettegen=max_colors=256[p];[s1][p]paletteuse=dither=sierra2_4a',
             '-t', '6',
             '-loop', '0',
@@ -451,7 +451,7 @@ async def animated_sticker_from_bytes(
 async def animated_sticker(
         db_message: Message, effect: str = None
 ) -> str:
-    caption_text = clean_text(db_message.content)
-    media_data = await download_media(db_message.message_id, True)
+    caption_text = clean_text(db_message.content) if db_message.content else None
+    media_data = await download_media(db_message.message_id)
     media_bytes = base64.b64decode(media_data[0])
     return await animated_sticker_from_bytes(media_bytes, caption_text, effect)
