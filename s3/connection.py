@@ -172,6 +172,47 @@ class S3Client:
 
         return object_name
 
+    async def upload_video(
+            self,
+            video_bytes: bytes,
+            object_name: Optional[str] = None,
+            content_type: str = "video/mp4",
+    ) -> str:
+        """
+        Upload a video to MinIO
+
+        Args:
+            video_bytes: Raw video bytes
+            object_name: S3 object name (generates UUID if None)
+            content_type: MIME type of the video
+
+        Returns:
+            S3 object name
+        """
+        if not self.client:
+            raise RuntimeError("MinIO client not initialized")
+
+        loop = asyncio.get_event_loop()
+        bucket_name = "whatsapp"
+
+        if object_name is None:
+            object_name = f"{uuid.uuid4()}.mp4"
+
+        buffer = BytesIO(video_bytes)
+        buffer.seek(0)
+
+        await loop.run_in_executor(
+            None,
+            self.client.put_object,
+            bucket_name,
+            object_name,
+            buffer,
+            len(video_bytes),
+            content_type
+        )
+
+        return object_name
+
     async def get_presigned_url(
             self,
             sub_path: str,

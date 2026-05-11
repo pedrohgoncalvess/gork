@@ -71,21 +71,22 @@ async def handle_sticker_command(
         return
 
     message_to_use = db_message if db_message.media_id else await message_repo.find_by_id(db_message.quoted_message_id)
-    if message_to_use.media_id:
+    if message_to_use and message_to_use.media_id:
         media_repo = MediaRepository(db)
         media = await media_repo.find_by_id(message_to_use.media_id)
-        if media.type == "mp4":
+        if media.type in ("mp4", "video"):
             effect = params.get("effect")
             gif_url = await animated_sticker(message_to_use, effect)
             await send_animated_sticker(remote_id, gif_url)
-        else:
-            is_random = _param_enabled(params.get("random", "false"))
-            remove_background = _param_enabled(params.get("no-background", "false"))
-            fill = _param_enabled(params.get("fill", "false"))
-            webp_base64 = await static_sticker(
-                db_message, db, is_random, remove_background, fill
-            )
-            await send_sticker(remote_id, webp_base64)
+            return
+
+    is_random = _param_enabled(params.get("random", "false"))
+    remove_background = _param_enabled(params.get("no-background", "false"))
+    fill = _param_enabled(params.get("fill", "false"))
+    webp_base64 = await static_sticker(
+        db_message, db, is_random, remove_background, fill
+    )
+    await send_sticker(remote_id, webp_base64)
 
 
 async def handle_describe_image_command(

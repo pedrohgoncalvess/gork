@@ -9,7 +9,7 @@ from api.routes.webhook.evolution.processors.common import process_commands
 from database.operations.base import UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
 from external.evolution import send_message
-from services import save_image_if_new, save_profile_pic, verifiy_media
+from services import save_image_if_new, save_profile_pic, save_video_if_new, verifiy_media
 
 
 async def process_private_message(
@@ -55,6 +55,16 @@ async def process_private_message(
             user_id=user.id,
             message_id=message_id,
             image_message_id=context["image_message"],
+            group_id=None,
+        )
+        media_id = media.id if media else None
+    elif context.get("video_message") or context.get("video_quote"):
+        video_id = context.get("video_message") or context.get("video_quote")
+        media = await save_video_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            video_message_id=video_id,
             group_id=None,
         )
         media_id = media.id if media else None
