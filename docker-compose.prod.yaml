@@ -12,6 +12,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./log:/app/log:rw
+      - ./utils:/app/utils:rw
     networks:
       - dokploy-network
     restart: unless-stopped
