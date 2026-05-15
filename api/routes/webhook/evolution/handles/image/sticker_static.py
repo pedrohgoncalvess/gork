@@ -61,9 +61,9 @@ async def static_sticker(
     ) if db_message.quoted_message_id else None
 
     if caption_text is None:
-        caption_text = clean_text(db_message.content)
+        caption_text = clean_text(db_message.content) if db_message.content else None
     if not caption_text and quoted_message:
-        caption_text = quoted_message.content
+        caption_text = clean_text(quoted_message.content) if quoted_message.content else None
 
     image_base64 = None
 
