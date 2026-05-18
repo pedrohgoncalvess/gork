@@ -58,6 +58,19 @@ def _resize_cover(frame: Image.Image, size: tuple) -> Image.Image:
     return frame.crop((left, top, left + target_w, top + target_h))
 
 
+def _square_video_filter(size: int, fill: bool) -> str:
+    if fill:
+        return (
+            f"scale={size}:{size}:force_original_aspect_ratio=increase:flags=lanczos,"
+            f"crop={size}:{size}"
+        )
+
+    return (
+        f"scale={size}:{size}:force_original_aspect_ratio=decrease:flags=lanczos,"
+        f"pad={size}:{size}:(ow-iw)/2:(oh-ih)/2:color=white@0"
+    )
+
+
 def _apply_bulge_effect(frame: Image.Image, intensity: float = 0.5) -> Image.Image:
     img_array = np.array(frame)
     height, width = img_array.shape[:2]
@@ -339,7 +352,12 @@ def _compress_gif_to_limit(input_path: str, output_path: str, max_bytes: int = 9
     return output_path
 
 
-def _compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 490_000) -> str:
+def _compress_webp_sticker(
+        input_path: str,
+        output_path: str,
+        max_bytes: int = 490_000,
+        fill: bool = False,
+) -> str:
     configs = [
         {"scale": 512, "fps": 30, "quality": 85, "duration": 6},
         {"scale": 512, "fps": 24, "quality": 75, "duration": 6},
@@ -357,8 +375,7 @@ def _compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 4
                 '-i', input_path,
                 '-vf',
                 f'fps={cfg["fps"]},'
-                f'scale={cfg["scale"]}:{cfg["scale"]}:force_original_aspect_ratio=decrease:flags=lanczos,'
-                f'pad={cfg["scale"]}:{cfg["scale"]}:(ow-iw)/2:(oh-ih)/2:color=white@0',
+                f'{_square_video_filter(cfg["scale"], fill)}',
                 '-vcodec', 'libwebp',
                 '-lossless', '0',
                 '-compression_level', '6',
@@ -386,8 +403,7 @@ def _compress_webp_sticker(input_path: str, output_path: str, max_bytes: int = 4
         'ffmpeg', '-i', input_path,
         '-vf',
         f'fps={cfg["fps"]},'
-        f'scale={cfg["scale"]}:{cfg["scale"]}:force_original_aspect_ratio=decrease:flags=lanczos,'
-        f'pad={cfg["scale"]}:{cfg["scale"]}:(ow-iw)/2:(oh-ih)/2:color=white@0',
+        f'{_square_video_filter(cfg["scale"], fill)}',
         '-vcodec', 'libwebp',
         '-lossless', '0',
         '-compression_level', '6',
@@ -406,6 +422,7 @@ async def animated_sticker_from_bytes(
         media_bytes: bytes,
         caption_text: str = None,
         effect: str = None,
+        fill: bool = False,
 ) -> str:
     with tempfile.NamedTemporaryFile(suffix='.media', delete=False) as f:
         f.write(media_bytes)
@@ -419,8 +436,7 @@ async def animated_sticker_from_bytes(
             'ffmpeg', '-i', webp_path,
             '-vf',
             'fps=30,'
-            'scale=512:512:force_original_aspect_ratio=decrease:flags=lanczos,'
-            'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=white@0,'
+            f'{_square_video_filter(512, fill)},'
             'split[s0][s1];[s0]palettegen=max_colors=256[p];[s1][p]paletteuse=dither=sierra2_4a',
             '-t', '6',
             '-loop', '0',
@@ -437,7 +453,7 @@ async def animated_sticker_from_bytes(
             effected = tempfile.mktemp(suffix='.gif')
             working_gif = _add_effect_to_gif_frames(working_gif, effected, effect)
 
-        _compress_webp_sticker(working_gif, output_webp_path)
+        _compress_webp_sticker(working_gif, output_webp_path, fill=fill)
 
         gif_url = await _upload_to_tmpfile(output_webp_path)
         return gif_url
@@ -449,9 +465,9 @@ async def animated_sticker_from_bytes(
 
 
 async def animated_sticker(
-        db_message: Message, effect: str = None
+        db_message: Message, effect: str = None, fill: bool = False
 ) -> str:
     caption_text = clean_text(db_message.content) if db_message.content else None
     media_data = await download_media(db_message.message_id)
     media_bytes = base64.b64decode(media_data[0])
-    return await animated_sticker_from_bytes(media_bytes, caption_text, effect)
+    return await animated_sticker_from_bytes(media_bytes, caption_text, effect, fill)
