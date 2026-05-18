@@ -1,1 +1,1 @@
-from database.connection import get_db, PgConnection
+from database.connection import dispose_database_engine, get_db, PgConnection
