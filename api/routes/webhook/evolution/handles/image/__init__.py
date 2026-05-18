@@ -50,14 +50,14 @@ async def handle_sticker_command(
             return
 
         effect = params.get("effect")
+        fill = _param_enabled(params.get("fill", "false"))
         caption_text = clean_text(db_message.content).replace(twitter_url, "").strip()
         if result.media_type == "video":
-            sticker_url = await animated_sticker_from_bytes(result.media_bytes, caption_text, effect)
+            sticker_url = await animated_sticker_from_bytes(result.media_bytes, caption_text, effect, fill)
             await send_animated_sticker(remote_id, sticker_url)
         else:
             is_random = _param_enabled(params.get("random", "false"))
             remove_background = _param_enabled(params.get("no-background", "false"))
-            fill = _param_enabled(params.get("fill", "false"))
             webp_base64 = await static_sticker(
                 db_message,
                 db,
@@ -76,7 +76,8 @@ async def handle_sticker_command(
         media = await media_repo.find_by_id(message_to_use.media_id)
         if media.type in ("mp4", "video"):
             effect = params.get("effect")
-            gif_url = await animated_sticker(message_to_use, effect)
+            fill = _param_enabled(params.get("fill", "false"))
+            gif_url = await animated_sticker(message_to_use, effect, fill)
             await send_animated_sticker(remote_id, gif_url)
             return
 
