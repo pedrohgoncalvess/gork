@@ -1,4 +1,5 @@
 import asyncio
+import traceback
 
 from fastapi import APIRouter, HTTPException, Request
 from starlette import status
@@ -15,6 +16,18 @@ router = APIRouter(
 )
 
 EVOLUTION_INSTANCE_KEY = get_env_var("EVOLUTION_INSTANCE_KEY")
+
+
+def _handle_webhook_task_exception(task: asyncio.Task) -> None:
+    if task.cancelled():
+        return
+
+    exc = task.exception()
+    if exc:
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        asyncio.create_task(
+            logger.error("Webhook", "TaskError", f"{task.get_name()}: {exc}\n{tb}")
+        )
 
 
 @router.post("")
@@ -35,6 +48,10 @@ async def evolution_webhook(request: Request):
             detail="Invalid API key"
         )
 
-    asyncio.create_task(process_webhook(body, scheduler))
+    task = asyncio.create_task(
+        process_webhook(body, scheduler),
+        name=f"process_webhook:{body.get('event')}",
+    )
+    task.add_done_callback(_handle_webhook_task_exception)
 
     return {"status": "received"}
