@@ -44,9 +44,11 @@ CREATE TABLE "manager"."agent" (
     id SERIAL,
     name VARCHAR(50) NOT NULL UNIQUE,
     prompt TEXT NOT NULL,
+    model_id INTEGER NOT NULL,
     inserted_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() AT TIME ZONE 'America/Sao_Paulo'),
 
-    CONSTRAINT agent_pk PRIMARY KEY (id)
+    CONSTRAINT agent_pk PRIMARY KEY (id),
+    CONSTRAINT agent_model_fk FOREIGN KEY (model_id) REFERENCES "manager"."model"(id)
 );
 
 CREATE SCHEMA "content";
