@@ -29,11 +29,13 @@ async def save_video_if_new(
     media_repo = MediaRepository(db)
     message_repo = MessageRepository(db)
     message = await message_repo.find_by_message_id(message_id)
+    message_id_db = message.id if message else None
+    message_media_id = message.media_id if message else None
 
     existing_media = await media_repo.find_by_hash(video_hash)
     if existing_media:
-        if message and message.media_id != existing_media.id:
-            await message_repo.update(message.id, {"media_id": existing_media.id})
+        if message_id_db and message_media_id != existing_media.id:
+            await message_repo.update(message_id_db, {"media_id": existing_media.id})
         return existing_media
 
     if group_id is not None:
@@ -54,22 +56,31 @@ async def save_video_if_new(
         object_name=path
     )
 
-    new_media = await media_repo.insert(
-        Media(
-            ext_id=video_id,
-            name=name,
-            bucket="whatsapp",
-            path=path,
-            type="video",
-            description=None,
-            description_embedding=None,
-            hash=video_hash,
-            phash=None,
-            size=len(decoded) / (1024 * 1024),
+    try:
+        new_media = await media_repo.insert(
+            Media(
+                ext_id=video_id,
+                name=name,
+                bucket="whatsapp",
+                path=path,
+                type="video",
+                description=None,
+                description_embedding=None,
+                hash=video_hash,
+                phash=None,
+                size=len(decoded) / (1024 * 1024),
+            )
         )
-    )
+    except ValueError as e:
+        if "Erro de integridade" in str(e):
+            existing_media = await media_repo.find_by_hash(video_hash)
+            if existing_media:
+                if message_id_db and message_media_id != existing_media.id:
+                    await message_repo.update(message_id_db, {"media_id": existing_media.id})
+                return existing_media
+        raise e
 
-    if message:
-        await message_repo.update(message.id, {"media_id": new_media.id})
+    if message_id_db:
+        await message_repo.update(message_id_db, {"media_id": new_media.id})
 
     return new_media

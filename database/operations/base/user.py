@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import List, Optional
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, desc
 
-from database.models.base import User
+from database.models.base import User, Group
 from database.operations import BaseRepository
 
 
@@ -53,3 +53,15 @@ class UserRepository(BaseRepository[User]):
             name=name
         )
         return await self.insert(new_user)
+
+    async def find_users_by_group_id(self, group_id: int) -> List[User]:
+        from database.models.content import Message
+        query = (
+            select(self.model)
+            .join(Message, Message.user_id == self.model.id)
+            .where(Message.group_id == group_id)
+            .distinct()
+            .order_by(desc(Message.created_at))
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())

@@ -74,25 +74,49 @@ class PgConnection:
     async def connect(self):
         try:
             self.session = get_session_factory()()
-            await logger.info("Database", "Connection", f"New SQLAlchemy Session")
         except Exception as error:
             await logger.error("Database", f"Error while creating session: {error}")
             raise
 
+        try:
+            await logger.info("Database", "Connection", "New SQLAlchemy Session")
+        except Exception as log_error:
+            import sys
+            sys.stderr.write(f"Logging error during database session creation: {log_error}\n")
+
     async def close(self):
         if self.session:
-            await logger.info("Database", "Connection", "Session Closed")
-            await self.session.close()
-            self.session = None
+            try:
+                await logger.info("Database", "Connection", "Session Closed")
+            except Exception as log_error:
+                import sys
+                sys.stderr.write(f"Logging error during database session close: {log_error}\n")
+            
+            try:
+                await asyncio.shield(self.session.close())
+            except Exception as error:
+                try:
+                    await logger.error("Database", f"Error during session close: {error}")
+                except Exception:
+                    pass
+            finally:
+                self.session = None
 
     async def __aenter__(self):
         await self.connect()
         return self.session
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if exc_type and self.session:
-            await self.session.rollback()
-        await self.close()
+        try:
+            if exc_type and self.session:
+                await asyncio.shield(self.session.rollback())
+        except Exception as error:
+            try:
+                await logger.error("Database", f"Error during rollback: {error}")
+            except Exception:
+                pass
+        finally:
+            await self.close()
 
 
 async def get_db():
