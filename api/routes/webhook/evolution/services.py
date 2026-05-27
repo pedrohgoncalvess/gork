@@ -31,11 +31,11 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
         if remote_id.endswith(".net"):
             is_private = True
             phone_number = remote_id.replace("@s.whatsapp.net", "")
-            remote_id = alt_id.replace("@lid", "")
+            remote_id = alt_id.replace("@lid", "").replace("@s.whatsapp.net", "")
         elif alt_id.endswith(".net"):
             is_private = True
             phone_number = alt_id.replace("@s.whatsapp.net", "")
-            remote_id = remote_id.replace("@lid", "")
+            remote_id = remote_id.replace("@lid", "").replace("@s.whatsapp.net", "")
         elif remote_id.endswith("@g.us"):
             is_private = False
             remote_id = remote_id.replace("@g.us", "")
