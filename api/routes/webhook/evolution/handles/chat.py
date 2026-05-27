@@ -97,7 +97,7 @@ async def _dispatch_gork_response(
     try:
         parsed = await parse_gork_response(raw_response)
     except ValueError as e:
-        await logger.error("ConversationHandle", "ParseError", str(e))
+        await logger.error("ConversationHandle", "ParseError", f"Failed to parse raw_response: '{raw_response}'. Error: {str(e)}")
         await send_message(remote_id, "Desculpa, tive um problema interno. Tenta de novo", message_id)
         return
 
@@ -409,7 +409,8 @@ async def _dispatch_action(
     message_repo = MessageRepository(db)
 
     if action_type == "message":
-        await send_message(remote_id, action.get("content", ""), db_message.message_id, is_first_message)
+        content = action.get("content", "")
+        _ = await send_message(remote_id, content, db_message.message_id, is_first_message)
         return True
 
     elif action_type == "audio":
