@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -13,6 +14,16 @@ from log import logger
 from utils import INSTANCE_NUMBER
 
 
+def replace_mentions(content: str, users_map: dict) -> str:
+    if not content:
+        return content
+    mentions = re.findall(r'@(\d{5,})', content)
+    for mention in set(mentions):
+        if mention in users_map:
+            content = content.replace(f"@{mention}", f"@{users_map[mention]}")
+    return content
+
+
 async def conversation_agent(
         db: AsyncSession,
         user_id: int,
@@ -25,6 +36,24 @@ async def conversation_agent(
     message_repo = MessageRepository(db)
     user_repo = UserRepository(db)
 
+    users_map = {}
+    if group_id:
+        users_group = await user_repo.find_users_by_group_id(group_id)
+        raw_messages = await message_repo.find_by_group(group_id, 80)
+        messages = []
+
+        users_map = {u.src_id.split('@')[0]: (u.name or "Usuário") for u in users_group if u.src_id}
+
+        for message in raw_messages:
+            message.content = replace_mentions(message.content, users_map)
+            
+            if not message.content:
+                continue
+
+            messages.append(message)
+    else:
+        messages = await message_repo.find_by_sender(user_id, 40)
+
     user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
     user_sender = await user_repo.find_by_id(user_id)
 
@@ -32,15 +61,9 @@ async def conversation_agent(
         await logger.error("Agent", "Generic", "Instance user not found.")
         return ""
 
-    if group_id:
-        messages = await message_repo.find_by_group(group_id, 80)
-    else:
-        messages = await message_repo.find_by_sender(user_id, 40)
-
     messages_rel = {message.id: message for message in messages}
 
     formatted_messages = []
-    existing_messages = []
     for msg in messages:
         if msg.sender.id == user_gork.id:
             sender_name = "Você"
@@ -51,9 +74,6 @@ async def conversation_agent(
 
         content = msg.content or ""
 
-        if content.lower() in existing_messages:
-            continue
-
         msg_date = msg.created_at.date()
         today = datetime.now().date()
 
@@ -63,10 +83,15 @@ async def conversation_agent(
             timestamp = msg.created_at.strftime('%H:%M')
 
         formatted_messages.append(f"[{msg.id}] {sender_name} - [{timestamp}]: {content}")
-        existing_messages.append(content.lower())
 
     last_message = messages_rel.get(last_message_id)
+    if last_message:
+        last_message.content = replace_mentions(last_message.content, users_map)
+        
     quoted_message = messages_rel.get(last_message.quoted_message_id) if last_message else None
+    if quoted_message:
+        quoted_message.content = replace_mentions(quoted_message.content, users_map)
+
     current_message = (
             (f"Mensagem quotada: {quoted_message.content}\n" if quoted_message else "") +
             f"{user_sender.name} - [{datetime.now().strftime('%H:%M')}]: {last_message.content if last_message else ''}"
@@ -81,6 +106,12 @@ async def conversation_agent(
     if not model:
         await logger.error("Agent", "Conversation", f"Model not found for agent {agent.name}.")
         return ""
+
+    await logger.info(
+        "Agent",
+        "Conversation",
+        f"Messages: {formatted_messages}. Current message: {current_message},  group_id={group_id}"
+    )
 
     now = datetime.now(ZoneInfo("America/Sao_Paulo"))
 
@@ -103,8 +134,27 @@ async def conversation_agent(
         ]
     }
 
-    req = await completions(payload_term_formatter)
-    resp = req["choices"][0]["message"]["content"]
+    await logger.info(
+        "Agent",
+        "Conversation",
+        f"Calling completions API with model {model.openrouter_id}. Prompt chars: {len(system_prompt)}. User msg: '{current_message}'"
+    )
+
+    try:
+        req = await completions(payload_term_formatter)
+        resp = req["choices"][0]["message"]["content"]
+        await logger.info(
+            "Agent",
+            "Conversation",
+            f"Completions success. Response length: {len(resp) if resp else 0}. Tokens used: prompt={req.get('usage', {}).get('prompt_tokens')}, completion={req.get('usage', {}).get('completion_tokens')}"
+        )
+    except Exception as e:
+        await logger.error(
+            "Agent",
+            "ConversationError",
+            f"Error calling completions API: {str(e)}"
+        )
+        raise
 
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(
