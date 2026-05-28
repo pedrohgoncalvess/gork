@@ -420,6 +420,29 @@ async def _dispatch_action(
         await send_audio(remote_id, audio_b64, db_message.message_id)
         return True
 
+    elif action_type in ("send_audio", "send_video", "send_image"):
+        media_id = params.get("media_id")
+        if media_id:
+            from database.operations.content.sup_media import SupMediaRepository
+            from s3.connection import S3Client
+            from external.evolution import send_video, send_image
+            
+            media_repo = SupMediaRepository(db)
+            media = await media_repo.find_by_id(media_id)
+            if media:
+                s3_client = S3Client()
+                await s3_client.connect()
+                # get_image_base64 gets any object as base64
+                media_b64 = await s3_client.get_image_base64(media.bucket, media.path)
+                
+                if action_type == "send_audio":
+                    await send_audio(remote_id, media_b64, db_message.message_id)
+                elif action_type == "send_video":
+                    await send_video(remote_id, media_b64)
+                elif action_type == "send_image":
+                    await send_image(remote_id, media_b64)
+        return True
+
     elif action_type == "sticker":
         message_id = params.get("message_id")
         referred_message = await message_repo.find_by_id(message_id)
