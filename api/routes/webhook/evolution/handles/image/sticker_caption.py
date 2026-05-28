@@ -11,19 +11,19 @@ from PIL import Image, ImageDraw, ImageFont
 from utils import project_root
 
 
-TEXT_FONT_PATH = f"{project_root}/utils/fonts/arial-bold.ttf"
-EMOJI_FONT_PATH = f"{project_root}/utils/fonts/noto-emoji.ttf"
+TEXT_FONT_PATH = f"{project_root}/assets/fonts/arial-bold.ttf"
+EMOJI_FONT_PATH = f"{project_root}/assets/fonts/noto-emoji.ttf"
 EMOJI_FONT_CANDIDATES = (
-    f"{project_root}/utils/fonts/NotoColorEmoji.ttf",
-    f"{project_root}/utils/fonts/noto-color-emoji.ttf",
-    f"{project_root}/utils/fonts/seguiemj.ttf",
+    f"{project_root}/assets/fonts/NotoColorEmoji.ttf",
+    f"{project_root}/assets/fonts/noto-color-emoji.ttf",
+    f"{project_root}/assets/fonts/seguiemj.ttf",
     "C:/Windows/Fonts/seguiemj.ttf",
     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
     "/usr/share/fonts/noto-color-emoji/NotoColorEmoji.ttf",
     EMOJI_FONT_PATH,
 )
 TWEMOJI_BASE_URL = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72"
-TWEMOJI_ASSET_DIR = Path(project_root) / "utils" / "emoji" / "twemoji"
+TWEMOJI_ASSET_DIR = Path(project_root) / "assets" / "emoji" / "twemoji"
 TWEMOJI_CACHE_DIR = Path(project_root) / ".cache" / "twemoji"
 
 _VARIATION_SELECTORS = {"\ufe0e", "\ufe0f"}
