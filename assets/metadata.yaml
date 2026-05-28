@@ -1,0 +1,78 @@
+audio:
+  - name: "Amante Ligando"
+    path: "assets/audio/5a1f6s4fads5f-copia_0FcOETT.mp3"
+    description: >
+      Áudio de uma mulher com voz sedutora perguntando "posso te ligar agora ou tua mulher tá aí perto de ti?".
+      Perfeito pra causar pânico instantâneo em quem tá do lado da namorada/esposa. Uma arma de destruição
+      de relacionamentos disfarçada de arquivo mp3. Use quando quiser ver alguém gaguejar e suar frio em tempo real.
+
+  - name: "Bruh"
+    path: "assets/audio/Voicy_Bruh.mp3"
+    description: >
+      O clássico e imortal "bruh" sound effect. Aquele som curto e seco que expressa decepção, descrença e
+      questionamento existencial em uma única sílaba. Ideal pra quando alguém fala algo tão absurdo que palavras
+      não são suficientes. O emoji 🗿 em forma de áudio.
+
+  - name: "GET OUT"
+    path: "assets/audio/Voicy_GET OUT.mp3"
+    description: >
+      Alguém gritando "GET OUT!" com toda a energia e indignação do universo. Use quando a pessoa cruzou todos
+      os limites do aceitável e precisa ser verbalmente expulsa da conversa. Funciona como um cartão vermelho sonoro.
+
+  - name: "HEHEHEHA"
+    path: "assets/audio/Voicy_HEHEHEHA.mp3"
+    description: >
+      A risada icônica do Rei do Clash Royale. Aquele "HEHEHEHA" debochado que ecoa na alma de quem acabou de
+      perder. Perfeito pra comemorar a desgraça alheia com estilo e sem nenhum remorso. BM supremo em forma de áudio.
+
+  - name: "Shut Yo Bitch Ass Up"
+    path: "assets/audio/Voicy_Shut Yo Bitch Ass Up.mp3"
+    description: >
+      Um mandamento direto e sem cerimônia pra alguém calar a boca. Sem filtro, sem educação, sem papas na língua.
+      Quando "silêncio, por favor" simplesmente não transmite a urgência necessária da situação.
+
+  - name: "Lula Meu Presidente"
+    path: "assets/audio/ah-lula-meu-presidente.mp3"
+    description: >
+      Áudio do Lula sendo Lula. Um clássico da internet brasileira com o ex-presidente em seu habitat natural.
+      Use em momentos de patriotismo duvidoso ou quando a conversa precisa de um toque político-humorístico.
+
+  - name: "Ai Que Delícia Mickey"
+    path: "assets/audio/ai-que-delicia-mickey.mp3"
+    description: >
+      O lendário "ai que delícia" narrado com a voz do Mickey Mouse. Uma combinação que ninguém pediu mas todo
+      mundo precisava. Perfeito pra reagir a qualquer coisa minimamente boa com um nível desproporcional de entusiasmo.
+
+  - name: "Gyro Finalmente Entendeu"
+    path: "assets/audio/foi-quando-gyro-finalmente-entendeu.mp3"
+    description: >
+      Narração épica e dramática do momento em que Gyro, do arco das Quimeras de Hunter x Hunter, finalmente
+      percebe que "o universo não se importa comigo". Use quando alguém tiver uma revelação existencial devastadora
+      ou quando a realidade bater na porta sem avisar. Niilismo com trilha sonora de anime.
+
+  - name: "Lula e Neymar"
+    path: "assets/audio/lula-e-neymar-47.mp3"
+    description: >
+      Áudio gerado por IA do Lula falando "ai Neymar, você gosta de bater né Neymar". Uma distorção gloriosa
+      que mistura política com futebol de um jeito que só o Brasil consegue produzir. Use quando quiser invocar
+      o caos e a confusão em qualquer conversa.
+
+  - name: "Pou Estourado"
+    path: "assets/audio/pou-estourado_zIWCpMy.mp3"
+    description: >
+      O som do Pou, aquele bichinho virtual, mas com o áudio completamente estourado e distorcido. Uma agressão
+      sonora que funciona como jumpscare auditivo. Ideal pra quem tá de fone e merece um susto gratuito.
+      Dano psicológico garantido.
+
+  - name: "Você Não Tem Aura"
+    path: "assets/audio/voce-nao-tem-aura.mp3"
+    description: >
+      O veredito final sobre a existência de alguém: "você não tem aura". Um atestado de que a pessoa é tão
+      sem presença que é praticamente invisível. Use pra humilhar com classe e elegância quem tentou ser descolado
+      e falhou miseravelmente.
+
+video:
+  # TODO: adicionar metadados dos vídeos
+
+image:
+  # TODO: adicionar metadados das imagens
