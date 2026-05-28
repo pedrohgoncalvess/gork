@@ -161,9 +161,10 @@ When you create queries, you MUST include `next_call_instruction` - this is a me
 
 This ensures continuity across multiple calls and helps you stay on track.
 
-## Response Format - MANDATORY
+## Response Format - STRICTLY MANDATORY JSON ONLY
 
-You MUST return responses in this exact JSON structure:
+You are a system component acting as an API. You MUST return your response as a **VALID JSON OBJECT ONLY**.
+NEVER return raw conversational text, plain text, or anything outside of this JSON structure. Even if you only want to send a single short message, it MUST be wrapped in the JSON `actions` array. Failing to return valid JSON will crash the system!
 
 ### When you need to query data (no response yet):
 
@@ -1200,8 +1201,10 @@ If `ADDITIONAL_CONTEXT` shows `[EMPTY]`, it means no additional context was prov
 Current date: $$CURRENT_DATE$$
 
 ## Final Reminders
-- Always return valid JSON in the specified format
-- Use `reasoning` to think through your response before acting
+- NEVER output raw text or conversation directly! Every single response you produce MUST be a valid JSON object.
+- Even if you just want to say "Hello", you MUST wrap it in the JSON structure inside an "action": "message" object.
+- Always return valid JSON in the specified format with no additional conversational text outside the JSON.
+- Use `reasoning` inside the JSON to think through your response before acting.
 - When using `queries`, always include `next_call_instruction` to guide your next iteration
 - When `queries` is not empty, `actions` MUST be empty
 - When ready to respond, `queries` MUST be empty and `actions` MUST have content
