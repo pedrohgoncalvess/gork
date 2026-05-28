@@ -30,7 +30,7 @@ _VARIATION_SELECTORS = {"\ufe0e", "\ufe0f"}
 _ZERO_WIDTH_JOINER = "\u200d"
 
 
-def add_caption_to_image(img: Image.Image, caption_text: str = "") -> Image.Image:
+def add_caption_to_image(img: Image.Image, caption_text: str = "", font_size_param: str = "l") -> Image.Image:
     if not caption_text:
         return img
 
@@ -60,19 +60,26 @@ def add_caption_to_image(img: Image.Image, caption_text: str = "") -> Image.Imag
     draw = ImageDraw.Draw(img)
 
     if top_text:
-        _draw_meme_text(img, draw, top_text, width, height, position="top")
+        _draw_meme_text(img, draw, top_text, width, height, position="top", size_param=font_size_param)
 
     if bottom_text:
-        _draw_meme_text(img, draw, bottom_text, width, height, position="bottom")
+        _draw_meme_text(img, draw, bottom_text, width, height, position="bottom", size_param=font_size_param)
 
     return img
 
 
-def _draw_meme_text(img: Image.Image, draw, text: str, width: int, height: int, position: str = "top"):
+def _draw_meme_text(img: Image.Image, draw, text: str, width: int, height: int, position: str = "top", size_param: str = "l"):
     margin_x = int(width * 0.05)
     usable_width = width - (2 * margin_x)
 
-    font_size = int(height / 8)
+    size_param = size_param.lower()
+    if size_param == "s":
+        font_size = int(height / 16)
+    elif size_param == "m":
+        font_size = int(height / 11)
+    else:
+        font_size = int(height / 8)
+
     font_size = max(30, min(font_size, 120))
 
     best_font = None
