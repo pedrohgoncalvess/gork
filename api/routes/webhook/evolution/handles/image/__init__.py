@@ -51,9 +51,10 @@ async def handle_sticker_command(
 
         effect = params.get("effect")
         fill = _param_enabled(params.get("fill", "false"))
+        font_size = params.get("font-size", "l")
         caption_text = clean_text(db_message.content).replace(twitter_url, "").strip()
         if result.media_type == "video":
-            sticker_url = await animated_sticker_from_bytes(result.media_bytes, caption_text, effect, fill)
+            sticker_url = await animated_sticker_from_bytes(result.media_bytes, caption_text, effect, fill, font_size)
             await send_animated_sticker(remote_id, sticker_url)
         else:
             is_random = _param_enabled(params.get("random", "false"))
@@ -64,6 +65,7 @@ async def handle_sticker_command(
                 is_random,
                 remove_background,
                 fill,
+                font_size_param=font_size,
                 source_image_bytes=result.media_bytes,
                 caption_text=caption_text,
             )
@@ -77,15 +79,17 @@ async def handle_sticker_command(
         if media.type in ("mp4", "video"):
             effect = params.get("effect")
             fill = _param_enabled(params.get("fill", "false"))
-            gif_url = await animated_sticker(message_to_use, effect, fill)
+            font_size = params.get("font-size", "l")
+            gif_url = await animated_sticker(message_to_use, effect, fill, font_size)
             await send_animated_sticker(remote_id, gif_url)
             return
 
     is_random = _param_enabled(params.get("random", "false"))
     remove_background = _param_enabled(params.get("no-background", "false"))
     fill = _param_enabled(params.get("fill", "false"))
+    font_size = params.get("font-size", "l")
     webp_base64 = await static_sticker(
-        db_message, db, is_random, remove_background, fill
+        db_message, db, is_random, remove_background, fill, font_size_param=font_size
     )
     await send_sticker(remote_id, webp_base64)
 

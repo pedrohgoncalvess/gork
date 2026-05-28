@@ -3,7 +3,7 @@
 
 CREATE TABLE "content"."sup_media" (
     id SERIAL,
-    name VARCHAR(50) NOT NULL,
+    name VARCHAR(50) UNIQUE NOT NULL,
     bucket VARCHAR(50) NOT NULL,
     path VARCHAR(150) NOT NULL,
     type VARCHAR(10) NOT NULL,

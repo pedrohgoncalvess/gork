@@ -187,13 +187,128 @@ def _apply_rotation_effect(frame: Image.Image, progress: float) -> Image.Image:
     return frame.rotate(-angle, resample=Image.BICUBIC, expand=False, fillcolor=(255, 255, 255))
 
 
+    img_array = np.array(frame)
+    height, width = img_array.shape[:2]
+    center_x, center_y = width // 2, height // 2
+    max_radius = math.sqrt(center_x ** 2 + center_y ** 2)
+    new_img = np.copy(img_array)
+    for y in range(height):
+        for x in range(width):
+            dx = x - center_x
+            dy = y - center_y
+            distance = math.sqrt(dx ** 2 + dy ** 2)
+            if distance < max_radius:
+                factor = 1.0 - (distance / max_radius)
+                factor = math.pow(factor, 2) * intensity
+                new_distance = distance * (1 + factor)
+                if new_distance < max_radius:
+                    angle = math.atan2(dy, dx)
+                    src_x = int(center_x + new_distance * math.cos(angle))
+                    src_y = int(center_y + new_distance * math.sin(angle))
+                    if 0 <= src_x < width and 0 <= src_y < height:
+                        new_img[y, x] = img_array[src_y, src_x]
+    return Image.fromarray(new_img)
+
+
+def _apply_pinch_effect(frame: Image.Image, intensity: float = 0.5) -> Image.Image:
+    img_array = np.array(frame)
+    height, width = img_array.shape[:2]
+    center_x, center_y = width // 2, height // 2
+    max_radius = math.sqrt(center_x ** 2 + center_y ** 2)
+    new_img = np.copy(img_array)
+    for y in range(height):
+        for x in range(width):
+            dx = x - center_x
+            dy = y - center_y
+            distance = math.sqrt(dx ** 2 + dy ** 2)
+            if distance < max_radius:
+                factor = 1.0 - (distance / max_radius)
+                factor = math.pow(factor, 2) * intensity
+                new_distance = distance * (1 - factor * 0.5)
+                angle = math.atan2(dy, dx)
+                src_x = int(center_x + new_distance * math.cos(angle))
+                src_y = int(center_y + new_distance * math.sin(angle))
+                if 0 <= src_x < width and 0 <= src_y < height:
+                    new_img[y, x] = img_array[src_y, src_x]
+    return Image.fromarray(new_img)
+
+
+def _apply_swirl_effect(frame: Image.Image, intensity: float = 0.5) -> Image.Image:
+    img_array = np.array(frame)
+    height, width = img_array.shape[:2]
+    center_x, center_y = width // 2, height // 2
+    max_radius = math.sqrt(center_x ** 2 + center_y ** 2)
+    new_img = np.copy(img_array)
+    for y in range(height):
+        for x in range(width):
+            dx = x - center_x
+            dy = y - center_y
+            distance = math.sqrt(dx ** 2 + dy ** 2)
+            if distance < max_radius:
+                factor = 1.0 - (distance / max_radius)
+                rotation = factor * intensity * math.pi * 2
+                angle = math.atan2(dy, dx) + rotation
+                src_x = int(center_x + distance * math.cos(angle))
+                src_y = int(center_y + distance * math.sin(angle))
+                if 0 <= src_x < width and 0 <= src_y < height:
+                    new_img[y, x] = img_array[src_y, src_x]
+    return Image.fromarray(new_img)
+
+
+def _apply_wave_effect(frame: Image.Image, intensity: float = 10) -> Image.Image:
+    img_array = np.array(frame)
+    height, width = img_array.shape[:2]
+    new_img = np.copy(img_array)
+    for y in range(height):
+        offset = int(intensity * math.sin(y * 0.1))
+        for x in range(width):
+            src_x = (x + offset) % width
+            new_img[y, x] = img_array[y, src_x]
+    return Image.fromarray(new_img)
+
+
+def _apply_fisheye_effect(frame: Image.Image, intensity: float = 0.5) -> Image.Image:
+    img_array = np.array(frame)
+    height, width = img_array.shape[:2]
+    center_x, center_y = width // 2, height // 2
+    max_radius = min(center_x, center_y)
+    new_img = np.copy(img_array)
+    for y in range(height):
+        for x in range(width):
+            dx = x - center_x
+            dy = y - center_y
+            distance = math.sqrt(dx ** 2 + dy ** 2)
+            if distance < max_radius:
+                norm_distance = distance / max_radius
+                new_distance = max_radius * math.pow(norm_distance, 1 + intensity)
+                angle = math.atan2(dy, dx)
+                src_x = int(center_x + new_distance * math.cos(angle))
+                src_y = int(center_y + new_distance * math.sin(angle))
+                if 0 <= src_x < width and 0 <= src_y < height:
+                    new_img[y, x] = img_array[src_y, src_x]
+    return Image.fromarray(new_img)
+
+
+def _apply_breathing_effect(frame: Image.Image, progress: float) -> Image.Image:
+    intensity = math.sin(progress * math.pi * 2) * 0.3
+    if intensity > 0:
+        return _apply_bulge_effect(frame, intensity)
+    else:
+        return _apply_pinch_effect(frame, abs(intensity))
+
+
+def _apply_rotation_effect(frame: Image.Image, progress: float) -> Image.Image:
+    angle = progress * 360
+    return frame.rotate(-angle, resample=Image.BICUBIC, expand=False, fillcolor=(255, 255, 255))
+
+
 def _apply_explosion_effect(frame: Image.Image, progress: float, explosion_frames: list = None,
                            explosion_index: int = 0) -> Image.Image:
     if progress >= 0.8 and explosion_frames and isinstance(explosion_frames, list) and len(explosion_frames) > 0:
         return explosion_frames[min(explosion_index, len(explosion_frames) - 1)]
     return frame
 
-def _add_caption_to_gif_frames(gif_path: str, caption_text: str, output_path: str) -> str:
+def _add_caption_to_gif_frames(gif_path: str, caption_text: str, output_path: str, font_size_param: str = "l") -> str:
     gif = Image.open(gif_path)
     frames = []
     durations = []
@@ -202,7 +317,7 @@ def _add_caption_to_gif_frames(gif_path: str, caption_text: str, output_path: st
         while True:
             frame = gif.copy()
             frame = _convert_to_rgb(frame)
-            frame_with_caption = add_caption_to_image(frame, caption_text)
+            frame_with_caption = add_caption_to_image(frame, caption_text, font_size_param)
             frames.append(frame_with_caption)
             durations.append(gif.info.get('duration', 66))
             frame_index += 1
@@ -423,6 +538,7 @@ async def animated_sticker_from_bytes(
         caption_text: str = None,
         effect: str = None,
         fill: bool = False,
+        font_size_param: str = "l",
 ) -> str:
     with tempfile.NamedTemporaryFile(suffix='.media', delete=False) as f:
         f.write(media_bytes)
@@ -447,7 +563,7 @@ async def animated_sticker_from_bytes(
 
         if caption_text:
             captioned = tempfile.mktemp(suffix='.gif')
-            working_gif = _add_caption_to_gif_frames(working_gif, caption_text, captioned)
+            working_gif = _add_caption_to_gif_frames(working_gif, caption_text, captioned, font_size_param)
 
         if effect:
             effected = tempfile.mktemp(suffix='.gif')
@@ -465,9 +581,9 @@ async def animated_sticker_from_bytes(
 
 
 async def animated_sticker(
-        db_message: Message, effect: str = None, fill: bool = False
+        db_message: Message, effect: str = None, fill: bool = False, font_size_param: str = "l"
 ) -> str:
     caption_text = clean_text(db_message.content) if db_message.content else None
     media_data = await download_media(db_message.message_id)
     media_bytes = base64.b64decode(media_data[0])
-    return await animated_sticker_from_bytes(media_bytes, caption_text, effect, fill)
+    return await animated_sticker_from_bytes(media_bytes, caption_text, effect, fill, font_size_param)
