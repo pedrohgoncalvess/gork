@@ -51,6 +51,7 @@ async def static_sticker(
         db: AsyncSession, random_image: bool = False,
         remove_background: bool = False, fill: bool = False,
         gork_req: bool = False,
+        font_size_param: str = "l",
         source_image_bytes: bytes | None = None,
         caption_text: str | None = None,
 ) -> str:
@@ -111,7 +112,7 @@ async def static_sticker(
         img = _resize_contain_transparent(img, (512, 512))
 
     if caption_text:
-        img = add_caption_to_image(img, caption_text)
+        img = add_caption_to_image(img, caption_text, font_size_param)
 
     buffer = BytesIO()
     img.save(buffer, format='WEBP', quality=95)
