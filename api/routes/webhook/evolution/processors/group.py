@@ -44,7 +44,7 @@ async def process_group_message(
     group = await group_repo.find_or_create(group_jid=group_jid)
 
     if not group.name:
-        gp_infos = get_group_info(remote_id)
+        gp_infos = await get_group_info(remote_id)
         group = await group_repo.find_or_create(
             group_jid=group_jid,
             name=gp_infos["subject"],
