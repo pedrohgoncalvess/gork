@@ -14,7 +14,7 @@ TWEMOJI_BASE_URL = (
     f"https://cdn.jsdelivr.net/gh/twitter/twemoji@{TWEMOJI_VERSION}/assets/72x72"
 )
 EMOJI_TEST_URL = "https://unicode.org/Public/emoji/14.0/emoji-test.txt"
-DEFAULT_OUTPUT_DIR = Path("utils/emoji/twemoji")
+DEFAULT_OUTPUT_DIR = Path("assets/emoji/twemoji")
 
 VARIATION_SELECTOR_TEXT = 0xFE0E
 VARIATION_SELECTOR_EMOJI = 0xFE0F
@@ -25,7 +25,7 @@ SKIN_TONE_END = 0x1F3FF
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Download Twemoji PNG assets into utils/emoji/twemoji."
+        description="Download Twemoji PNG assets into assets/emoji/twemoji."
     )
     parser.add_argument(
         "--output-dir",

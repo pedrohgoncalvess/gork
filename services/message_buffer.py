@@ -41,16 +41,22 @@ def _lock_key(group_id: int) -> str:
     return f"group:{group_id}:auto-message:flush-lock"
 
 
+background_tasks = set()
+
+
 def _handle_task_exception(task: asyncio.Task) -> None:
     """Callback para capturar exceções de tasks fire-and-forget."""
+    background_tasks.discard(task)
     if task.cancelled():
         return
     exc = task.exception()
     if exc:
         tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-        asyncio.create_task(
+        log_task = asyncio.create_task(
             logger.error("GroupMessageBuffer", "TaskError", f"{task.get_name()}: {exc}\n{tb}")
         )
+        background_tasks.add(log_task)
+        log_task.add_done_callback(background_tasks.discard)
 
 
 async def clear_group_message_buffer(group_id: int) -> None:
@@ -92,6 +98,7 @@ async def buffer_group_message(
             _flush_after_gap(group_id, remote_id, scheduler, deadline),
             name=f"flush_after_gap:{group_id}",
         )
+        background_tasks.add(task)
         task.add_done_callback(_handle_task_exception)
     except Exception as error:
         await logger.error("GroupMessageBuffer", "BufferError", str(error))

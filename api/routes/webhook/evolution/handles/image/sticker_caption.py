@@ -11,26 +11,26 @@ from PIL import Image, ImageDraw, ImageFont
 from utils import project_root
 
 
-TEXT_FONT_PATH = f"{project_root}/utils/fonts/arial-bold.ttf"
-EMOJI_FONT_PATH = f"{project_root}/utils/fonts/noto-emoji.ttf"
+TEXT_FONT_PATH = f"{project_root}/assets/fonts/arial-bold.ttf"
+EMOJI_FONT_PATH = f"{project_root}/assets/fonts/noto-emoji.ttf"
 EMOJI_FONT_CANDIDATES = (
-    f"{project_root}/utils/fonts/NotoColorEmoji.ttf",
-    f"{project_root}/utils/fonts/noto-color-emoji.ttf",
-    f"{project_root}/utils/fonts/seguiemj.ttf",
+    f"{project_root}/assets/fonts/NotoColorEmoji.ttf",
+    f"{project_root}/assets/fonts/noto-color-emoji.ttf",
+    f"{project_root}/assets/fonts/seguiemj.ttf",
     "C:/Windows/Fonts/seguiemj.ttf",
     "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf",
     "/usr/share/fonts/noto-color-emoji/NotoColorEmoji.ttf",
     EMOJI_FONT_PATH,
 )
 TWEMOJI_BASE_URL = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72"
-TWEMOJI_ASSET_DIR = Path(project_root) / "utils" / "emoji" / "twemoji"
+TWEMOJI_ASSET_DIR = Path(project_root) / "assets" / "emoji" / "twemoji"
 TWEMOJI_CACHE_DIR = Path(project_root) / ".cache" / "twemoji"
 
 _VARIATION_SELECTORS = {"\ufe0e", "\ufe0f"}
 _ZERO_WIDTH_JOINER = "\u200d"
 
 
-def add_caption_to_image(img: Image.Image, caption_text: str = "") -> Image.Image:
+def add_caption_to_image(img: Image.Image, caption_text: str = "", font_size_param: str = "l") -> Image.Image:
     if not caption_text:
         return img
 
@@ -60,19 +60,26 @@ def add_caption_to_image(img: Image.Image, caption_text: str = "") -> Image.Imag
     draw = ImageDraw.Draw(img)
 
     if top_text:
-        _draw_meme_text(img, draw, top_text, width, height, position="top")
+        _draw_meme_text(img, draw, top_text, width, height, position="top", size_param=font_size_param)
 
     if bottom_text:
-        _draw_meme_text(img, draw, bottom_text, width, height, position="bottom")
+        _draw_meme_text(img, draw, bottom_text, width, height, position="bottom", size_param=font_size_param)
 
     return img
 
 
-def _draw_meme_text(img: Image.Image, draw, text: str, width: int, height: int, position: str = "top"):
+def _draw_meme_text(img: Image.Image, draw, text: str, width: int, height: int, position: str = "top", size_param: str = "l"):
     margin_x = int(width * 0.05)
     usable_width = width - (2 * margin_x)
 
-    font_size = int(height / 8)
+    size_param = size_param.lower()
+    if size_param == "s":
+        font_size = int(height / 16)
+    elif size_param == "m":
+        font_size = int(height / 11)
+    else:
+        font_size = int(height / 8)
+
     font_size = max(30, min(font_size, 120))
 
     best_font = None

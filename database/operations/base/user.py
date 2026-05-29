@@ -61,7 +61,6 @@ class UserRepository(BaseRepository[User]):
             .join(Message, Message.user_id == self.model.id)
             .where(Message.group_id == group_id)
             .distinct()
-            .order_by(desc(Message.created_at))
         )
         result = await self.db.execute(query)
         return list(result.scalars().all())
