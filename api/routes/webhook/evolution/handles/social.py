@@ -273,7 +273,7 @@ async def handle_instagram_command(
         )
         return
 
-    result = download_instagram_reel(instagram_url)
+    result = await asyncio.to_thread(download_instagram_reel, instagram_url)
 
     if not result.is_success:
         await send_message(remote_id, f"❌ {result.error}", message_id)
