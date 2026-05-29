@@ -17,17 +17,21 @@ router = APIRouter(
 
 EVOLUTION_INSTANCE_KEY = get_env_var("EVOLUTION_INSTANCE_KEY")
 
+background_tasks = set()
 
 def _handle_webhook_task_exception(task: asyncio.Task) -> None:
+    background_tasks.discard(task)
     if task.cancelled():
         return
 
     exc = task.exception()
     if exc:
         tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-        asyncio.create_task(
+        log_task = asyncio.create_task(
             logger.error("Webhook", "TaskError", f"{task.get_name()}: {exc}\n{tb}")
         )
+        background_tasks.add(log_task)
+        log_task.add_done_callback(background_tasks.discard)
 
 
 @router.post("")
@@ -52,6 +56,7 @@ async def evolution_webhook(request: Request):
         process_webhook(body, scheduler),
         name=f"process_webhook:{body.get('event')}",
     )
+    background_tasks.add(task)
     task.add_done_callback(_handle_webhook_task_exception)
 
     return {"status": "received"}

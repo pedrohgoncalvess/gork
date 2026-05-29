@@ -21,19 +21,6 @@ CREATE TABLE "manager"."model" (
 INSERT INTO "manager"."model" (name, openrouter_id, "default", input_price, output_price) VALUES
 ('DeepSeek Chat V3.1', 'deepseek/deepseek-chat-v3.1', true, 0.27, 1.00),
 ('GPT-4', 'openai/gpt-4', false, 30.00, 60.00),
-('Claude 3.5 Sonnet', 'anthropic/claude-3.5-sonnet', false, 3.00, 15.00),
-('GPT-4.1', 'openai/gpt-4.1', false, 2.00, 8.00),
-('GPT-4.1 Mini', 'openai/gpt-4.1-mini', false, 0.40, 1.60),
-('GPT-3.5 Turbo', 'openai/gpt-3.5-turbo', false, 0.50, 1.50),
-('GPT-5', 'openai/gpt-5.1', false, 1.25, 10.00),
-('Claude 3.5 Haiku', 'anthropic/claude-3.5-haiku', false, 0.80, 4.00),
-('Claude 3 Opus', 'anthropic/claude-3-opus', false, 15.00, 75.00),
-('Llama 3.1 405B', 'meta-llama/llama-3.1-405b-instruct', false, 4.00, 4.00),
-('Llama 3.1 70B', 'meta-llama/llama-3.1-70b-instruct', false, 0.40, 0.40),
-('Llama 3.1 8B', 'meta-llama/llama-3.1-8b-instruct', false, 0.02, 0.03),
-('Mistral Large 2', 'mistralai/mistral-large-2', false, 3.00, 9.00),
-('Mistral Nemo', 'mistralai/mistral-nemo', false, 0.04, 0.17),
-('Mistral Small 3', 'mistralai/mistral-small-3', false, 0.05, 0.08),
 ('Qwen 2.5 72B', 'qwen/qwen-2.5-72b-instruct', false, 0.12, 0.39),
 ('Qwen2.5 Coder 7B', 'qwen/qwen2.5-coder-7b-instruct', false, 0.03, 0.09);
 
