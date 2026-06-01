@@ -11,5 +11,6 @@ class Agent(Base):
     name = Column(Text, nullable=False, unique=True)
     prompt = Column(Text, nullable=False)
     model_id = Column(Integer, nullable=False)
+    response_format = Column(Text, nullable=True)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())

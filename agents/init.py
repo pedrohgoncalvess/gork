@@ -1,4 +1,5 @@
 import asyncio
+import json
 from pathlib import Path
 
 import yaml
@@ -50,10 +51,35 @@ async def init_agents() -> None:
             if not model_db_id:
                 await logger.error("Agents", "Initialization", f"Model {model_id} not found.")
 
+            response_format_str = None
+            schema_path_str = agent_data.get("schema_path")
+
+            if schema_path_str:
+                schema_file = Path(project_root) / schema_path_str
+                if schema_file.exists():
+                    with open(schema_file, "r", encoding="utf-8") as f:
+                        schema_content = json.load(f)
+
+                    is_strict = schema_content.get("additionalProperties") is False
+
+                    response_format = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": name,
+                            "strict": is_strict,
+                            "schema": schema_content
+                        }
+                    }
+                    response_format_str = json.dumps(response_format, ensure_ascii=False)
+                    await logger.info("Agents", "Initialization", f"Loaded schema for agent: {name} (strict={is_strict})")
+                else:
+                    await logger.error("Agents", "Initialization", f"Schema file not found for agent: {name}")
+
             await agent_repo.upsert_by_name(
                 name=name,
                 prompt=prompt_content,
-                model_id=model_db_id
+                model_id=model_db_id,
+                response_format=response_format_str
             )
 
     await logger.info("Agents", "Initialization", "Successful")
