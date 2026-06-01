@@ -26,6 +26,7 @@ async def generate_image(
         user_id: int, db_message: Message,
 ) -> tuple[str, bool]:
     mention_photo: list[tuple[str, User]] = []
+    
     async with PgConnection() as db:
         agent_repo = AgentRepository(db)
         user_repo = UserRepository(db)
@@ -51,7 +52,6 @@ async def generate_image(
         s3_client = S3Client()
         await s3_client.connect()
         if mentions is not None:
-
             for mention in mentions:
                 if mention.phone_number != gork_user.phone_number:
                     if mention is not None and mention.profile_pic_path is not None:
@@ -74,24 +74,56 @@ async def generate_image(
         if not image_model:
             return "Modelo de imagem não configurado.", True
 
-        quoted_message_id = await message_repo.find_by_id(db_message.quoted_message_id) if db_message.quoted_message_id else None
+        quoted_message = await message_repo.find_by_id(db_message.quoted_message_id) if db_message.quoted_message_id else None
 
-        if quoted_message_id and quoted_message_id.media_id:
-            image_base64, _ = await download_media(quoted_message_id.message_id)
+        # Collect images from the message itself and from the quoted message
+        message_image_base64 = None
+        quoted_image_base64 = None
+
+        if db_message.media_id:
+            try:
+                message_image_base64, _ = await download_media(db_message.message_id)
+            except Exception:
+                message_image_base64 = None
+
+        if quoted_message and quoted_message.media_id:
+            try:
+                quoted_image_base64, _ = await download_media(quoted_message.message_id)
+            except Exception:
+                quoted_image_base64 = None
+
+        # Determine which is the "principal" image:
+        # - If the message itself has an image, it's the principal
+        # - Otherwise, the quoted image becomes the principal
+        if message_image_base64:
+            primary_image_base64 = message_image_base64
+            secondary_image_base64 = quoted_image_base64
         else:
-            image_base64 = None
+            primary_image_base64 = quoted_image_base64
+            secondary_image_base64 = None
 
         photo_context = ""
         if mention_photo:
             for idx, (_, us) in enumerate(mention_photo, start=1):
-                idx = idx + 1 if image_base64 else idx
+                offset = 1
+                if primary_image_base64:
+                    offset += 1
+                if secondary_image_base64:
+                    offset += 1
+                idx = idx + offset - 1
                 user_message = user_message.replace(f"@{us.phone_number}@s.whatsapp.net", us.name).replace(f"{us.src_id}@lid", us.name).replace(f"@{us.src_id}", us.name)
                 photo_context = f"{photo_context}Foto [{idx}]:É a pessoa: {us.name}\n"
 
-        base64_context = (
-            "A primeira foto é chamada de 'principal'. Leve isso em consideração quando analisar a requisição final do usuario."
-            if image_base64 else ""
-        )
+        base64_context = ""
+        if primary_image_base64 and secondary_image_base64:
+            base64_context = (
+                "A primeira foto é chamada de 'principal'. A segunda foto é uma imagem de referência/contexto adicional. "
+                "Leve ambas em consideração quando analisar a requisição final do usuario."
+            )
+        elif primary_image_base64:
+            base64_context = (
+                "A primeira foto é chamada de 'principal'. Leve isso em consideração quando analisar a requisição final do usuario."
+            )
 
         final_message = ""
         if base64_context:
@@ -107,8 +139,19 @@ async def generate_image(
             }
         ]
 
-        if image_base64:
-            data_url = f"data:image/jpeg;base64,{image_base64}"
+        if primary_image_base64:
+            data_url = f"data:image/jpeg;base64,{primary_image_base64}"
+            messages_content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": data_url
+                    }
+                }
+            )
+
+        if secondary_image_base64:
+            data_url = f"data:image/jpeg;base64,{secondary_image_base64}"
             messages_content.append(
                 {
                     "type": "image_url",
