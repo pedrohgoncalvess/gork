@@ -3,11 +3,13 @@ agents:
     description: Agent responsible for natural conversation and chatting.
     model: qwen/qwen3.6-flash
     prompt_path: agents/prompts/conversation.md
+    schema_path: agents/schemas/conversation.json
 
   - name: filter
     description: Agent that decides whether Gork should respond to a conversation.
     model: qwen/qwen3.6-flash
     prompt_path: agents/prompts/filter.md
+    schema_path: agents/schemas/filter.json
 
   - name: modify-image
     description: Multimodal assistant for generating or editing images.
@@ -21,10 +23,10 @@ agents:
 
   - name: transcriber
     description: Agent specialized in transcribing audio files.
-    model: google/gemini-2.0-flash-lite-001
+    model: google/gemini-3.1-flash-image-preview
     prompt_path: agents/prompts/transcriber.md
 
   - name: describe-image
     description: Agent responsible for describing images with WhatsApp conversation context.
-    model: google/gemini-2.0-flash-lite-001
+    model: google/gemini-3.1-flash-image-preview
     prompt_path: agents/prompts/describe-image.md

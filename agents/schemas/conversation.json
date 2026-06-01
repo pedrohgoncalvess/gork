@@ -1,0 +1,60 @@
+{
+  "type": "object",
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "Your internal thought process and analysis before deciding how to respond"
+    },
+    "queries": {
+      "type": "array",
+      "description": "Database queries to execute before responding. Use empty array [] when no data is needed.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "query_type": {
+            "type": "string",
+            "enum": ["get_group_users", "get_user_messages", "search_messages", "get_user_images"],
+            "description": "The type of database query to execute"
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Query-specific parameters (e.g. user_id, limit, query)"
+          }
+        },
+        "required": ["query_type", "parameters"]
+      }
+    },
+    "next_call_instruction": {
+      "type": "string",
+      "description": "Detailed instructions for the next iteration. REQUIRED when queries is not empty."
+    },
+    "actions": {
+      "type": "array",
+      "description": "Actions to execute. Must be empty [] when queries is not empty. Must have at least one item when queries is empty and you want to respond.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "Action type: message, send_audio, send_video, send_image, audio, sticker, picture, image, describe, web_search, transcribe, remember, twitter, instagram, resume, help, model, consumption, favorite, gallery"
+          },
+          "content": {
+            "type": "string",
+            "description": "Message text content. Required for message action."
+          },
+          "language": {
+            "type": "string",
+            "enum": ["pt", "en", "es"],
+            "description": "Language code. Required for message action."
+          },
+          "parameters": {
+            "type": "object",
+            "description": "Action parameters. Structure varies by action type."
+          }
+        },
+        "required": ["action"]
+      }
+    }
+  },
+  "required": ["reasoning", "queries", "actions"]
+}
