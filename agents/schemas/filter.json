@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "reasoning": {
+      "type": "string",
+      "description": "Internal analysis of the conversation context and decision rationale"
+    },
+    "should_respond": {
+      "type": "boolean",
+      "description": "Whether Gork should respond to this conversation"
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"],
+      "description": "Confidence level of the decision"
+    },
+    "trigger_type": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "direct_mention",
+            "command",
+            "fact_check",
+            "question",
+            "information_gap",
+            "research",
+            "technical",
+            "conversation_gap"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "What triggered the response decision. Must be specified when should_respond is true, null when false."
+    }
+  },
+  "required": ["reasoning", "should_respond", "confidence", "trigger_type"],
+  "additionalProperties": false
+}
