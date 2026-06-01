@@ -109,6 +109,9 @@ async def filter_agent(
         ],
     }
 
+    if agent.response_format:
+        payload["response_format"] = json.loads(agent.response_format)
+
     req = await completions(payload)
     raw_response = req["choices"][0]["message"]["content"]
     try:

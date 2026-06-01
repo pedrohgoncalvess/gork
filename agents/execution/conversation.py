@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import datetime
 from typing import Optional
@@ -156,6 +157,9 @@ async def conversation_agent(
             }
         ]
     }
+
+    if agent.response_format:
+        payload_term_formatter["response_format"] = json.loads(agent.response_format)
 
     await logger.info(
         "Agent",
