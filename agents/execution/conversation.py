@@ -86,18 +86,39 @@ async def conversation_agent(
         else:
             timestamp = msg.created_at.strftime('%H:%M')
 
-        formatted_messages.append(f"[{msg.id}] {sender_name} - [{timestamp}]: {content}")
+        quoted_str = ""
+        if msg.quoted_message_id:
+            quoted_msg = messages_rel.get(msg.quoted_message_id)
+            if quoted_msg:
+                if quoted_msg.sender.id == user_gork.id:
+                    quoted_sender_name = "Você"
+                elif quoted_msg.sender.name:
+                    quoted_sender_name = quoted_msg.sender.name
+                else:
+                    quoted_sender_name = "Usuário Desconhecido."
+                q_content = quoted_msg.content or ""
+                quoted_str = f"Mensagem quotada: [{quoted_sender_name}] -> {q_content}\n"
+
+        formatted_messages.append(f"{quoted_str}[{msg.id}] {sender_name} - [{timestamp}]: {content}")
 
     last_message = messages_rel.get(last_message_id)
     if last_message:
         last_message.content = replace_mentions(last_message.content, users_map)
         
     quoted_message = messages_rel.get(last_message.quoted_message_id) if last_message else None
+    quoted_str = ""
     if quoted_message:
         quoted_message.content = replace_mentions(quoted_message.content, users_map)
+        if quoted_message.sender.id == user_gork.id:
+            quoted_sender_name = "Você"
+        elif quoted_message.sender.name:
+            quoted_sender_name = quoted_message.sender.name
+        else:
+            quoted_sender_name = "Usuário Desconhecido."
+        quoted_str = f"Mensagem quotada: [{quoted_sender_name}] -> {quoted_message.content}\n"
 
     current_message = (
-            (f"Mensagem quotada: {quoted_message.content}\n" if quoted_message else "") +
+            quoted_str +
             f"{user_sender.name} - [{datetime.now().strftime('%H:%M')}]: {last_message.content if last_message else ''}"
     )
 
