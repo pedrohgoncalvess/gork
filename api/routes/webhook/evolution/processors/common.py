@@ -15,6 +15,7 @@ from api.routes.webhook.evolution.handles import (
     handle_list_favorites_message,
     handle_list_images_command,
     handle_model_command,
+    handle_philo_command,
     handle_picture_command,
     handle_remember_command,
     handle_remove_favorite,
@@ -141,6 +142,19 @@ async def process_explicit_commands(
 
     if "!instagram" in lw_conversation:
         await handle_instagram_command(remote_id, conversation, message_id)
+        return
+
+    if "!philo" in lw_conversation:
+        from services import parse_params
+        params = parse_params(conversation)
+        await handle_philo_command(
+            remote_id=remote_id,
+            message_id=message_id,
+            conversation=conversation,
+            db_message=db_message,
+            db=db,
+            params=params,
+        )
         return
 
     await handle_conversation_agent(

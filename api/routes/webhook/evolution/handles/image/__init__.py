@@ -80,7 +80,12 @@ async def handle_sticker_command(
             effect = params.get("effect")
             fill = _param_enabled(params.get("fill", "false"))
             font_size = params.get("font-size", "l")
-            gif_url = await animated_sticker(message_to_use, effect, fill, font_size)
+            
+            caption_text = clean_text(db_message.content) if db_message.content else None
+            if not caption_text and message_to_use.content:
+                caption_text = clean_text(message_to_use.content) if message_to_use.content else None
+                
+            gif_url = await animated_sticker(message_to_use, effect, fill, font_size, caption_text)
             await send_animated_sticker(remote_id, gif_url)
             return
 
