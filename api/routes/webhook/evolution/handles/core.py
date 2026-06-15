@@ -43,6 +43,24 @@ COMMANDS = [
     ("!remove", "", "hidden", []),
     ("!twitter", "Baixa vídeos ou imagens de links do X/Twitter e envia. _[Ex: !twitter https://x.com/usuario/status/12345]_", "media", []),
     ("!instagram", "Baixa reels do Instagram e envia. _[Ex: !instagram https://www.instagram.com/reel/XXXXXXXX]_", "media", []),
+    (
+        "!philo",
+        "Gera uma imagem filosófica com a frase quotada (ou texto da mensagem) sobreposta à foto do filósofo escolhido.",
+        "image",
+        [
+            (
+                ":quote",
+                "Escolhe o filósofo. Omita para seleção aleatória.",
+                [
+                    ("socrates", "Sócrates (470–399 a.C.)"),
+                    ("platao", "Platão (428–348 a.C.)"),
+                    ("aristoteles", "Aristóteles (384–322 a.C.)"),
+                    ("nietzsche", "Nietzsche (1844–1900 d.C.)"),
+                    ("tales_mileto", "Tales de Mileto (624–546 a.C.)"),
+                ],
+            ),
+        ],
+    ),
 ]
 
 async def is_message_too_old(timestamp: int, max_minutes: int = 20) -> bool:

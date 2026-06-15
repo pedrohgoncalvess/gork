@@ -581,9 +581,10 @@ async def animated_sticker_from_bytes(
 
 
 async def animated_sticker(
-        db_message: Message, effect: str = None, fill: bool = False, font_size_param: str = "l"
+        db_message: Message, effect: str = None, fill: bool = False, font_size_param: str = "l", caption_text: str = None
 ) -> str:
-    caption_text = clean_text(db_message.content) if db_message.content else None
+    if caption_text is None:
+        caption_text = clean_text(db_message.content) if db_message.content else None
     media_data = await download_media(db_message.message_id)
     media_bytes = base64.b64decode(media_data[0])
     return await animated_sticker_from_bytes(media_bytes, caption_text, effect, fill, font_size_param)
