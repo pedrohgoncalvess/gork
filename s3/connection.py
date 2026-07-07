@@ -213,6 +213,33 @@ class S3Client:
 
         return object_name
 
+    async def upload_bytes(
+            self,
+            media_bytes: bytes,
+            object_name: str,
+            content_type: str = "application/octet-stream",
+    ) -> str:
+        if not self.client:
+            raise RuntimeError("MinIO client not initialized")
+
+        loop = asyncio.get_event_loop()
+        bucket_name = "whatsapp"
+
+        buffer = BytesIO(media_bytes)
+        buffer.seek(0)
+
+        await loop.run_in_executor(
+            None,
+            self.client.put_object,
+            bucket_name,
+            object_name,
+            buffer,
+            len(media_bytes),
+            content_type,
+        )
+
+        return object_name
+
     async def get_presigned_url(
             self,
             sub_path: str,
