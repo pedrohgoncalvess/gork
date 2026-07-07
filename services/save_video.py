@@ -1,16 +1,9 @@
-import base64
-from datetime import datetime
 from typing import Optional
-from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models.content import Media
-from database.operations.base import GroupRepository, UserRepository
-from database.operations.content import MediaRepository, MessageRepository
-from external.evolution import download_media
-from s3 import S3Client
-from utils import get_image_hash
+from services.save_media import save_media_if_new
 
 
 async def save_video_if_new(
@@ -20,67 +13,11 @@ async def save_video_if_new(
         video_message_id: str,
         group_id: Optional[int] = None,
 ) -> Media | None:
-
-    video_base64, name = await download_media(video_message_id)
-
-    decoded = base64.b64decode(video_base64)
-    video_hash = get_image_hash(video_base64)
-
-    media_repo = MediaRepository(db)
-    message_repo = MessageRepository(db)
-    message = await message_repo.find_by_message_id(message_id)
-    message_id_db = message.id if message else None
-    message_media_id = message.media_id if message else None
-
-    existing_media = await media_repo.find_by_hash(video_hash)
-    if existing_media:
-        if message_id_db and message_media_id != existing_media.id:
-            await message_repo.update(message_id_db, {"media_id": existing_media.id})
-        return existing_media
-
-    if group_id is not None:
-        group_repo = GroupRepository(db)
-        group = await group_repo.find_by_id(group_id)
-        ext_id = group.ext_id
-    else:
-        user_repo = UserRepository(db)
-        user = await user_repo.find_by_id(user_id)
-        ext_id = user.ext_id
-
-    s3_conn = S3Client()
-    _ = await s3_conn.connect()
-    video_id = uuid4()
-    path = f"{ext_id}/{datetime.now().strftime('%Y-%m-%d')}/{video_id}.mp4"
-    _ = await s3_conn.upload_video(
-        decoded,
-        object_name=path
+    return await save_media_if_new(
+        db=db,
+        user_id=user_id,
+        message_id=message_id,
+        media_message_id=video_message_id,
+        media_type="video",
+        group_id=group_id,
     )
-
-    try:
-        new_media = await media_repo.insert(
-            Media(
-                ext_id=video_id,
-                name=name,
-                bucket="whatsapp",
-                path=path,
-                type="video",
-                description=None,
-                description_embedding=None,
-                hash=video_hash,
-                phash=None,
-                size=len(decoded) / (1024 * 1024),
-            )
-        )
-    except ValueError as e:
-        if "Erro de integridade" in str(e):
-            existing_media = await media_repo.find_by_hash(video_hash)
-            if existing_media:
-                if message_id_db and message_media_id != existing_media.id:
-                    await message_repo.update(message_id_db, {"media_id": existing_media.id})
-                return existing_media
-        raise e
-
-    if message_id_db:
-        await message_repo.update(message_id_db, {"media_id": new_media.id})
-
-    return new_media
