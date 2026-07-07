@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MessageRepository
 from log import logger
-from services import save_image_if_new, save_video_if_new, verifiy_media
+from services import save_image_if_new, save_media_if_new, save_video_if_new, verifiy_media
 from utils import INSTANCE_NUMBER
 
 
@@ -60,13 +60,32 @@ async def process_sent_message(
             group_id=group_id,
         )
         media_id = media.id
-    elif context_message.get("video_message") or context_message.get("video_quote"):
-        video_id = context_message.get("video_message") or context_message.get("video_quote")
+    elif context_message.get("video_message"):
         media = await save_video_if_new(
             db=db,
             user_id=user_gork.id,
             message_id=message_id,
-            video_message_id=video_id,
+            video_message_id=context_message["video_message"],
+            group_id=group_id,
+        )
+        media_id = media.id if media else None
+    elif context_message.get("sticker_message"):
+        media = await save_media_if_new(
+            db=db,
+            user_id=user_gork.id,
+            message_id=message_id,
+            media_message_id=context_message["sticker_message"],
+            media_type="sticker",
+            group_id=group_id,
+        )
+        media_id = media.id if media else None
+    elif context_message.get("audio_message"):
+        media = await save_media_if_new(
+            db=db,
+            user_id=user_gork.id,
+            message_id=message_id,
+            media_message_id=context_message["audio_message"],
+            media_type="audio",
             group_id=group_id,
         )
         media_id = media.id if media else None

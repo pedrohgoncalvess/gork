@@ -43,14 +43,19 @@ from utils import project_root
 _FONT_PATH = Path(project_root) / "assets" / "fonts" / "arial-bold.ttf"
 _PHILOSOPHYS_DIR = Path(project_root) / "assets" / "philosophys"
 
-_MAX_FONT_SIZE = 64
-_MIN_FONT_SIZE = 14
+# Upscale factor applied to every philosopher photo before drawing.
+# 2.0 doubles both dimensions, giving ~4× more pixel area and allowing
+# proportionally larger fonts while keeping the image crisp.
+_OUTPUT_SCALE = 2.0
+
+_MAX_FONT_SIZE = 240
+_MIN_FONT_SIZE = 24
 
 # Attribution font is this fraction of the quote font size
 _ATTR_FONT_RATIO = 0.62
 
 # Vertical gap between last quote line and attribution
-_ATTR_GAP = 8
+_ATTR_GAP = 12
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +93,12 @@ def build_philo_image(
 
 def _open_philosopher_image(philo: PhilosopherData) -> Image.Image:
     path = _PHILOSOPHYS_DIR / philo.filename
-    return Image.open(path).convert("RGBA")
+    img = Image.open(path).convert("RGBA")
+    if _OUTPUT_SCALE != 1.0:
+        new_w = int(img.width * _OUTPUT_SCALE)
+        new_h = int(img.height * _OUTPUT_SCALE)
+        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+    return img
 
 
 def _draw_quote_on_image(
