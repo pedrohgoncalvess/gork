@@ -10,7 +10,7 @@ from database.operations.base import GroupRepository, UserRepository, WhiteListR
 from database.operations.content import MessageRepository
 from external.evolution import get_group_info, send_message
 from log import logger
-from services import save_image_if_new, save_profile_pic, save_video_if_new, verifiy_media
+from services import save_image_if_new, save_media_if_new, save_profile_pic, save_video_if_new, verifiy_media
 from services.message_buffer import buffer_group_message, clear_group_message_buffer
 from utils import INSTANCE_NUMBER
 
@@ -89,6 +89,26 @@ async def process_group_message(
             user_id=user.id,
             message_id=message_id,
             video_message_id=video_id,
+            group_id=group.id,
+        )
+        media_id = media_message.id if media_message else None
+    elif context_message.get("sticker_message"):
+        media_message = await save_media_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            media_message_id=context_message["sticker_message"],
+            media_type="sticker",
+            group_id=group.id,
+        )
+        media_id = media_message.id if media_message else None
+    elif context_message.get("audio_message"):
+        media_message = await save_media_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            media_message_id=context_message["audio_message"],
+            media_type="audio",
             group_id=group.id,
         )
         media_id = media_message.id if media_message else None

@@ -17,6 +17,7 @@ def verifiy_media(body: dict) -> dict[str, str]:
 
     audio_message = True if message_type == "audioMessage" else False
     image_message = True if message_type == "imageMessage" else False
+    sticker_message = True if message_type == "stickerMessage" else False
     video_message = True if message_type == "videoMessage" else False
 
     context_info = event_data.get("contextInfo") if event_data.get("contextInfo") is not None else {}
@@ -135,6 +136,8 @@ def verifiy_media(body: dict) -> dict[str, str]:
         medias.update({"image_message": message_id})
     if audio_message:
         medias.update({"audio_message": message_id})
+    if sticker_message:
+        medias.update({"sticker_message": message_id})
     if video_message:
         medias.update({"video_message": message_id})
     if text_quote:
