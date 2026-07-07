@@ -9,7 +9,7 @@ from api.routes.webhook.evolution.processors.common import process_commands
 from database.operations.base import UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
 from external.evolution import send_message
-from services import save_image_if_new, save_profile_pic, save_video_if_new, verifiy_media
+from services import save_image_if_new, save_media_if_new, save_profile_pic, save_video_if_new, verifiy_media
 
 
 async def process_private_message(
@@ -58,13 +58,32 @@ async def process_private_message(
             group_id=None,
         )
         media_id = media.id if media else None
-    elif context.get("video_message") or context.get("video_quote"):
-        video_id = context.get("video_message") or context.get("video_quote")
+    elif context.get("video_message"):
         media = await save_video_if_new(
             db=db,
             user_id=user.id,
             message_id=message_id,
-            video_message_id=video_id,
+            video_message_id=context["video_message"],
+            group_id=None,
+        )
+        media_id = media.id if media else None
+    elif context.get("sticker_message"):
+        media = await save_media_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            media_message_id=context["sticker_message"],
+            media_type="sticker",
+            group_id=None,
+        )
+        media_id = media.id if media else None
+    elif context.get("audio_message"):
+        media = await save_media_if_new(
+            db=db,
+            user_id=user.id,
+            message_id=message_id,
+            media_message_id=context["audio_message"],
+            media_type="audio",
             group_id=None,
         )
         media_id = media.id if media else None
