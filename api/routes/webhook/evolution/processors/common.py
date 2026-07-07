@@ -96,7 +96,7 @@ async def process_explicit_commands(
         return
 
     if "!sticker" in lw_conversation:
-        await handle_sticker_command(remote_id, db_message, db)
+        await handle_sticker_command(remote_id, db_message, db, context)
         return
 
     if "!remember" in lw_conversation:
