@@ -15,7 +15,7 @@ COMMANDS = [
         "Cria um sticker com base em uma imagem e texto fornecido. _[Use | como separador de top/bottom]_ \n_(Obs: Mensagens quotadas com !sticker será criado um sticker da mensagem com a foto de perfil de quem enviou)_",
         "image",
         [
-            (":no-background", "Remove fundo da imagem.", [("t", "Verdadeiro"),]),
+            (":no-background", "Remove fundo da imagem ou video.", [("t", "Verdadeiro"),]),
             (":random", "Usa uma imagem aleatória", [("t", "Verdadeiro"),]),
             (":fill", "Preenche todo o tamanho do sticker cortando o excesso da imagem.", [("true", "Verdadeiro"),]),
             (":url", "Usa uma URL do Twitter/X como fonte do sticker.", [("https://x.com/usuario/status/12345", "Link do post"),]),
@@ -29,6 +29,8 @@ COMMANDS = [
                 ("wave", "Efeito de ondas"),
                 ("fisheye", "Efeito olho de peixe"),
             ]),
+            (":cut", "Recorta o video da figurinha animada. Use segundos ou minuto:segundo, com inicio-fim.", [("43-46", "Corta de 43s a 46s"), ("1:00-1:05", "Corta de 1min a 1min05s"), ("43-", "Corta a partir de 43s ate o limite"), ("-46", "Corta os segundos anteriores a 46s")]),
+            (":speed", "Altera a velocidade da figurinha animada. Valores acima de 1 aceleram; abaixo de 1 desaceleram.", [("2.0", "Dobra a velocidade"), ("0.5", "Metade da velocidade")]),
         ]
     ),
     ("!english", "", "hidden", []),

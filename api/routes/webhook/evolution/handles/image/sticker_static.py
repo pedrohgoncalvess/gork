@@ -46,6 +46,18 @@ def _resize_cover(img: Image.Image, size: tuple) -> Image.Image:
     return resized.crop((left, top, left + target_w, top + target_h))
 
 
+async def _download_media_base64(message_id: str | None) -> str | None:
+    if not message_id:
+        return None
+
+    try:
+        media_data = await download_media(message_id)
+    except Exception:
+        return None
+
+    return media_data[0] if media_data else None
+
+
 async def static_sticker(
         db_message: Message,
         db: AsyncSession, random_image: bool = False,
@@ -54,6 +66,7 @@ async def static_sticker(
         font_size_param: str = "l",
         source_image_bytes: bytes | None = None,
         caption_text: str | None = None,
+        context: dict | None = None,
 ) -> str:
     message_repo = MessageRepository(db)
 
@@ -67,14 +80,26 @@ async def static_sticker(
         caption_text = clean_text(quoted_message.content) if quoted_message.content else None
 
     image_base64 = None
+    current_image_id = context.get("image_message") if context else None
+    quoted_image_id = context.get("image_quote") if context else None
+    current_has_media = bool(db_message.media_id or current_image_id)
+    quoted_has_media = bool((quoted_message and quoted_message.media_id) or quoted_image_id)
 
-    if db_message.media_id and source_image_bytes is None:
-        image_base64, _ = await download_media(db_message.message_id)
-    if quoted_message and quoted_message.media_id and image_base64 is None and source_image_bytes is None:
-        image_base64, _ = await download_media(quoted_message.message_id)
+    if source_image_bytes is None:
+        if current_image_id:
+            image_base64 = await _download_media_base64(current_image_id)
+        if db_message.media_id and image_base64 is None:
+            image_base64 = await _download_media_base64(db_message.message_id)
+        if quoted_image_id and image_base64 is None:
+            image_base64 = await _download_media_base64(quoted_image_id)
+        if quoted_message and quoted_message.media_id and image_base64 is None:
+            image_base64 = await _download_media_base64(quoted_message.message_id)
+
     if image_base64 is None and source_image_bytes is None and quoted_message:
         user_repo = UserRepository(db)
         user = await user_repo.find_by_id(quoted_message.user_id) if not gork_req else await user_repo.find_by_id(db_message.user_id)
+        if not current_has_media and not quoted_has_media:
+            caption_text = clean_text(quoted_message.content) if quoted_message.content else None
         if caption_text:
             pattern = r'@(\d+)'
             mentions = re.findall(pattern, caption_text)

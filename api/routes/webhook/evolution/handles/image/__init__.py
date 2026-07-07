@@ -1,3 +1,4 @@
+import base64
 from typing import Optional, List
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,12 +14,56 @@ from api.routes.webhook.evolution.handles.social import download_twitter_media, 
 from database.models.base import User
 from database.models.content import Message
 from database.operations.content import MessageRepository, MediaRepository
-from external.evolution import send_animated_sticker, send_image, send_message, send_sticker
+from external.evolution import download_media, send_animated_sticker, send_image, send_message, send_sticker
 from services import parse_params
 
 
 def _param_enabled(value) -> bool:
     return str(value).lower() in ["true", "t", "1", "yes", "y"]
+
+
+def _remove_background_enabled(params: dict) -> bool:
+    return any(
+        _param_enabled(params.get(key, "false"))
+        for key in ("no-background", "no-backgorund")
+    )
+
+
+def _media_type_is_video(media_type: str | None) -> bool:
+    return media_type in ("mp4", "video")
+
+
+def _context_media_kind(context: dict | None, source: str) -> str | None:
+    if not context:
+        return None
+
+    if source == "message":
+        if context.get("video_message"):
+            return "video"
+        if context.get("image_message"):
+            return "image"
+    elif source == "quoted":
+        if context.get("video_quote"):
+            return "video"
+        if context.get("image_quote"):
+            return "image"
+
+    return None
+
+
+async def _download_media_bytes_from_message_id(message_id: str | None) -> bytes | None:
+    if not message_id:
+        return None
+
+    try:
+        media_base64, _ = await download_media(message_id)
+    except Exception:
+        return None
+
+    if not media_base64:
+        return None
+
+    return base64.b64decode(media_base64)
 
 
 async def handle_image_command(
@@ -39,6 +84,7 @@ async def handle_sticker_command(
         remote_id: str,
         db_message: Message,
         db: AsyncSession,
+        context: dict | None = None,
 ):
     message_repo = MessageRepository(db)
     params = parse_params(db_message.content)
@@ -52,13 +98,24 @@ async def handle_sticker_command(
         effect = params.get("effect")
         fill = _param_enabled(params.get("fill", "false"))
         font_size = params.get("font-size", "l")
+        remove_background = _remove_background_enabled(params)
+        speed = float(params.get("speed", 1.0))
+        cut_spec = params.get("cut")
         caption_text = clean_text(db_message.content).replace(twitter_url, "").strip()
         if result.media_type == "video":
-            sticker_url = await animated_sticker_from_bytes(result.media_bytes, caption_text, effect, fill, font_size)
+            sticker_url = await animated_sticker_from_bytes(
+                result.media_bytes,
+                caption_text,
+                effect,
+                fill,
+                font_size,
+                remove_background=remove_background,
+                speed=speed,
+                cut_spec=cut_spec,
+            )
             await send_animated_sticker(remote_id, sticker_url)
         else:
             is_random = _param_enabled(params.get("random", "false"))
-            remove_background = _param_enabled(params.get("no-background", "false"))
             webp_base64 = await static_sticker(
                 db_message,
                 db,
@@ -72,29 +129,82 @@ async def handle_sticker_command(
             await send_sticker(remote_id, webp_base64)
         return
 
-    message_to_use = db_message if db_message.media_id else await message_repo.find_by_id(db_message.quoted_message_id)
-    if message_to_use and message_to_use.media_id:
+    quoted_message = (
+        await message_repo.find_by_id(db_message.quoted_message_id)
+        if db_message.quoted_message_id
+        else None
+    )
+
+    source_message = db_message
+    source_kind = _context_media_kind(context, "message")
+    if db_message.media_id:
         media_repo = MediaRepository(db)
-        media = await media_repo.find_by_id(message_to_use.media_id)
-        if media.type in ("mp4", "video"):
-            effect = params.get("effect")
-            fill = _param_enabled(params.get("fill", "false"))
-            font_size = params.get("font-size", "l")
-            
-            caption_text = clean_text(db_message.content) if db_message.content else None
-            if not caption_text and message_to_use.content:
-                caption_text = clean_text(message_to_use.content) if message_to_use.content else None
-                
-            gif_url = await animated_sticker(message_to_use, effect, fill, font_size, caption_text)
-            await send_animated_sticker(remote_id, gif_url)
-            return
+        media = await media_repo.find_by_id(db_message.media_id)
+        if media:
+            source_kind = "video" if _media_type_is_video(media.type) else "image"
+
+    if not source_kind and quoted_message:
+        source_message = quoted_message
+        source_kind = _context_media_kind(context, "quoted")
+        if quoted_message.media_id:
+            media_repo = MediaRepository(db)
+            media = await media_repo.find_by_id(quoted_message.media_id)
+            if media:
+                source_kind = "video" if _media_type_is_video(media.type) else "image"
+
+    if source_message and source_kind == "video":
+        effect = params.get("effect")
+        fill = _param_enabled(params.get("fill", "false"))
+        font_size = params.get("font-size", "l")
+        remove_background = _remove_background_enabled(params)
+        speed = float(params.get("speed", 1.0))
+        cut_spec = params.get("cut")
+
+        caption_text = clean_text(db_message.content) if db_message.content else None
+        if not caption_text and source_message.content:
+            caption_text = clean_text(source_message.content) if source_message.content else None
+
+        source_bytes = None
+        if not source_message.media_id:
+            source_bytes = await _download_media_bytes_from_message_id(source_message.message_id)
+
+        if source_bytes:
+            gif_url = await animated_sticker_from_bytes(
+                source_bytes,
+                caption_text,
+                effect,
+                fill,
+                font_size,
+                remove_background=remove_background,
+                speed=speed,
+                cut_spec=cut_spec,
+            )
+        else:
+            gif_url = await animated_sticker(
+                source_message,
+                effect,
+                fill,
+                font_size,
+                caption_text,
+                remove_background=remove_background,
+                speed=speed,
+                cut_spec=cut_spec,
+            )
+        await send_animated_sticker(remote_id, gif_url)
+        return
 
     is_random = _param_enabled(params.get("random", "false"))
-    remove_background = _param_enabled(params.get("no-background", "false"))
+    remove_background = _remove_background_enabled(params)
     fill = _param_enabled(params.get("fill", "false"))
     font_size = params.get("font-size", "l")
     webp_base64 = await static_sticker(
-        db_message, db, is_random, remove_background, fill, font_size_param=font_size
+        db_message,
+        db,
+        is_random,
+        remove_background,
+        fill,
+        font_size_param=font_size,
+        context=context,
     )
     await send_sticker(remote_id, webp_base64)
 
