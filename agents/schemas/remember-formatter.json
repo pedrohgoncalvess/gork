@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "datetime": {
+      "type": "string",
+      "description": "Date and time format YYYY-MM-DD HH:MM:SS"
+    },
+    "message": {
+      "type": "string",
+      "description": "Formatted reminder text message"
+    },
+    "feedback_message": {
+      "type": "string",
+      "description": "User friendly feedback confirmation message"
+    }
+  },
+  "required": ["datetime", "message", "feedback_message"],
+  "additionalProperties": false
+}

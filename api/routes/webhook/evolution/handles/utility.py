@@ -57,6 +57,7 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
 
         message_repo = MessageRepository(db)
         messages = await message_repo.find_by_group(group_id, 100)
+        messages = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id))
 
         formatted_messages = []
 
@@ -76,11 +77,16 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
 
         final_message = "\n".join(formatted_messages)
 
-        system_prompt = """
-                    Faz um resumo dessas últimas mensagens.
-                    Formata com o estilo de md do whatsapp. Vai ser enviado pra lá então precisa ser compativel com a formatação dele.
-                    O resumo não deve ser muito longo, passe pelos tópicos mais importantes e discutidos, caso apenas um tema seja discutido pode se extender mais nele.
-                 """.strip()
+        agent_repo = AgentRepository(db)
+        resume_agent = await agent_repo.find_by_name("resume")
+        if resume_agent and resume_agent.prompt:
+            system_prompt = resume_agent.prompt
+        else:
+            system_prompt = """
+                        Faz um resumo dessas últimas mensagens.
+                        Formata com o estilo de md do whatsapp. Vai ser enviado pra lá então precisa ser compativel com a formatação dele.
+                        O resumo não deve ser muito longo, passe pelos tópicos mais importantes e discutidos, caso apenas um tema seja discutido pode se extender mais nele.
+                     """.strip()
 
         payload = {
             "model": model.openrouter_id,
@@ -96,8 +102,21 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
             ],
         }
 
+        if resume_agent and resume_agent.response_format:
+            try:
+                payload["response_format"] = json.loads(resume_agent.response_format)
+            except Exception:
+                pass
+
         req = await completions(payload)
         conversation_resume = req["choices"][0]["message"]["content"]
+        if resume_agent and resume_agent.response_format:
+            try:
+                parsed_json = json.loads(conversation_resume)
+                if isinstance(parsed_json, dict) and "summary" in parsed_json:
+                    conversation_resume = parsed_json["summary"]
+            except Exception:
+                pass
 
         command = await command_repo.insert(
             Command(

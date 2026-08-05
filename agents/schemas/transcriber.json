@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "transcription": {
+      "type": "string",
+      "description": "Transcription of the audio message in its original language with proper punctuation and accents"
+    }
+  },
+  "required": ["transcription"],
+  "additionalProperties": false
+}

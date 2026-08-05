@@ -11,22 +11,32 @@ agents:
     prompt_path: agents/prompts/filter.md
     schema_path: agents/schemas/filter.json
 
-  - name: modify-image
-    description: Multimodal assistant for generating or editing images.
-    model: google/gemini-2.5-flash-image
-    prompt_path: agents/prompts/modify-image.md
-
   - name: remember-formatter
     description: Agent assigned to extract dates, times, and messages to schedule reminders.
     model: qwen/qwen3.6-flash
     prompt_path: agents/prompts/remember-formatter.md
+    schema_path: agents/schemas/remember-formatter.json
 
   - name: transcriber
     description: Agent specialized in transcribing audio files.
     model: google/gemini-3.1-flash-image-preview
     prompt_path: agents/prompts/transcriber.md
+    schema_path: agents/schemas/transcriber.json
 
   - name: describe-image
     description: Agent responsible for describing images with WhatsApp conversation context.
     model: google/gemini-3.1-flash-image-preview
     prompt_path: agents/prompts/describe-image.md
+    schema_path: agents/schemas/describe-image.json
+
+  - name: web-search
+    description: Agent responsible for summarizing web search results.
+    model: qwen/qwen3.6-flash
+    prompt_path: agents/prompts/web-search.md
+    schema_path: agents/schemas/web-search.json
+
+  - name: resume
+    description: Agent responsible for summarizing recent group messages.
+    model: qwen/qwen3.6-flash
+    prompt_path: agents/prompts/resume.md
+    schema_path: agents/schemas/resume.json

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "Concise summary of web search results with source names and URLs when available"
+    }
+  },
+  "required": ["summary"],
+  "additionalProperties": false
+}

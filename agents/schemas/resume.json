@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "Summary of the recent group conversation messages highlighting main topics"
+    }
+  },
+  "required": ["summary"],
+  "additionalProperties": false
+}

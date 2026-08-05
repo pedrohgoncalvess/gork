@@ -75,8 +75,21 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
             ]
         }
 
+        if transcriber_agent.response_format:
+            try:
+                payload["response_format"] = json.loads(transcriber_agent.response_format)
+            except Exception:
+                pass
+
         req = await completions(payload)
         resp = req["choices"][0]["message"]["content"]
+        if transcriber_agent.response_format:
+            try:
+                parsed_json = json.loads(resp)
+                if isinstance(parsed_json, dict) and "transcription" in parsed_json:
+                    resp = parsed_json["transcription"]
+            except Exception:
+                pass
 
         if command:
             command_repo = CommandRepository(Command, db)

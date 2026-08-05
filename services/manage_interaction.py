@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -55,6 +56,12 @@ async def manage_interaction(
             }
         ]
     }
+
+    if agent and agent.response_format:
+        try:
+            payload_term_formatter["response_format"] = json.loads(agent.response_format)
+        except Exception:
+            pass
 
     req = await completions(payload_term_formatter)
     resp = req["choices"][0]["message"]["content"]

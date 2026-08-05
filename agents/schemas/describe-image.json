@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "Detailed visual description of the image within the conversation context"
+    }
+  },
+  "required": ["description"],
+  "additionalProperties": false
+}
