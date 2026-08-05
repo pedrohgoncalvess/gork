@@ -1,4 +1,5 @@
 from typing import Optional
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from database.models.content.sup_media import SupMedia
 from database.operations import BaseRepository
@@ -12,18 +13,24 @@ class SupMediaRepository(BaseRepository[SupMedia]):
         return await self.find_one_by(name=name)
 
     async def upsert_by_name(self, name: str, bucket: str, path: str, media_type: str) -> SupMedia:
-        existing = await self.find_by_name(name)
-        if existing:
-            return await self.update(existing.id, {
-                "bucket": bucket,
-                "path": path,
-                "type": media_type,
-            })
-
-        new_record = SupMedia(
-            name=name,
-            bucket=bucket,
-            path=path,
-            type=media_type,
+        stmt = (
+            pg_insert(SupMedia)
+            .values(
+                name=name,
+                bucket=bucket,
+                path=path,
+                type=media_type,
+            )
+            .on_conflict_do_update(
+                index_elements=["name"],
+                set_={
+                    "bucket": bucket,
+                    "path": path,
+                    "type": media_type,
+                }
+            )
+            .returning(SupMedia)
         )
-        return await self.insert(new_record)
+        result = await self.db.execute(stmt)
+        await self.db.commit()
+        return result.scalar_one()
