@@ -4,13 +4,11 @@ import asyncio
 import base64
 import os
 import re
+import subprocess
 import tempfile
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import urlparse
-
-import instaloader
-import requests
 
 from external.evolution import send_image, send_message, send_video
 
@@ -160,52 +158,70 @@ def _validate_instagram_url(url: str) -> str:
     return url
 
 
-def _extract_shortcode(url: str) -> str:
-    parsed = urlparse(url)
-    parts = parsed.path.strip("/").split("/")
-    return parts[1]
-
-
 def download_instagram_reel(instagram_url: str) -> InstagramMediaDownloadResult:
     try:
         validated_url = _validate_instagram_url(instagram_url)
-        shortcode = _extract_shortcode(validated_url)
     except InvalidURLError as e:
         return InstagramMediaDownloadResult(None, None, str(e))
-    except Exception:
-        return InstagramMediaDownloadResult(None, None, "Erro ao extrair shortcode")
 
     try:
-        L = instaloader.Instaloader(
-            download_pictures=False,
-            download_videos=True,
-            download_video_thumbnails=False,
-            save_metadata=False,
-            compress_json=False,
-        )
-
-        post = instaloader.Post.from_shortcode(L.context, shortcode)
-
-        if not post.is_video:
-            return InstagramMediaDownloadResult(None, None, "Reel não contém vídeo")
-
-        try:
-            video_url = post.video_url
-            headers = {
-                "User-Agent": "Mozilla/5.0",
-                "Referer": "https://www.instagram.com/",
-            }
-
-            res = requests.get(video_url, headers=headers, timeout=15)
-
-            if res.status_code == 200 and res.content:
-                return InstagramMediaDownloadResult(res.content, "video", None)
-
-        except Exception:
-            pass
-
         with tempfile.TemporaryDirectory() as tmpdir:
-            L.download_post(post, target=tmpdir)
+            output_template = os.path.join(tmpdir, "reel.%(ext)s")
+            command = [
+                "yt-dlp",
+                "--no-playlist",
+                "--no-warnings",
+                "-f",
+                "best[ext=mp4]/best",
+                "--merge-output-format",
+                "mp4",
+                "-o",
+                output_template,
+            ]
+
+            cookies_file = os.getenv("INSTAGRAM_COOKIES_FILE")
+            if cookies_file:
+                if not os.path.isfile(cookies_file):
+                    return InstagramMediaDownloadResult(
+                        None,
+                        None,
+                        "Arquivo de cookies do Instagram não encontrado",
+                    )
+                command.extend(["--cookies", cookies_file])
+
+            command.append(validated_url)
+            process = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+
+            if process.returncode != 0:
+                error = process.stderr.strip()
+                normalized_error = error.lower()
+                if any(
+                    message in normalized_error
+                    for message in (
+                        "login required",
+                        "empty media response",
+                        "use --cookies",
+                    )
+                ):
+                    if cookies_file:
+                        error = "Instagram exige uma sessão válida; atualize os cookies"
+                    else:
+                        error = (
+                            "Instagram bloqueou o acesso anônimo; "
+                            "configure INSTAGRAM_COOKIES_FILE"
+                        )
+                elif "not available" in normalized_error or "private" in normalized_error:
+                    error = "Reel indisponível ou privado"
+                else:
+                    error = "Não foi possível baixar o reel"
+
+                return InstagramMediaDownloadResult(None, None, error)
 
             video_file = None
             for f in os.listdir(tmpdir):
@@ -221,8 +237,17 @@ def download_instagram_reel(instagram_url: str) -> InstagramMediaDownloadResult:
 
             return InstagramMediaDownloadResult(None, None, "Vídeo não encontrado")
 
+    except subprocess.TimeoutExpired:
+        return InstagramMediaDownloadResult(None, None, "Tempo limite ao baixar o reel")
+    except FileNotFoundError:
+        return InstagramMediaDownloadResult(None, None, "yt-dlp não está instalado")
+
     except Exception as e:
-        return InstagramMediaDownloadResult(None, None, f"Erro inesperado: {str(e)}")
+        return InstagramMediaDownloadResult(
+            None,
+            None,
+            f"Não foi possível baixar o reel ({type(e).__name__})",
+        )
 
 
 # ── Handles ──────────────────────────────────────────────────────────────────
@@ -267,8 +292,8 @@ async def handle_instagram_command(
     if not instagram_url:
         await send_message(
             remote_id,
-            "❌ Envie um link de reel do Instagram/X.\n\n"
-            "`!instagram https://www.instagram.com/reel/XXXXXX",
+            "❌ Envie um link de reel do Instagram.\n\n"
+            "`!instagram https://www.instagram.com/reel/XXXXXX`",
             message_id,
         )
         return
