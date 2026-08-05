@@ -1,7 +1,10 @@
 import re
 
 
-def parse_params(message: str) -> dict:
+def parse_params(message: str | None) -> dict:
+    if not message:
+        return {}
+
     PARAMS = [
         "id",
         "no-background",

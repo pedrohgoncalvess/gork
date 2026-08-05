@@ -70,7 +70,9 @@ async def is_message_too_old(timestamp: int, max_minutes: int = 20) -> bool:
     return created_at < (datetime.now() - timedelta(minutes=max_minutes))
 
 
-def clean_text(text: str, remove_mentions: bool = True) -> str:
+def clean_text(text: str | None, remove_mentions: bool = True) -> str:
+    if not text:
+        return ""
     treated_text = text.strip()
     for command, _, _, _ in COMMANDS:
         treated_text = treated_text.replace(command, "")
@@ -81,5 +83,8 @@ def clean_text(text: str, remove_mentions: bool = True) -> str:
     return treated_text.strip()
 
 
-def has_explicit_command(text: str) -> bool:
+def has_explicit_command(text: str | None) -> bool:
+    if not text:
+        return False
     return any(cmd in text.lower() for cmd, _, _, _ in COMMANDS if cmd.startswith("!"))
+
