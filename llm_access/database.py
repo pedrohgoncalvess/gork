@@ -151,7 +151,7 @@ async def get_group_messages(
             },
             "media_type": row.media_type,
         }
-        for row in result.all()
+        for row in reversed(result.all())
     ]
 
 

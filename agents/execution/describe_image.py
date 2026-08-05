@@ -68,6 +68,7 @@ async def describe_image_agent(
     else:
         messages = await message_repo.find_by_sender(user_id, 5)
 
+    messages = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id))
     gork_user_id = user_gork.id if user_gork else None
     messages_rel = {message.id: message for message in messages}
 
@@ -142,8 +143,21 @@ async def describe_image_agent(
         ],
     }
 
+    if agent.response_format:
+        try:
+            payload["response_format"] = json.loads(agent.response_format)
+        except Exception:
+            pass
+
     req = await completions(payload)
     resp = req["choices"][0]["message"]["content"]
+    if agent.response_format:
+        try:
+            parsed_json = json.loads(resp)
+            if isinstance(parsed_json, dict) and "description" in parsed_json:
+                resp = parsed_json["description"]
+        except Exception:
+            pass
 
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(

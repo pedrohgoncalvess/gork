@@ -44,19 +44,9 @@ async def conversation_agent(
     if group_id:
         users_group = await user_repo.find_users_by_group_id(group_id)
         raw_messages = await message_repo.find_by_group(group_id, 80)
-        messages = []
-
         users_map = {u.src_id.split('@')[0]: (u.name or "Usuário") for u in users_group if u.src_id}
-
-        for message in raw_messages:
-            message.content = replace_mentions(message.content, users_map)
-            
-            if not message.content:
-                continue
-
-            messages.append(message)
     else:
-        messages = await message_repo.find_by_sender(user_id, 40)
+        raw_messages = await message_repo.find_by_sender(user_id, 40)
 
     user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
     user_sender = await user_repo.find_by_id(user_id)
@@ -65,61 +55,83 @@ async def conversation_agent(
         await logger.error("Agent", "Generic", "Instance user not found.")
         return ""
 
-    messages_rel = {message.id: message for message in messages}
+    # Sort raw_messages chronologically (oldest message first, newest message last)
+    raw_messages = sorted(raw_messages, key=lambda m: (m.created_at or datetime.min, m.id))
+    messages_rel = {msg.id: msg for msg in raw_messages}
+
+    # Fetch last_message if not present in window
+    last_message = messages_rel.get(last_message_id)
+    if not last_message:
+        last_message = await message_repo.find_by_id(last_message_id)
+
+    # Exclude last_message from system prompt conversation history to prevent duplication
+    history_messages = [msg for msg in raw_messages if msg.id != last_message_id]
 
     formatted_messages = []
-    for msg in messages:
-        if msg.sender.id == user_gork.id:
+    for msg in history_messages:
+        content = replace_mentions(msg.content, users_map) if msg.content else ""
+        if not content:
+            if msg.media_id:
+                content = "[Mídia / Imagem / Áudio]"
+            else:
+                continue
+
+        if msg.sender and msg.sender.id == user_gork.id:
             sender_name = "Você"
-        elif msg.sender.name:
+        elif msg.sender and msg.sender.name:
             sender_name = msg.sender.name
         else:
-            sender_name = "Usuário Desconhecido."
+            sender_name = "Usuário Desconhecido"
 
-        content = msg.content or ""
-
-        msg_date = msg.created_at.date()
+        msg_date = msg.created_at.date() if msg.created_at else datetime.now().date()
         today = datetime.now().date()
 
         if msg_date != today:
-            timestamp = msg.created_at.strftime('%d/%m/%Y %H:%M')
+            timestamp = msg.created_at.strftime('%d/%m/%Y %H:%M') if msg.created_at else ""
         else:
-            timestamp = msg.created_at.strftime('%H:%M')
+            timestamp = msg.created_at.strftime('%H:%M') if msg.created_at else ""
 
         quoted_str = ""
         if msg.quoted_message_id:
             quoted_msg = messages_rel.get(msg.quoted_message_id)
+            if not quoted_msg:
+                quoted_msg = await message_repo.find_by_id(msg.quoted_message_id)
             if quoted_msg:
-                if quoted_msg.sender.id == user_gork.id:
+                if quoted_msg.sender and quoted_msg.sender.id == user_gork.id:
                     quoted_sender_name = "Você"
-                elif quoted_msg.sender.name:
+                elif quoted_msg.sender and quoted_msg.sender.name:
                     quoted_sender_name = quoted_msg.sender.name
                 else:
-                    quoted_sender_name = "Usuário Desconhecido."
-                q_content = quoted_msg.content or ""
+                    quoted_sender_name = "Usuário Desconhecido"
+                q_content = replace_mentions(quoted_msg.content, users_map) if quoted_msg.content else "[Mídia]"
                 quoted_str = f"Mensagem quotada: [{quoted_sender_name}] -> {q_content}\n"
 
         formatted_messages.append(f"{quoted_str}[{msg.id}] {sender_name} - [{timestamp}]: {content}")
 
-    last_message = messages_rel.get(last_message_id)
-    if last_message:
-        last_message.content = replace_mentions(last_message.content, users_map)
-        
-    quoted_message = messages_rel.get(last_message.quoted_message_id) if last_message else None
-    quoted_str = ""
-    if quoted_message:
-        quoted_message.content = replace_mentions(quoted_message.content, users_map)
-        if quoted_message.sender.id == user_gork.id:
-            quoted_sender_name = "Você"
-        elif quoted_message.sender.name:
-            quoted_sender_name = quoted_message.sender.name
-        else:
-            quoted_sender_name = "Usuário Desconhecido."
-        quoted_str = f"Mensagem quotada: [{quoted_sender_name}] -> {quoted_message.content}\n"
+    quoted_str_last = ""
+    if last_message and last_message.quoted_message_id:
+        quoted_msg = messages_rel.get(last_message.quoted_message_id)
+        if not quoted_msg:
+            quoted_msg = await message_repo.find_by_id(last_message.quoted_message_id)
+        if quoted_msg:
+            if quoted_msg.sender and quoted_msg.sender.id == user_gork.id:
+                quoted_sender_name = "Você"
+            elif quoted_msg.sender and quoted_msg.sender.name:
+                quoted_sender_name = quoted_msg.sender.name
+            else:
+                quoted_sender_name = "Usuário Desconhecido"
+            q_content = replace_mentions(quoted_msg.content, users_map) if quoted_msg.content else "[Mídia]"
+            quoted_str_last = f"Mensagem quotada: [{quoted_sender_name}] -> {q_content}\n"
 
+    last_content = replace_mentions(last_message.content, users_map) if last_message and last_message.content else ""
+    if not last_content and last_message and last_message.media_id:
+        last_content = "[Mídia / Imagem / Áudio]"
+
+    sender_display_name = user_sender.name if user_sender and user_sender.name else "Usuário"
+    last_msg_id_str = f"[{last_message.id}] " if last_message else ""
     current_message = (
-            quoted_str +
-            f"{user_sender.name} - [{datetime.now().strftime('%H:%M')}]: {last_message.content if last_message else ''}"
+        f"{quoted_str_last}"
+        f"{last_msg_id_str}{sender_display_name} - [{datetime.now().strftime('%H:%M')}]: {last_content}"
     )
 
     agent = await agent_repo.find_by_name("conversation")

@@ -81,6 +81,7 @@ async def filter_agent(
     user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
     gork_user_id = user_gork.id if user_gork else None
 
+    messages = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id))
     formatted_messages = []
     existing_messages = set()
     for msg in messages:
