@@ -70,8 +70,9 @@ async def handle_image_command(
         remote_id: str,
         user_id: int,
         db_message: Message,
+        action_params: Optional[dict] = None,
 ):
-    image_base64, error = await generate_image(user_id, db_message)
+    image_base64, error = await generate_image(user_id, db_message, action_params=action_params)
     if error:
         await send_message(remote_id, image_base64)
         return
@@ -85,10 +86,16 @@ async def handle_sticker_command(
         db_message: Message,
         db: AsyncSession,
         context: dict | None = None,
+        action_params: dict | None = None,
 ):
     message_repo = MessageRepository(db)
-    params = parse_params(db_message.content)
-    twitter_url = params.get("url") or extract_twitter_url(db_message.content or "")
+    params = parse_params(db_message.content if db_message and db_message.content else "")
+    if action_params:
+        for k, v in action_params.items():
+            norm_key = k.replace("_", "-")
+            if norm_key not in params and k not in params:
+                params[norm_key] = str(v).lower() if isinstance(v, bool) else str(v)
+    twitter_url = params.get("url") or extract_twitter_url(db_message.content if db_message and db_message.content else "")
     if twitter_url:
         result = await download_twitter_media(twitter_url)
         if not result.is_success:

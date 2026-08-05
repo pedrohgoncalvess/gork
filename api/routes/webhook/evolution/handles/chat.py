@@ -352,12 +352,16 @@ async def _run_web_search(
         group_id: Optional[int],
 ) -> str:
     model_repo = ModelRepository(db)
-    model = await model_repo.get_default_model()
+    agent_repo = AgentRepository(db)
+    web_agent = await agent_repo.find_by_name("web-search")
+    if web_agent and web_agent.prompt:
+        system_prompt = web_agent.prompt
+    else:
+        system_prompt = (
+            "Use web search to answer the query with current, source-backed information. "
+            "Return a concise summary in the query language. Include source names and URLs when available."
+        )
 
-    system_prompt = (
-        "Use web search to answer the query with current, source-backed information. "
-        "Return a concise summary in the query language. Include source names and URLs when available."
-    )
     payload = {
         "model": model.openrouter_id,
         "messages": [
@@ -372,8 +376,22 @@ async def _run_web_search(
         ]
     }
 
+    if web_agent and web_agent.response_format:
+        try:
+            payload["response_format"] = json.loads(web_agent.response_format)
+        except Exception:
+            pass
+
     req = await completions(payload, is_online=True)
     result = req["choices"][0]["message"]["content"]
+
+    if web_agent and web_agent.response_format:
+        try:
+            parsed_json = json.loads(result)
+            if isinstance(parsed_json, dict) and "summary" in parsed_json:
+                result = parsed_json["summary"]
+        except Exception:
+            pass
 
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(
@@ -422,13 +440,18 @@ async def _dispatch_action(
 
     elif action_type in ("send_audio", "send_video", "send_image"):
         media_id = params.get("media_id")
-        if media_id:
+        if media_id is not None:
             from database.operations.content.sup_media import SupMediaRepository
             from s3.connection import S3Client
             from external.evolution import send_video, send_image
             
             media_repo = SupMediaRepository(db)
-            media = await media_repo.find_by_id(media_id)
+            try:
+                media_id_val = int(media_id)
+            except (ValueError, TypeError):
+                media_id_val = media_id
+
+            media = await media_repo.find_by_id(media_id_val)
             if media:
                 s3_client = S3Client()
                 await s3_client.connect()
@@ -445,12 +468,22 @@ async def _dispatch_action(
 
     elif action_type == "sticker":
         message_id = params.get("message_id")
-        referred_message = await message_repo.find_by_id(message_id)
+        referred_message = None
+        if message_id is not None:
+            try:
+                referred_message = await message_repo.find_by_id(int(message_id))
+            except (ValueError, TypeError):
+                referred_message = await message_repo.find_by_message_id(str(message_id))
+        
+        if not referred_message:
+            referred_message = db_message
 
         await handle_sticker_command(
             remote_id=remote_id,
             db_message=referred_message,
             db=db,
+            context=context,
+            action_params=params,
         )
         return True
 
@@ -460,16 +493,31 @@ async def _dispatch_action(
 
         resolved_mentions = []
         for user_id in users_requested:
-            user = await user_repo.find_by_id(user_id)
-            if user:
-                resolved_mentions.append(user)
+            user_obj = None
+            if isinstance(user_id, int):
+                user_obj = await user_repo.find_by_id(user_id)
+            else:
+                try:
+                    user_obj = await user_repo.find_by_id(int(user_id))
+                except (ValueError, TypeError):
+                    user_obj = await user_repo.find_by_phone_or_id(str(user_id))
+            if user_obj:
+                resolved_mentions.append(user_obj)
 
         await handle_picture_command(remote_id=remote_id, mentions=resolved_mentions)
         return True
 
     elif action_type == "image":
         message_id = params.get("message_id")
-        referred_message = await message_repo.find_by_id(message_id)
+        referred_message = None
+        if message_id is not None:
+            try:
+                referred_message = await message_repo.find_by_id(int(message_id))
+            except (ValueError, TypeError):
+                referred_message = await message_repo.find_by_message_id(str(message_id))
+
+        if not referred_message:
+            referred_message = db_message
 
         await handle_image_command(
             remote_id=remote_id,
@@ -480,18 +528,37 @@ async def _dispatch_action(
 
     elif action_type == "describe":
         message_id = params.get("message_id")
-        referred_message = await message_repo.find_by_id(message_id)
+        referred_message = None
+        if message_id is not None:
+            try:
+                referred_message = await message_repo.find_by_id(int(message_id))
+            except (ValueError, TypeError):
+                referred_message = await message_repo.find_by_message_id(str(message_id))
+
+        if not referred_message:
+            referred_message = db_message
+
         await handle_describe_image_command(
             remote_id=remote_id,
+            db_message=referred_message,
             user_id=user.id,
             db=db,
             group_id=group_id,
-            db_message=referred_message,
         )
         return True
 
     elif action_type == "transcribe":
-        await handle_transcribe_command(remote_id, db_message.message_id, {"data": {}}, user.id, group_id)
+        message_id = params.get("message_id")
+        target_msg_id = db_message.message_id
+        if message_id is not None:
+            try:
+                ref_msg = await message_repo.find_by_id(int(message_id))
+                if ref_msg:
+                    target_msg_id = ref_msg.message_id
+            except (ValueError, TypeError):
+                target_msg_id = str(message_id)
+
+        await handle_transcribe_command(remote_id, target_msg_id, {"data": {}}, user.id, group_id)
         return True
 
     elif action_type == "remember":

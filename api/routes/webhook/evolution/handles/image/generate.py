@@ -1,5 +1,6 @@
 import base64
 from io import BytesIO
+from typing import Optional
 
 from PIL import Image
 
@@ -23,7 +24,9 @@ from utils import INSTANCE_NUMBER
 
 
 async def generate_image(
-        user_id: int, db_message: Message,
+        user_id: int,
+        db_message: Message,
+        action_params: Optional[dict] = None,
 ) -> tuple[str, bool]:
     mention_photo: list[tuple[str, User]] = []
     
@@ -41,27 +44,69 @@ async def generate_image(
         image_system_prompt = modify_image_agent.prompt
 
         gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
-        user_message = (
-            db_message.content
-            .replace(f"@{gork_user.phone_number}@s.whatsapp.net", "")
-            .replace(f"{gork_user.src_id}@lid", "")
-            .replace(f"@{gork_user.src_id}", "")
-        )
+        gork_id = gork_user.id if gork_user else None
 
-        mentions = await get_mentions_from_content(db_message, db)
+        raw_user_message = ""
+        if action_params and action_params.get("prompt"):
+            raw_user_message = str(action_params.get("prompt"))
+        elif db_message and db_message.content:
+            raw_user_message = db_message.content
+
+        if gork_user:
+            user_message = (
+                raw_user_message
+                .replace(f"@{gork_user.phone_number}@s.whatsapp.net", "")
+                .replace(f"{gork_user.src_id}@lid", "")
+                .replace(f"@{gork_user.src_id}", "")
+            )
+        else:
+            user_message = raw_user_message
+
+        # Fetch explicitly mentioned users
+        mentions = await get_mentions_from_content(db_message, db) if db_message else []
+
+        # Also support mentions passed in action_params
+        if action_params and action_params.get("mentioned_users"):
+            for u_id in action_params.get("mentioned_users", []):
+                u_obj = None
+                if isinstance(u_id, int):
+                    u_obj = await user_repo.find_by_id(u_id)
+                else:
+                    try:
+                        u_obj = await user_repo.find_by_id(int(u_id))
+                    except (ValueError, TypeError):
+                        u_obj = await user_repo.find_by_phone_or_id(str(u_id))
+                if u_obj and all(m.id != u_obj.id for m in mentions):
+                    mentions.append(u_obj)
+
+        # Quoted message handling
+        quoted_message = await message_repo.find_by_id(db_message.quoted_message_id) if db_message and db_message.quoted_message_id else None
+
+        # Automatically include sender of quoted_message in mentions if available and not Gork
+        if quoted_message and quoted_message.user_id:
+            if gork_id is None or quoted_message.user_id != gork_id:
+                quoted_user = await user_repo.find_by_id(quoted_message.user_id)
+                if quoted_user and all(m.id != quoted_user.id for m in mentions):
+                    mentions.append(quoted_user)
+
         s3_client = S3Client()
         await s3_client.connect()
-        if mentions is not None:
+        if mentions:
             for mention in mentions:
-                if mention.phone_number != gork_user.phone_number:
-                    if mention is not None and mention.profile_pic_path is not None:
+                if gork_user and mention.phone_number == gork_user.phone_number:
+                    continue
+                if mention and mention.profile_pic_path:
+                    try:
                         photo_base64 = await s3_client.get_image_base64("whatsapp", mention.profile_pic_path)
-                        mention_photo.append((photo_base64, mention))
+                        if photo_base64:
+                            mention_photo.append((photo_base64, mention))
+                    except Exception:
+                        pass
 
         new_command = await command_repo.create_command(
             command="image",
             user_id=user_id,
-            group_id=db_message.group_id,
+            group_id=db_message.group_id if db_message else None,
         )
 
         interaction_repo = InteractionRepository(Interaction, db)
@@ -69,26 +114,28 @@ async def generate_image(
         image_model = await model_conversation_repo.resolve_agent_model(
             modify_image_agent,
             user_id=user_id,
-            group_id=db_message.group_id,
+            group_id=db_message.group_id if db_message else None,
         )
         if not image_model:
             return "Modelo de imagem não configurado.", True
-
-        quoted_message = await message_repo.find_by_id(db_message.quoted_message_id) if db_message.quoted_message_id else None
 
         # Collect images from the message itself and from the quoted message
         message_image_base64 = None
         quoted_image_base64 = None
 
-        if db_message.media_id:
+        if db_message and db_message.message_id:
             try:
-                message_image_base64, _ = await download_media(db_message.message_id)
+                res, _ = await download_media(db_message.message_id)
+                if res:
+                    message_image_base64 = res
             except Exception:
                 message_image_base64 = None
 
-        if quoted_message and quoted_message.media_id:
+        if quoted_message and quoted_message.message_id:
             try:
-                quoted_image_base64, _ = await download_media(quoted_message.message_id)
+                res, _ = await download_media(quoted_message.message_id)
+                if res:
+                    quoted_image_base64 = res
             except Exception:
                 quoted_image_base64 = None
 
@@ -111,8 +158,8 @@ async def generate_image(
                 if secondary_image_base64:
                     offset += 1
                 idx = idx + offset - 1
-                user_message = user_message.replace(f"@{us.phone_number}@s.whatsapp.net", us.name).replace(f"{us.src_id}@lid", us.name).replace(f"@{us.src_id}", us.name)
-                photo_context = f"{photo_context}Foto [{idx}]:É a pessoa: {us.name}\n"
+                user_message = user_message.replace(f"@{us.phone_number}@s.whatsapp.net", us.name or "Usuário").replace(f"{us.src_id}@lid", us.name or "Usuário").replace(f"@{us.src_id}", us.name or "Usuário")
+                photo_context = f"{photo_context}Foto [{idx}]: É a pessoa: {us.name or 'Usuário'}\n"
 
         base64_context = ""
         if primary_image_base64 and secondary_image_base64:
@@ -206,7 +253,7 @@ async def generate_image(
                     response=None,
                     input_tokens=req["usage"]["prompt_tokens"],
                     output_tokens=None,
-                    group_id=db_message.group_id
+                    group_id=db_message.group_id if db_message else None
                 )
                 return "Não foi possível completar sua requisição. Tente novamente mais tarde.", True
 
@@ -230,7 +277,7 @@ async def generate_image(
             response=webp_base64,
             input_tokens=req["usage"]["prompt_tokens"],
             output_tokens=req["usage"]["completion_tokens"],
-            group_id=db_message.group_id
+            group_id=db_message.group_id if db_message else None
         )
 
         return webp_base64, False
