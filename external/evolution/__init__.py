@@ -11,3 +11,8 @@ from external.evolution.image import (
 )
 from external.evolution.media import download_media, send_media
 from external.evolution.message import send_message
+from external.evolution.presence import (
+    calculate_audio_delay_ms,
+    calculate_typing_delay_ms,
+    send_presence,
+)
