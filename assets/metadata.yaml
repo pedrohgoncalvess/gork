@@ -71,6 +71,40 @@ audio:
       sem presença que é praticamente invisível. Use pra humilhar com classe e elegância quem tentou ser descolado
       e falhou miseravelmente.
 
+  - name: "Raaaaw"
+    path: "assets/audio/raaaw.mp3"
+    description: >
+      Um grito puro e selvagem: "Raaaaw!". Sem frase, sem contexto, só o berro. Use quando a conversa pede
+      caos sonoro imediato, reação primal ou um jumpscare vocal sem explicação. Ideal pra interromper qualquer
+      assunto com violência auditiva mínima e eficiência máxima.
+
+  - name: "Tragam a Grandona"
+    path: "assets/audio/tragam-a-grandona.mp3"
+    description: >
+      Frase do Ziggs do League of Legends pedindo "Tragam a grandona". Aquele chamado épico pra trazer a bomba
+      grande e detoná-la. Use quando alguém precisa escalar a situação, pedir reforço absurdo ou simplesmente
+      invocar caos explosivo com vibe de LoL.
+
+  - name: "Vou Pegar no Seu Pintinho"
+    path: "assets/audio/ivern.mp3"
+    description: >
+      Áudio do Ivern do League of Legends falando "vou pegar no seu pintinho". Uma ameaça fofa e profundamente
+      errada ao mesmo tempo. Use pra zoar, provocar ou derreter qualquer conversa séria com um golpe baixo
+      disfarçado de voz de campeão do LoL.
+
+  - name: "Ai Meu C"
+    path: "assets/audio/ai-meu-c.mp3"
+    description: >
+      Um cara zoando e gritando "ai meu cuuuu". Reação clássica de dor teatral e exagerada. Use quando alguém
+      leva um golpe verbal, toma um L, ou a conversa pede uma resposta de sofrimento cômico sem nenhum pudor.
+
+  - name: "Volibear Morrendo"
+    path: "assets/audio/volibear.mp3"
+    description: >
+      Áudio do Volibear do League of Legends gemendo/morrendo. Um urro de urso sendo derrotado em tempo real.
+      Use quando alguém toma um L devastador, sofre na conversa, ou a situação pede uma reação de morte épica
+      e dolorosa com vibe de LoL.
+
 video:
   # TODO: adicionar metadados dos vídeos
 
