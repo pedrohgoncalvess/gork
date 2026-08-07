@@ -21,12 +21,13 @@ await logger.info("ModuleName", "OperationType", "Detailed message")
 await logger.error("ModuleName", "ErrorType", "Exception details")
 """
 import functools
+import json
 import os
 import re
 from datetime import datetime
 from functools import reduce
 from string import Template
-from typing import Optional
+from typing import Any, Optional
 
 import aiofiles
 
@@ -129,3 +130,4 @@ class StructuredLogger:
 logger = StructuredLogger()
 openrouter_logger = StructuredLogger(file_name="openrouter")
 other_webhooks_logger = StructuredLogger(file_name="otherwebhooks")
+

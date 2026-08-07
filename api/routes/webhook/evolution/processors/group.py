@@ -22,6 +22,7 @@ async def process_group_message(
         scheduler: AsyncIOScheduler,
 ):
     group_jid = remote_id.replace("@g.us", "")
+
     event_data = body["data"]
     contact_id = event_data["key"]["participant"].replace("@lid", "")
     phone_number = event_data["key"].get("participantAlt", "").replace("@s.whatsapp.net", "")
