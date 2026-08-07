@@ -29,6 +29,15 @@ def _remove_background_enabled(params: dict) -> bool:
     )
 
 
+def _parse_blur(params: dict) -> int:
+    val = params.get("blur", 0)
+    try:
+        blur = int(val)
+    except (ValueError, TypeError):
+        blur = 0
+    return max(0, min(100, blur))
+
+
 def _media_type_is_video(media_type: str | None) -> bool:
     return media_type in ("mp4", "video")
 
@@ -123,12 +132,14 @@ async def handle_sticker_command(
             await send_animated_sticker(remote_id, sticker_url)
         else:
             is_random = _param_enabled(params.get("random", "false"))
+            blur = _parse_blur(params)
             webp_base64 = await static_sticker(
                 db_message,
                 db,
                 is_random,
                 remove_background,
                 fill,
+                blur=blur,
                 font_size_param=font_size,
                 source_image_bytes=result.media_bytes,
                 caption_text=caption_text,
@@ -204,12 +215,14 @@ async def handle_sticker_command(
     remove_background = _remove_background_enabled(params)
     fill = _param_enabled(params.get("fill", "false"))
     font_size = params.get("font-size", "l")
+    blur = _parse_blur(params)
     webp_base64 = await static_sticker(
         db_message,
         db,
         is_random,
         remove_background,
         fill,
+        blur=blur,
         font_size_param=font_size,
         context=context,
     )

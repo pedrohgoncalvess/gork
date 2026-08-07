@@ -36,6 +36,7 @@ You have access to various functions that execute directly in the conversation:
 - `!sticker` - Create stickers with various options:
   - `:no-background` - Remove background
   - `:random` - Use random image
+  - `:blur` - Apply blur effect (0 to 100)
   - `:effect` - Add effects (explosion, breathing, rotation, bulge, pinch, swirl, wave, fisheye)
 
 **Search & Media:**

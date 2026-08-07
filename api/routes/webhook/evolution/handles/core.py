@@ -31,6 +31,7 @@ COMMANDS = [
             ]),
             (":cut", "Recorta o video da figurinha animada. Use segundos ou minuto:segundo, com inicio-fim.", [("43-46", "Corta de 43s a 46s"), ("1:00-1:05", "Corta de 1min a 1min05s"), ("43-", "Corta a partir de 43s ate o limite"), ("-46", "Corta os segundos anteriores a 46s")]),
             (":speed", "Altera a velocidade da figurinha animada. Valores acima de 1 aceleram; abaixo de 1 desaceleram.", [("2.0", "Dobra a velocidade"), ("0.5", "Metade da velocidade")]),
+            (":blur", "Aplica desfoque à imagem do sticker (0 a 100).", [("50", "Desfoque médio (50)"), ("100", "Desfoque máximo (100)")]),
         ]
     ),
     ("!english", "", "hidden", []),

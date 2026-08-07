@@ -17,6 +17,7 @@ def parse_params(message: str | None) -> dict:
         "quote",
         "speed",
         "cut",
+        "blur",
     ]
     keys_pattern = "|".join(map(re.escape, PARAMS))
 

@@ -3,7 +3,7 @@ import re
 from io import BytesIO
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageFilter
 from rembg import new_session, remove
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,6 +62,7 @@ async def static_sticker(
         db_message: Message,
         db: AsyncSession, random_image: bool = False,
         remove_background: bool = False, fill: bool = False,
+        blur: int = 0,
         gork_req: bool = False,
         font_size_param: str = "l",
         source_image_bytes: bytes | None = None,
@@ -135,6 +136,12 @@ async def static_sticker(
         img = _resize_cover(img, (512, 512))
     else:
         img = _resize_contain_transparent(img, (512, 512))
+
+    if blur > 0:
+        blur_level = max(0, min(100, blur))
+        radius = (blur_level / 100.0) * 30.0
+        if radius > 0:
+            img = img.filter(ImageFilter.GaussianBlur(radius))
 
     if caption_text:
         img = add_caption_to_image(img, caption_text, font_size_param)
