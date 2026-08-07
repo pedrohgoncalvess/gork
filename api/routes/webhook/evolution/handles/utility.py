@@ -10,9 +10,13 @@ from database.models.content import Message
 from database.models.manager import Command, Model
 from database.models.manager.interaction import Interaction
 from database.operations.content.message import MessageRepository
-from database.operations.manager import ModelRepository
-from database.operations.manager.command import CommandRepository
-from database.operations.manager.interaction import InteractionRepository
+from database.operations.manager import (
+    AgentRepository,
+    CommandRepository,
+    InteractionRepository,
+    ModelConversationRepository,
+    ModelRepository,
+)
 from external import completions
 from external.evolution import send_message
 
@@ -25,6 +29,8 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
 
         model_repo = ModelRepository(db)
         command_repo = CommandRepository(Command, db)
+        agent_repo = AgentRepository(db)
+        model_conv_repo = ModelConversationRepository(db)
 
         if contact_id:
             commands = await command_repo.find_by(
@@ -57,7 +63,17 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
 
             return f"Executei esse comando tem {time_str}hr"
 
-        model = await model_repo.get_default_model()
+        resume_agent = await agent_repo.find_by_name("resume")
+        model = None
+        if resume_agent:
+            model = await model_conv_repo.resolve_agent_model(
+                resume_agent,
+                user_id=user_id,
+                group_id=group_id
+            )
+
+        if not model:
+            model = await model_repo.get_default_model()
 
         message_repo = MessageRepository(db)
         if group_id:
@@ -90,8 +106,6 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
 
         final_message = "\n".join(formatted_messages)
 
-        agent_repo = AgentRepository(db)
-        resume_agent = await agent_repo.find_by_name("resume")
         if resume_agent and resume_agent.prompt:
             system_prompt = resume_agent.prompt
         else:
