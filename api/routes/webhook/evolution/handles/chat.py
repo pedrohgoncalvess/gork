@@ -28,7 +28,12 @@ from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
-from database.operations.manager import InteractionRepository, ModelRepository
+from database.operations.manager import (
+    AgentRepository,
+    InteractionRepository,
+    ModelConversationRepository,
+    ModelRepository,
+)
 from external import completions
 from external.evolution import send_audio, send_message
 from llm_access import (
@@ -120,7 +125,8 @@ async def _dispatch_gork_response(
         return
 
     message_type = 0
-    for action in parsed.get("actions", []):
+    actions = parsed.get("actions", [])
+    for action in actions:
         action_type = action.get("action")
 
         try:
@@ -353,7 +359,20 @@ async def _run_web_search(
 ) -> str:
     model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
+    model_conv_repo = ModelConversationRepository(db)
     web_agent = await agent_repo.find_by_name("web-search")
+
+    model = None
+    if web_agent:
+        model = await model_conv_repo.resolve_agent_model(
+            web_agent,
+            user_id=user.id,
+            group_id=group_id
+        )
+
+    if not model:
+        model = await model_repo.get_default_model()
+
     if web_agent and web_agent.prompt:
         system_prompt = web_agent.prompt
     else:
