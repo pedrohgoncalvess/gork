@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -36,15 +37,18 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
                 command="resume"
             )
 
+        now_time = datetime.now()
         recent_commands = [
             cmd for cmd in commands
-            if cmd.inserted_at >= datetime.now() - timedelta(hours=2)
+            if cmd.inserted_at and (
+                now_time - (cmd.inserted_at.replace(tzinfo=None) if cmd.inserted_at.tzinfo else cmd.inserted_at)
+            ) <= timedelta(hours=2)
         ]
 
         if len(recent_commands) > 0:
             most_recent = max(recent_commands, key=lambda cmd: cmd.inserted_at)
-
-            time_diff = most_recent.inserted_at - datetime.now()
+            inserted_naive = most_recent.inserted_at.replace(tzinfo=None) if most_recent.inserted_at.tzinfo else most_recent.inserted_at
+            time_diff = now_time - inserted_naive
 
             hours = int(time_diff.total_seconds() // 3600)
             minutes = int((time_diff.total_seconds() % 3600) // 60)
@@ -56,22 +60,31 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
         model = await model_repo.get_default_model()
 
         message_repo = MessageRepository(db)
-        messages = await message_repo.find_by_group(group_id, 100)
-        messages = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id))
+        if group_id:
+            messages = await message_repo.find_by_group(group_id, 100)
+        else:
+            messages = await message_repo.find_by_sender(user_id, 100)
+
+        messages = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id or 0))
 
         formatted_messages = []
 
         for msg in messages:
-            sender_name = msg.sender.name or msg.sender.phone_jid or "Usuário Desconhecido"
+            sender_name = "Usuário Desconhecido"
+            if msg.sender:
+                sender_name = msg.sender.name or msg.sender.phone_number or msg.sender.src_id or "Usuário"
             content = msg.content or ""
 
-            msg_date = msg.created_at.date()
-            today = datetime.now().date()
+            if msg.created_at:
+                msg_date = msg.created_at.date()
+                today = datetime.now().date()
 
-            if msg_date != today:
-                timestamp = msg.created_at.strftime('%d/%m/%Y %H:%M')
+                if msg_date != today:
+                    timestamp = msg.created_at.strftime('%d/%m/%Y %H:%M')
+                else:
+                    timestamp = msg.created_at.strftime('%H:%M')
             else:
-                timestamp = msg.created_at.strftime('%H:%M')
+                timestamp = ""
 
             formatted_messages.append(f"{sender_name}: {content} - {timestamp}")
 
@@ -130,13 +143,13 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
         _ = await interaction_repo.create_interaction(
             model_id=model.id,
             user_id=user_id,
-            group_id=None,
+            group_id=group_id,
             command_id=command.id,
             user_prompt=final_message,
             system_behavior=system_prompt,
             response=conversation_resume,
-            input_tokens=req["usage"]["prompt_tokens"],
-            output_tokens=req["usage"]["completion_tokens"]
+            input_tokens=req.get("usage", {}).get("prompt_tokens", 0),
+            output_tokens=req.get("usage", {}).get("completion_tokens", 0)
         )
 
         return conversation_resume
