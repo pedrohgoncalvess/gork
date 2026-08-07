@@ -24,6 +24,13 @@ async def completions(payload: dict, is_online: bool = False) -> dict:
         duration = datetime.now() - start
         try:
             response = await client.post(f"{OPENROUTER_ENDPOINT}/chat/completions", json=payload, headers=headers)
+            if response.status_code >= 400:
+                minutes = duration.total_seconds() / 60
+                await openrouter_logger.error(
+                    "OpenRouter",
+                    f"HTTPError_{response.status_code}",
+                    f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Status: {response.status_code}. Response: {response.text}. Payload: {payload}"
+                )
             response.raise_for_status()
             minutes = duration.total_seconds() / 60
             await openrouter_logger.info("OpenRouter", "Conversation", f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Payload: {payload}")
