@@ -42,7 +42,7 @@ from log import logger
 from tts import text_to_speech
 
 
-MAX_WEB_SEARCH_DEPTH = 2
+MAX_WEB_SEARCH_DEPTH = 10
 MAX_DATABASE_QUERY_ITERATIONS = 10
 DATABASE_QUERY_STOP_ITERATION = 7
 
@@ -576,13 +576,38 @@ async def _dispatch_action(
         return True
 
     elif action_type == "web_search":
-        if web_search_depth >= MAX_WEB_SEARCH_DEPTH:
-            await send_message(remote_id, "Nao consegui concluir a busca agora. Tenta de novo outra hora")
-            return False
-
         query = params.get("query") or params.get("term") or params.get("search")
         if not query:
             await logger.error("ConversationHandle", "WebSearchError", "Missing web_search query parameter.")
+            return False
+
+        if web_search_depth >= MAX_WEB_SEARCH_DEPTH:
+            force_context = (
+                f"{database_context}\n\n"
+                "[SYSTEM NOTE: Limite de buscas na web atingido. "
+                "Responda ao usuário com uma ação 'message' utilizando as informações já obtidas acima.]"
+            )
+            raw_response = await conversation_agent(
+                db=db,
+                user_id=user.id,
+                last_message_id=db_message.id,
+                group_id=group_id,
+                additional_context=force_context,
+            )
+            await _dispatch_gork_response(
+                raw_response=raw_response,
+                remote_id=remote_id,
+                message_id=db_message.message_id,
+                user=user,
+                db=db,
+                db_message=db_message,
+                scheduler=scheduler,
+                context=context,
+                group_id=group_id,
+                web_search_depth=MAX_WEB_SEARCH_DEPTH + 1,
+                database_query_iteration=database_query_iteration,
+                database_context=database_context,
+            )
             return False
 
         search_result = await _run_web_search(db, user, query, group_id)
