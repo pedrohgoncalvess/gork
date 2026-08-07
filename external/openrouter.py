@@ -15,8 +15,10 @@ async def completions(payload: dict, is_online: bool = False) -> dict:
         "Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}",
     }
 
-    if is_online and payload.get("model") and not payload["model"].endswith(":online"):
-        payload = {**payload, "model": f"{payload['model']}:online"}
+    if is_online:
+        tools = payload.get("tools", [])
+        if not any(t.get("type") == "openrouter:web_search" for t in tools if isinstance(t, dict)):
+            payload = {**payload, "tools": tools + [{"type": "openrouter:web_search"}]}
 
     async with httpx.AsyncClient(timeout=120) as client:
         duration = datetime.now() - start
