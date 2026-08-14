@@ -8,7 +8,7 @@ def is_instant_command_message(message: str) -> bool:
     if not message:
         return False
     msg_clean = message.strip()
-    if msg_clean.startswith(("!help", "!model", "!status", "!consumption", "!resume")):
+    if msg_clean.startswith(("!help", "!model", "!status", "!usage", "!resume")):
         return True
     instant_signatures = (
         "🤖 *COMANDOS DO GORK*",

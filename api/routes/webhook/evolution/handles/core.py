@@ -38,7 +38,16 @@ COMMANDS = [
     ("!remember", "Cria um lembrete para o dia, hora e tópico solicitado. _[Ex: Lembrete para comentar amanhã as 4 da tarde]_", "reminder", []),
     ("!transcribe", "Transcreve um áudio. _[Ignora o restante da mensagem]_", "audio", []),
     ("!image", "Gera ou modifica uma imagem mencionada. _[Mencione alguém para adicionar a foto de perfil ao contexto de criação. Adicione @me na mensagem e sua foto vai ser mencionada no contexto.]_", "image", []),
-    ("!consumption", "Gera relatório de consumo de grupos e usuários.", "search", []),
+    (
+        "!usage",
+        "Gera relatório de uso de grupos e usuários.",
+        "search",
+        [
+            (":user", "Filtra por parte do nome do usuário no grupo.", [("\"Maria Silva\"", "Nome completo ou parcial")]),
+            (":when", "Define a janela histórica.", [("7d", "Sete dias"), ("3w", "Três semanas"), ("2m", "Dois meses")]),
+            (":granularity", "Agrupa o relatório; padrão: dia/24h.", [("d", "Dia"), ("w", "Semana"), ("m", "Mês")]),
+        ],
+    ),
     ("!describe", "Descreve uma imagem.", "image", []),
     ("!gallery", "Lista as imagens enviadas. _[Filtros podem ser feitos com termos ou datas]_", "image", []),
     ("!favorite", "Favorita uma mensagem.", "utility", []),

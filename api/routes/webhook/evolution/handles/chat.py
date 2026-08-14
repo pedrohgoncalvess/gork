@@ -683,11 +683,22 @@ async def _dispatch_action(
         await handle_model_command(remote_id, db_message.message_id, db)
         return True
 
-    elif action_type == "consumption":
+    elif action_type in ("usage", "consumption"):
         if group_id:
-            await handle_consumption_command(remote_id, group_id=group_id)
+            await handle_consumption_command(
+                remote_id,
+                group_id=group_id,
+                user_name=params.get("user"),
+                when=params.get("when"),
+                granularity=params.get("granularity"),
+            )
         else:
-            await handle_consumption_command(remote_id, user_id=user.id)
+            await handle_consumption_command(
+                remote_id,
+                user_id=user.id,
+                when=params.get("when"),
+                granularity=params.get("granularity"),
+            )
         return True
 
     elif action_type == "favorite":

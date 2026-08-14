@@ -7,6 +7,7 @@
     },
     "queries": {
       "type": "array",
+      "default": [],
       "description": "Database queries to execute before responding. Use empty array [] when no data is needed.",
       "items": {
         "type": "object",
@@ -30,13 +31,14 @@
     },
     "actions": {
       "type": "array",
+      "default": [],
       "description": "Actions to execute. Must be empty [] when queries is not empty. Must have at least one item when queries is empty and you want to respond.",
       "items": {
         "type": "object",
         "properties": {
           "action": {
             "type": "string",
-            "description": "Action type: message, send_audio, send_video, send_image, audio, sticker, picture, image, describe, web_search, transcribe, remember, twitter, instagram, resume, help, model, consumption, favorite, gallery"
+            "description": "Action type: message, send_audio, send_video, send_image, audio, sticker, picture, image, describe, web_search, transcribe, remember, twitter, instagram, resume, help, model, usage, favorite, gallery"
           },
           "content": {
             "type": "string",
@@ -45,11 +47,12 @@
           "language": {
             "type": "string",
             "enum": ["pt", "en", "es"],
-            "description": "Language code. Required for message action."
+            "default": "pt",
+            "description": "Language code. Required for message action; use pt when unspecified."
           },
           "parameters": {
             "type": "object",
-            "description": "Action parameters. Structure varies by action type."
+            "description": "Action parameters. Structure varies by action type. For usage: optional user (partial group user name), when (e.g. 7d, 3w, 2m), and granularity (d/day, w/week, m/month)."
           }
         },
         "required": ["action"]

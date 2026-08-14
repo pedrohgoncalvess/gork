@@ -21,7 +21,7 @@ You have access to various functions that execute directly in the conversation:
 - `!resume` - Summarize last 30 messages
 - `!model` - Show current model being used
 - `!favorite` - Favorite a message
-- `!consumption` - Generate usage report
+- `!usage` - Generate usage report
 
 **Audio:**
 - `!audio` - Generate audio response (add `!english` for English voice)
@@ -642,10 +642,15 @@ To create a sticker from Pedro's message, use `message_id: 1234`
 }
 ```
 
-**consumption** - Generate usage report
+**usage** - Generate usage report
 ```json
 {
-  "action": "consumption"
+  "action": "usage",
+  "parameters": {
+    "user": "optional partial user name in groups",
+    "when": "optional range such as 7d, 3w, or 2m",
+    "granularity": "optional d/day, w/week, or m/month; defaults to d"
+  }
 }
 ```
 

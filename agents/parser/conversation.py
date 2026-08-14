@@ -48,7 +48,8 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
     - "audio", "sticker", "picture", "image", "describe", "web_search",
       "transcribe", "remember", "twitter", "instagram", "gallery", "favorite":
       May have optional "parameters" dict
-    - "resume", "help", "model", "consumption": No parameters needed
+    - "usage": May have optional "user", "when", and "granularity" parameters
+    - "resume", "help", "model": No parameters needed
 
     Validation Rules:
     - If queries is not empty, actions MUST be empty
@@ -73,6 +74,7 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
     for attempt, candidate in enumerate(_candidate_json_strings(text), 1):
         try:
             parsed = json.loads(candidate)
+            _normalize_gork_response(parsed)
             _validate_gork_structure(parsed)
             return parsed
         except json.JSONDecodeError as error:
@@ -86,6 +88,29 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
     # If all candidates fail, log and raise
     await logger.error("GorkParser", "ParseFailed", llm_output)
     raise ValueError("Failed to parse valid Gork JSON response")
+
+
+def _normalize_gork_response(response: Any) -> None:
+    """Fill safe defaults for fields the model occasionally omits.
+
+    The dispatcher treats omitted query/action lists as empty and all regular
+    chat messages as Portuguese unless the model explicitly chooses another
+    supported language. Normalizing those fields prevents a valid answer from
+    being discarded solely due to an incomplete response envelope.
+    """
+    if not isinstance(response, dict):
+        return
+
+    response.setdefault("queries", [])
+    response.setdefault("actions", [])
+
+    actions = response.get("actions")
+    if not isinstance(actions, list):
+        return
+
+    for action in actions:
+        if isinstance(action, dict) and action.get("action") == "message":
+            action.setdefault("language", "pt")
 
 
 async def _log_parse_attempt_error(
@@ -382,9 +407,15 @@ def _validate_action_type(action_type: str, action: Dict, idx: int) -> None:
                 f"Action '{action_type}' at index {idx} has invalid parameters (must be dict)"
             )
 
-    elif action_type in ["resume", "help", "model", "consumption"]:
+    elif action_type in ["resume", "help", "model"]:
         # These actions don't need parameters
         pass
+
+    elif action_type == "usage":
+        if "parameters" in action and not isinstance(action["parameters"], dict):
+            raise ValueError(
+                f"Action '{action_type}' at index {idx} has invalid parameters (must be dict)"
+            )
 
     else:
         # Unknown action type - log warning but don't fail

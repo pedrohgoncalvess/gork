@@ -18,10 +18,13 @@ def parse_params(message: str | None) -> dict:
         "speed",
         "cut",
         "blur",
+        "user",
+        "when",
+        "granularity",
     ]
     keys_pattern = "|".join(map(re.escape, PARAMS))
 
-    pattern = rf':({keys_pattern})=([^\s]+)'
+    pattern = rf''':({keys_pattern})=(?:"([^"]+)"|'([^']+)'|([^\s]+))'''
 
     matches = re.findall(pattern, message)
 
@@ -34,7 +37,8 @@ def parse_params(message: str | None) -> dict:
             return value
 
     result = {}
-    for key, value in matches:
+    for key, double_quoted, single_quoted, unquoted in matches:
+        value = double_quoted or single_quoted or unquoted
         result.update({key: _coerce(value)})
 
     return result

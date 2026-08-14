@@ -27,7 +27,7 @@ from api.routes.webhook.evolution.handles import (
 )
 from database.models.base import User
 from database.models.content import Message
-from services import get_mentions_from_content
+from services import get_mentions_from_content, parse_params
 
 
 async def process_commands(
@@ -105,11 +105,23 @@ async def process_explicit_commands(
         )
         return
 
-    if "!consumption" in lw_conversation:
+    if "!usage" in lw_conversation:
+        params = parse_params(conversation)
         if group_id:
-            await handle_consumption_command(remote_id, group_id=group_id)
+            await handle_consumption_command(
+                remote_id,
+                group_id=group_id,
+                user_name=params.get("user"),
+                when=params.get("when"),
+                granularity=params.get("granularity"),
+            )
         else:
-            await handle_consumption_command(remote_id, user_id=user.id)
+            await handle_consumption_command(
+                remote_id,
+                user_id=user.id,
+                when=params.get("when"),
+                granularity=params.get("granularity"),
+            )
         return
 
     if "!gallery" in lw_conversation:
