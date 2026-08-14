@@ -9,7 +9,6 @@ from io import BytesIO
 import httpx
 import numpy as np
 from PIL import Image
-from rembg import new_session, remove
 
 from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
@@ -409,7 +408,41 @@ def _save_animation_frames(
     return output_path
 
 
+def _decode_animated_image_for_ffmpeg(media_bytes: bytes, output_path: str) -> bool:
+    """Decode animated WebP/GIF with Pillow so FFmpeg receives every frame."""
+    try:
+        animation = Image.open(BytesIO(media_bytes))
+        if not (getattr(animation, "is_animated", False) or getattr(animation, "n_frames", 1) > 1):
+            animation.close()
+            return False
+
+        frames = []
+        durations = []
+        for frame_index in range(animation.n_frames):
+            animation.seek(frame_index)
+            frames.append(animation.convert("RGBA"))
+            durations.append(animation.info.get("duration", 66))
+        animation.close()
+
+        frames[0].save(
+            output_path,
+            format="GIF",
+            save_all=True,
+            append_images=frames[1:],
+            duration=durations,
+            loop=0,
+            disposal=2,
+        )
+        return True
+    except Exception:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        return False
+
+
 def _remove_background_from_frame(frame: Image.Image, session) -> Image.Image:
+    from rembg import remove
+
     frame = frame.convert("RGBA")
     img_bytes = BytesIO()
     frame.save(img_bytes, format="PNG")
@@ -418,6 +451,8 @@ def _remove_background_from_frame(frame: Image.Image, session) -> Image.Image:
 
 
 def _remove_background_from_animation(input_path: str, output_path: str) -> str:
+    from rembg import new_session
+
     animation = Image.open(input_path)
     frames = []
     durations = []
@@ -664,6 +699,7 @@ def _build_animated_sticker_webp(
         remove_background: bool = False,
         speed: float = 1.0,
         cut_spec=None,
+        blur: int = 0,
 ) -> tuple[str, list[str]]:
     with tempfile.NamedTemporaryFile(suffix='.media', delete=False) as f:
         f.write(media_bytes)
@@ -674,6 +710,13 @@ def _build_animated_sticker_webp(
     temp_paths = [webp_path, gif_path, output_webp_path]
 
     try:
+        decoded_animation_path = tempfile.mktemp(suffix='.gif')
+        if _decode_animated_image_for_ffmpeg(media_bytes, decoded_animation_path):
+            temp_paths.append(decoded_animation_path)
+            input_path = decoded_animation_path
+        else:
+            input_path = webp_path
+
         speed = max(float(speed), 0.1)
         source_fps = VIDEO_REMBG_FPS if remove_background else 30
         source_scale = VIDEO_REMBG_SCALE if remove_background else 512
@@ -685,13 +728,16 @@ def _build_animated_sticker_webp(
             cut_args = ["-ss", f"{cut_start:.3f}"]
             source_duration = cut_duration
         speed_filter = f"setpts=PTS/{speed}," if speed != 1.0 else ""
+        blur_level = max(0, min(100, int(blur or 0)))
+        blur_filter = f"gblur=sigma={(blur_level / 100.0) * 30.0:.2f}," if blur_level else ""
         subprocess.run([
             'ffmpeg',
             *cut_args,
-            '-i', webp_path,
+            '-i', input_path,
             '-vf',
             f'fps={source_fps},'
             f'{speed_filter}'
+            f'{blur_filter}'
             f'{_square_video_filter(source_scale, fill)},'
             'split[s0][s1];[s0]palettegen=max_colors=256[p];[s1][p]paletteuse=dither=sierra2_4a',
             '-t', str(source_duration),
@@ -746,6 +792,7 @@ async def animated_sticker_from_bytes(
         remove_background: bool = False,
         speed: float = 1.0,
         cut_spec=None,
+        blur: int = 0,
 ) -> str:
     output_webp_path, temp_paths = await asyncio.to_thread(
         _build_animated_sticker_webp,
@@ -757,6 +804,7 @@ async def animated_sticker_from_bytes(
         remove_background,
         speed,
         cut_spec,
+        blur,
     )
     try:
         gif_url = await _upload_to_tmpfile(output_webp_path)
@@ -777,6 +825,7 @@ async def animated_sticker(
         remove_background: bool = False,
         speed: float = 1.0,
         cut_spec=None,
+        blur: int = 0,
 ) -> str:
     if caption_text is None:
         caption_text = clean_text(db_message.content) if db_message.content else None
@@ -791,4 +840,5 @@ async def animated_sticker(
         remove_background=remove_background,
         speed=speed,
         cut_spec=cut_spec,
+        blur=blur,
     )

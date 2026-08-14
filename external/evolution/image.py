@@ -81,6 +81,7 @@ async def send_image(
     image_base64: str,
     filename: str = DEFAULT_FILENAME_IMAGE,
     caption: str = "",
+    mimetype: str = MIMETYPE_JPEG,
 ) -> dict:
     url = f"{evolution_api}/message/sendMedia/{evolution_instance_name}"
 
@@ -89,7 +90,7 @@ async def send_image(
         "mediatype": "image",
         "fileName": filename,
         "media": image_base64,
-        "mimetype": MIMETYPE_JPEG,
+        "mimetype": mimetype,
         "caption": caption,
     }
 

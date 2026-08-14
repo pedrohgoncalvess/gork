@@ -1,7 +1,10 @@
 import base64
+import binascii
+from dataclasses import dataclass
 from io import BytesIO
 from typing import Optional
 
+import httpx
 from PIL import Image
 
 from database import PgConnection
@@ -16,18 +19,233 @@ from database.operations.manager import (
     InteractionRepository,
     ModelConversationRepository,
 )
-from external import completions
+from external import generate_images
 from external.evolution import download_media
+from log import logger
 from s3 import S3Client
 from services import get_mentions_from_content
 from utils import INSTANCE_NUMBER
+
+
+MAX_GENERATED_IMAGE_BYTES = 20 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class ImageGenerationResult:
+    success: bool
+    image_base64: str | None = None
+    error_code: str | None = None
+    user_message: str | None = None
+
+
+class ImageGenerationError(Exception):
+    def __init__(self, code: str, user_message: str, detail: str = ""):
+        super().__init__(detail or user_message)
+        self.code = code
+        self.user_message = user_message
+
+
+def _provider_error(error: httpx.HTTPStatusError) -> ImageGenerationError:
+    status = error.response.status_code
+    response_text = error.response.text.lower()
+
+    if "content-moderated" in response_text or "content moderation" in response_text:
+        return ImageGenerationError(
+            "content_moderated",
+            "A geração foi bloqueada pela moderação do provedor. Tente reformular o pedido.",
+            error.response.text[:1500],
+        )
+    if status == 429:
+        return ImageGenerationError(
+            "rate_limited",
+            "O serviço de imagens está sobrecarregado agora. Tente novamente em alguns instantes.",
+            error.response.text[:1500],
+        )
+    if status == 402:
+        return ImageGenerationError(
+            "provider_credits",
+            "O serviço de imagens está temporariamente indisponível por limite de uso.",
+            error.response.text[:1500],
+        )
+    if status in (401, 403):
+        return ImageGenerationError(
+            "provider_auth",
+            "O serviço de imagens está com um problema de configuração.",
+            error.response.text[:1500],
+        )
+    if status >= 500:
+        return ImageGenerationError(
+            "provider_unavailable",
+            "O provedor de imagens está indisponível no momento. Tente novamente mais tarde.",
+            error.response.text[:1500],
+        )
+    return ImageGenerationError(
+        "provider_rejected_request",
+        "O provedor não conseguiu processar esse pedido de imagem. Tente reformulá-lo.",
+        error.response.text[:1500],
+    )
+
+
+def _extract_image_reference(response: dict) -> str:
+    if not isinstance(response, dict):
+        raise ImageGenerationError(
+            "invalid_provider_response",
+            "O provedor de imagens retornou uma resposta inválida. Tente novamente.",
+            f"Invalid response type: {type(response).__name__}",
+        )
+
+    data = response.get("data")
+    if isinstance(data, list) and data:
+        first_image = data[0]
+        if isinstance(first_image, dict):
+            reference = first_image.get("b64_json") or first_image.get("url")
+            if isinstance(reference, str) and reference.strip():
+                return reference.strip()
+        raise ImageGenerationError(
+            "invalid_provider_response",
+            "O provedor retornou uma imagem em formato inválido. Tente novamente.",
+            "Image API response has no b64_json or URL.",
+        )
+
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        raise ImageGenerationError(
+            "invalid_provider_response",
+            "O provedor de imagens retornou uma resposta vazia. Tente novamente.",
+            "Response has no choices.",
+        )
+
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    images = message.get("images") if isinstance(message, dict) else None
+    if not isinstance(images, list) or not images:
+        provider_error = response.get("error")
+        raise ImageGenerationError(
+            "image_not_generated",
+            "Não foi possível gerar a imagem. Tente reformular o pedido ou tente novamente mais tarde.",
+            f"Response has no images. Provider error: {provider_error}",
+        )
+
+    first_image = images[0]
+    if not isinstance(first_image, dict):
+        raise ImageGenerationError(
+            "invalid_provider_response",
+            "O provedor retornou uma imagem em formato inválido. Tente novamente.",
+            f"Invalid image entry type: {type(first_image).__name__}",
+        )
+
+    image_url = first_image.get("image_url")
+    reference = image_url.get("url") if isinstance(image_url, dict) else image_url
+    if not isinstance(reference, str) or not reference.strip():
+        raise ImageGenerationError(
+            "invalid_provider_response",
+            "O provedor retornou uma imagem em formato inválido. Tente novamente.",
+            "Image URL is missing.",
+        )
+    return reference.strip()
+
+
+async def _load_generated_image(reference: str) -> bytes:
+    if reference.startswith("data:"):
+        if "," not in reference:
+            raise ImageGenerationError(
+                "invalid_image_data",
+                "A imagem gerada veio corrompida. Tente novamente.",
+                "Malformed data URL.",
+            )
+        reference = reference.split(",", 1)[1]
+
+    if reference.startswith(("http://", "https://")):
+        try:
+            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+                response = await client.get(reference)
+                response.raise_for_status()
+                image_bytes = response.content
+        except httpx.HTTPError as error:
+            raise ImageGenerationError(
+                "image_download_failed",
+                "A imagem foi gerada, mas não consegui baixá-la do provedor. Tente novamente.",
+                str(error),
+            ) from error
+    else:
+        try:
+            image_bytes = base64.b64decode(reference, validate=True)
+        except (binascii.Error, ValueError) as error:
+            raise ImageGenerationError(
+                "invalid_image_data",
+                "A imagem gerada veio corrompida. Tente novamente.",
+                str(error),
+            ) from error
+
+    if not image_bytes or len(image_bytes) > MAX_GENERATED_IMAGE_BYTES:
+        raise ImageGenerationError(
+            "invalid_image_size",
+            "A imagem gerada veio vazia ou grande demais. Tente novamente.",
+            f"Generated image size: {len(image_bytes)} bytes.",
+        )
+    return image_bytes
 
 
 async def generate_image(
         user_id: int,
         db_message: Message,
         action_params: Optional[dict] = None,
-) -> tuple[str, bool]:
+) -> ImageGenerationResult:
+    try:
+        image_base64 = await _generate_image(user_id, db_message, action_params)
+        return ImageGenerationResult(success=True, image_base64=image_base64)
+    except ImageGenerationError as error:
+        await _log_generation_error(error.code, str(error))
+        return ImageGenerationResult(
+            success=False,
+            error_code=error.code,
+            user_message=error.user_message,
+        )
+    except httpx.HTTPStatusError as error:
+        mapped_error = _provider_error(error)
+        await _log_generation_error(mapped_error.code, str(mapped_error))
+        return ImageGenerationResult(
+            success=False,
+            error_code=mapped_error.code,
+            user_message=mapped_error.user_message,
+        )
+    except httpx.TimeoutException as error:
+        await _log_generation_error("provider_timeout", str(error))
+        return ImageGenerationResult(
+            success=False,
+            error_code="provider_timeout",
+            user_message="A geração da imagem demorou demais e expirou. Tente novamente.",
+        )
+    except httpx.RequestError as error:
+        await _log_generation_error("provider_connection", str(error))
+        return ImageGenerationResult(
+            success=False,
+            error_code="provider_connection",
+            user_message="Não consegui conectar ao serviço de imagens. Tente novamente mais tarde.",
+        )
+    except Exception as error:
+        await _log_generation_error(
+            "unexpected_error", f"{type(error).__name__}: {error}"
+        )
+        return ImageGenerationResult(
+            success=False,
+            error_code="unexpected_error",
+            user_message="Tive um problema inesperado ao gerar a imagem. Tente novamente.",
+        )
+
+
+async def _log_generation_error(code: str, detail: str) -> None:
+    try:
+        await logger.error("ImageGeneration", code, detail)
+    except Exception:
+        # Logging must never turn a handled generation failure into a silent task crash.
+        pass
+
+
+async def _generate_image(
+        user_id: int,
+        db_message: Message,
+        action_params: Optional[dict] = None,
+) -> str:
     mention_photo: list[tuple[str, User]] = []
     
     async with PgConnection() as db:
@@ -39,12 +257,14 @@ async def generate_image(
 
         modify_image_agent = await agent_repo.find_by_name("modify-image")
         if not modify_image_agent:
-            return "Agente de imagem não configurado.", True
+            raise ImageGenerationError(
+                "agent_not_configured",
+                "O agente de geração de imagens não está configurado.",
+            )
 
         image_system_prompt = modify_image_agent.prompt
 
         gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
-        gork_id = gork_user.id if gork_user else None
 
         raw_user_message = ""
         if action_params and action_params.get("prompt"):
@@ -82,16 +302,9 @@ async def generate_image(
         # Quoted message handling
         quoted_message = await message_repo.find_by_id(db_message.quoted_message_id) if db_message and db_message.quoted_message_id else None
 
-        # Automatically include sender of quoted_message in mentions if available and not Gork
-        if quoted_message and quoted_message.user_id:
-            if gork_id is None or quoted_message.user_id != gork_id:
-                quoted_user = await user_repo.find_by_id(quoted_message.user_id)
-                if quoted_user and all(m.id != quoted_user.id for m in mentions):
-                    mentions.append(quoted_user)
-
-        s3_client = S3Client()
-        await s3_client.connect()
         if mentions:
+            s3_client = S3Client()
+            await s3_client.connect()
             for mention in mentions:
                 if gork_user and mention.phone_number == gork_user.phone_number:
                     continue
@@ -117,13 +330,16 @@ async def generate_image(
             group_id=db_message.group_id if db_message else None,
         )
         if not image_model:
-            return "Modelo de imagem não configurado.", True
+            raise ImageGenerationError(
+                "model_not_configured",
+                "O modelo de geração de imagens não está configurado.",
+            )
 
         # Collect images from the message itself and from the quoted message
         message_image_base64 = None
         quoted_image_base64 = None
 
-        if db_message and db_message.message_id:
+        if db_message and db_message.media_id and db_message.message_id:
             try:
                 res, _ = await download_media(db_message.message_id)
                 if res:
@@ -131,7 +347,7 @@ async def generate_image(
             except Exception:
                 message_image_base64 = None
 
-        if quoted_message and quoted_message.message_id:
+        if quoted_message and quoted_message.media_id and quoted_message.message_id:
             try:
                 res, _ = await download_media(quoted_message.message_id)
                 if res:
@@ -220,64 +436,72 @@ async def generate_image(
                     }
                 )
 
-        messages = [
-            {
-                "role": "system",
-                "content": [{"type": "text", "text": image_system_prompt}],
-            },
-            {
-                "role": "user",
-                "content": messages_content
-            }
-        ]
-
         payload = {
             "model": image_model.openrouter_id,
-            "messages": messages
+            "prompt": f"{image_system_prompt}\n\nUSER REQUEST:\n{user_message}",
         }
+        input_references = [
+            item
+            for item in messages_content
+            if isinstance(item, dict) and item.get("type") == "image_url"
+        ]
+        if input_references:
+            payload["input_references"] = input_references
 
-        req = await completions(payload)
+        req = await generate_images(payload)
+        usage = req.get("usage") if isinstance(req, dict) else {}
+        usage = usage if isinstance(usage, dict) else {}
 
-        if req.get("choices"):
-            message = req["choices"][0]["message"]
-            if message.get("images"):
-                image = message["images"][0]["image_url"]["url"]
-                if image.startswith("data:"):
-                    image = image.split(",")[1]
-            else:
-                _ = await interaction_repo.create_interaction(
+        try:
+            image_reference = _extract_image_reference(req)
+        except ImageGenerationError:
+            try:
+                await interaction_repo.create_interaction(
                     model_id=image_model.id,
                     user_id=user_id,
                     command_id=new_command.id,
                     user_prompt=user_message,
                     response=None,
-                    input_tokens=req["usage"]["prompt_tokens"],
-                    output_tokens=None,
-                    group_id=db_message.group_id if db_message else None
+                    input_tokens=usage.get("prompt_tokens"),
+                    output_tokens=usage.get("completion_tokens"),
+                    group_id=db_message.group_id if db_message else None,
                 )
-                return "Não foi possível completar sua requisição. Tente novamente mais tarde.", True
+            except Exception as interaction_error:
+                await _log_generation_error(
+                    "interaction_log_failed", str(interaction_error)
+                )
+            raise
 
-        image_bytes = base64.b64decode(image)
+        image_bytes = await _load_generated_image(image_reference)
 
-        img = Image.open(BytesIO(image_bytes))
+        try:
+            with Image.open(BytesIO(image_bytes)) as image:
+                image.load()
+                if image.mode != "RGBA":
+                    image = image.convert("RGBA")
 
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
+                buffer = BytesIO()
+                image.save(buffer, format="PNG")
+                output_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        except Exception as error:
+            raise ImageGenerationError(
+                "invalid_generated_image",
+                "O provedor retornou uma imagem inválida ou corrompida. Tente novamente.",
+                f"{type(error).__name__}: {error}",
+            ) from error
 
-        buffer = BytesIO()
-        img.save(buffer, format='PNG', quality=95)
-        buffer.seek(0)
-        webp_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        try:
+            await interaction_repo.create_interaction(
+                model_id=image_model.id,
+                user_id=user_id,
+                command_id=new_command.id,
+                user_prompt=user_message,
+                response=output_base64,
+                input_tokens=usage.get("prompt_tokens"),
+                output_tokens=usage.get("completion_tokens"),
+                group_id=db_message.group_id if db_message else None,
+            )
+        except Exception as interaction_error:
+            await _log_generation_error("interaction_log_failed", str(interaction_error))
 
-        _ = await interaction_repo.create_interaction(
-            model_id=image_model.id,
-            user_id=user_id,
-            command_id=new_command.id,
-            user_prompt=user_message,
-            response=webp_base64,
-            input_tokens=req["usage"]["prompt_tokens"],
-            output_tokens=req["usage"]["completion_tokens"],
-            group_id=db_message.group_id if db_message else None
-        )
-
-        return webp_base64, False
+        return output_base64
