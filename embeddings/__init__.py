@@ -1,1 +1,2 @@
-from embeddings.generate_embeddings import generate_text_embeddings
+from embeddings.generate_embeddings import fit_embedding, generate_text_embeddings
+

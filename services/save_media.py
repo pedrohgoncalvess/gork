@@ -48,8 +48,17 @@ async def save_media_if_new(
         media_message_id: str,
         media_type: str,
         group_id: Optional[int] = None,
+        description: Optional[str] = None,
+        description_embedding: Optional[list[float]] = None,
+        phash: Optional[int] = None,
+        media_base64: Optional[str] = None,
+        media_name: Optional[str] = None,
 ) -> Media | None:
-    media_base64, name = await download_media(media_message_id)
+    if not media_base64:
+        media_base64, name = await download_media(media_message_id)
+    else:
+        name = media_name
+
     if not media_base64:
         return None
 
@@ -97,10 +106,10 @@ async def save_media_if_new(
                 bucket="whatsapp",
                 path=path,
                 type=media_type,
-                description=None,
-                description_embedding=None,
+                description=description,
+                description_embedding=description_embedding,
                 hash=media_hash,
-                phash=None,
+                phash=phash,
                 size=len(decoded) / (1024 * 1024),
             )
         )
