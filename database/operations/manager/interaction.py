@@ -17,6 +17,7 @@ class InteractionRepository(BaseRepository[Interaction]):
             start_date: Optional[datetime] = None,
             end_date: Optional[datetime] = None,
             user_id: Optional[int] = None,
+            user_name: Optional[str] = None,
             model_id: Optional[int] = None,
             agent_id: Optional[int] = None,
             command_id: Optional[int] = None
@@ -29,10 +30,13 @@ class InteractionRepository(BaseRepository[Interaction]):
         filters.append(Interaction.inserted_at >= start_date)
 
         if user_id:
-            filters.append(Interaction.user_id <= user_id)
+            filters.append(Interaction.user_id == user_id)
+
+        if user_name:
+            filters.append(User.name.ilike(f"%{user_name.strip()}%"))
 
         if end_date:
-            filters.append(Interaction.inserted_at <= end_date)
+            filters.append(Interaction.inserted_at < end_date)
 
         if group_id is not None:
             filters.append(Interaction.group_id == group_id)
