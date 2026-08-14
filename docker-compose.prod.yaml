@@ -10,6 +10,11 @@ services:
       - .env
     environment:
       - REDIS_URL=redis://redis:6379/0
+      - PG_POOL_SIZE=3
+      - PG_MAX_OVERFLOW=5
+      - MALLOC_ARENA_MAX=2
+      - MALLOC_TRIM_THRESHOLD_=131072
+      - OMP_NUM_THREADS=1
     volumes:
       - ./log:/app/log:rw
       - ./utils:/app/utils:rw
@@ -23,6 +28,7 @@ services:
       gunicorn main:app
       -k uvicorn.workers.UvicornWorker
       -w 2
+      --preload
       -b 0.0.0.0:9001
       --timeout 120
 

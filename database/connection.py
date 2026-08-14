@@ -41,11 +41,14 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
     global _engine, _session_factory
 
     if _session_factory is None:
+        pool_size = int(get_env_var("PG_POOL_SIZE") or 3)
+        max_overflow = int(get_env_var("PG_MAX_OVERFLOW") or 5)
         _engine = create_async_engine(
             _database_url(),
             echo=False,
-            pool_size=10,
-            max_overflow=20,
+            pool_size=pool_size,
+            max_overflow=max_overflow,
+            pool_timeout=15,
             pool_pre_ping=True,
             future=True
         )

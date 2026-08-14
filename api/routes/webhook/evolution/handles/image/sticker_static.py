@@ -4,7 +4,6 @@ from io import BytesIO
 
 import httpx
 from PIL import Image, ImageFilter
-from rembg import new_session, remove
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.core import clean_text
@@ -123,6 +122,9 @@ async def static_sticker(
     img = Image.open(BytesIO(image_bytes))
 
     if remove_background:
+        # rembg/onnxruntime are intentionally loaded only for this feature.
+        from rembg import new_session, remove
+
         img_bytes = BytesIO()
         img.save(img_bytes, format='PNG')
         img_bytes.seek(0)

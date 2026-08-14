@@ -5,12 +5,14 @@ import re
 import wave
 from datetime import datetime
 
-from piper import PiperVoice, SynthesisConfig
-
 from utils import project_root
 
 
 async def text_to_speech(text: str, language: str) -> str:
+    # Piper loads ONNX Runtime and native libraries. Keep it out of API workers
+    # until an audio response is actually requested.
+    from piper import PiperVoice, SynthesisConfig
+
     syn_config = SynthesisConfig(
         volume=1.0,
         length_scale=1.0,
