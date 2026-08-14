@@ -1,6 +1,12 @@
 from api.routes.webhook.evolution.handles.audio import handle_transcribe_command, transcribe_audio
 from api.routes.webhook.evolution.handles.chat import handle_conversation_agent
-from api.routes.webhook.evolution.handles.core import clean_text, COMMANDS, has_explicit_command, is_message_too_old
+from api.routes.webhook.evolution.handles.core import (
+    clean_text,
+    COMMANDS,
+    get_explicit_command_feature,
+    has_explicit_command,
+    is_message_too_old,
+)
 from api.routes.webhook.evolution.handles.favorite import (
     handle_favorite_message,
     handle_list_favorites_message,

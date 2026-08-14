@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 COMMANDS = [
     ("@Gork", "Interação genérica. _[Menção necessária apenas quando em grupos]_", "interaction", []),
+    ("!status", "Verifica se o Gork está disponível.", "utility", []),
     ("!help", "Mostra os comandos disponíveis. _[Ignora o restante da mensagem]_", "utility", []),
     ("!audio", "Envia áudio como forma de resposta. _[Adicione !english para voz em inglês]_", "audio", []),
     ("!resume", "Faz um resumo das últimas 30 mensagens. _[Ignora o restante da mensagem]_", "utility", []),
@@ -98,3 +99,12 @@ def has_explicit_command(text: str | None) -> bool:
         return False
     return any(cmd in text.lower() for cmd, _, _, _ in COMMANDS if cmd.startswith("!"))
 
+
+def get_explicit_command_feature(text: str | None) -> str | None:
+    if not text:
+        return None
+    lowered_text = text.lower()
+    for command, _, _, _ in COMMANDS:
+        if command.startswith("!") and command.lower() in lowered_text:
+            return command.removeprefix("!").lower()
+    return None

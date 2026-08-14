@@ -44,6 +44,8 @@ from llm_access import (
     search_messages,
 )
 from log import logger
+from services import BLACK_LIST_MESSAGE, is_feature_blocked
+from services.action_rate_limiter import reserve_audio_action
 from tts import text_to_speech
 
 
@@ -65,6 +67,17 @@ async def handle_conversation_agent(
     Calls conversation_agent to get a structured JSON response from the LLM,
     then dispatches each action to the appropriate existing handle/service.
     """
+    if (
+        db_message.group_id is not None
+        and await is_feature_blocked(db, user.id, "interaction")
+    ):
+        await send_message(
+            remote_id,
+            BLACK_LIST_MESSAGE,
+            db_message.message_id,
+        )
+        return
+
     raw_response = await conversation_agent(
         db=db,
         user_id=user.id,
@@ -126,6 +139,12 @@ async def _dispatch_gork_response(
 
     message_type = 0
     actions = parsed.get("actions", [])
+    if group_id is not None:
+        for action in actions:
+            if await is_feature_blocked(db, user.id, action.get("action", "")):
+                await send_message(remote_id, BLACK_LIST_MESSAGE, message_id)
+                return
+
     for action in actions:
         action_type = action.get("action")
 
@@ -444,6 +463,27 @@ async def _dispatch_action(
 ) -> bool:
     params = action.get("parameters", {}) or {}
     message_repo = MessageRepository(db)
+
+    if (
+        group_id is not None
+        and await is_feature_blocked(db, user.id, action_type)
+    ):
+        await send_message(
+            remote_id,
+            BLACK_LIST_MESSAGE,
+            db_message.message_id,
+        )
+        return False
+
+    if action_type in ("audio", "send_audio"):
+        scope = f"group:{group_id}" if group_id is not None else f"user:{user.id}"
+        if not await reserve_audio_action(scope):
+            await logger.info(
+                "ConversationHandle",
+                "AudioCooldown",
+                f"Skipped '{action_type}' in {scope}: audio sent in the last 3 minutes.",
+            )
+            return True
 
     if action_type == "message":
         content = action.get("content", "")

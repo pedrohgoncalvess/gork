@@ -4,13 +4,25 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.audio import transcribe_audio
-from api.routes.webhook.evolution.handles.core import is_message_too_old
+from api.routes.webhook.evolution.handles.core import (
+    get_explicit_command_feature,
+    has_explicit_command,
+    is_message_too_old,
+)
 from api.routes.webhook.evolution.processors.common import process_commands
 from database.operations.base import GroupRepository, UserRepository, WhiteListRepository
-from database.operations.content import MessageRepository
+from database.operations.content import MediaRepository, MessageRepository
 from external.evolution import get_group_info, send_message
 from log import logger
-from services import save_image_if_new, save_media_if_new, save_profile_pic, save_video_if_new, verifiy_media
+from services import (
+    BLACK_LIST_MESSAGE,
+    is_feature_blocked,
+    save_image_if_new,
+    save_media_if_new,
+    save_profile_pic,
+    save_video_if_new,
+    verifiy_media,
+)
 from services.message_buffer import buffer_group_message, clear_group_message_buffer
 from utils import INSTANCE_NUMBER
 
@@ -135,17 +147,27 @@ async def process_group_message(
             if tt_mention == INSTANCE_NUMBER or (user_gork and tt_mention == user_gork.src_id):
                 is_mention = True
 
+    is_quoted_image = bool(context_message.get("image_quote"))
+    if not is_quoted_image and quoted_message and quoted_message.media_id:
+        media_repo = MediaRepository(db)
+        quoted_media = await media_repo.find_by_id(quoted_message.media_id)
+        if quoted_media and quoted_media.type == "image":
+            is_quoted_image = True
+
     is_reply_to_gork = bool(
         quoted_message
         and user_gork
         and quoted_message.user_id == user_gork.id
+        and not is_quoted_image
     )
 
-    if is_mention or is_reply_to_gork:
+    has_explicit = has_explicit_command(conversation)
+
+    if is_mention or is_reply_to_gork or has_explicit:
         if group.auto_message:
             await clear_group_message_buffer(group.id)
 
-    if not is_mention and not is_reply_to_gork:
+    if not is_mention and not is_reply_to_gork and not has_explicit:
         if group.auto_message:
             await buffer_group_message(
                 group_id=group.id,
@@ -153,6 +175,19 @@ async def process_group_message(
                 remote_id=remote_id,
                 scheduler=scheduler,
             )
+        return
+
+    requested_feature = (
+        get_explicit_command_feature(conversation)
+        if has_explicit
+        else "interaction"
+    )
+    if await is_feature_blocked(
+        db,
+        user.id,
+        requested_feature or "interaction",
+    ):
+        await send_message(remote_id, BLACK_LIST_MESSAGE, message_id)
         return
 
     if "audio_message" in context_message.keys():
