@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from typing import Optional
 
@@ -22,10 +23,16 @@ def _message_sender_name(message, gork_user_id: Optional[int]) -> str:
     return "Usuario Desconhecido."
 
 
-def _format_timestamp(created_at: datetime) -> str:
-    if created_at.date() != datetime.now().date():
-        return created_at.strftime("%d/%m/%Y %H:%M")
-    return created_at.strftime("%H:%M")
+def _format_timestamp(created_at: Optional[datetime]) -> str:
+    if not created_at:
+        return datetime.now().strftime("%H:%M")
+    try:
+        if created_at.date() != datetime.now().date():
+            return created_at.strftime("%d/%m/%Y %H:%M")
+        return created_at.strftime("%H:%M")
+    except Exception:
+        return datetime.now().strftime("%H:%M")
+
 
 
 def _format_message(message, gork_user_id: Optional[int]) -> str:
@@ -86,6 +93,8 @@ async def describe_image_agent(
     image_message = next((message for message in messages if message.message_id == db_message.message_id), None)
     if not image_message:
         image_message = await message_repo.find_by_message_id(db_message.message_id)
+    if not image_message:
+        image_message = db_message
 
     quoted_message = (
         messages_rel.get(image_message.quoted_message_id)
@@ -102,8 +111,8 @@ async def describe_image_agent(
         image_sender = user_sender.name if user_sender and user_sender.name else "Usuário Desconhecido."
 
     image_content = image_message.content if image_message and image_message.content else "[imagem sem legenda]"
-    image_timestamp = _format_timestamp(image_message.created_at) if image_message else datetime.now().strftime("%H:%M")
-    quoted_context = f"Mensagem quotada pela imagem: {quoted_message.content}\n" if quoted_message else ""
+    image_timestamp = _format_timestamp(image_message.created_at) if image_message and image_message.created_at else datetime.now().strftime("%H:%M")
+    quoted_context = f"Mensagem quotada pela imagem: {quoted_message.content}\n" if quoted_message and quoted_message.content else ""
 
     current_context = (
         f"{quoted_context}"
@@ -114,7 +123,15 @@ async def describe_image_agent(
     system_prompt = agent.prompt.replace("$$CONVERSATION_HISTORY$$", conversation_history)
 
     if not image_base64:
-        image_base64, _ = await download_media(db_message.message_id)
+        try:
+            image_base64, _ = await download_media(db_message.message_id)
+        except Exception as e:
+            await logger.error("Agent", "DescribeImage", f"Failed to download media {db_message.message_id}: {e}")
+            return ""
+
+    if not image_base64:
+        await logger.error("Agent", "DescribeImage", f"No base64 data for media message {db_message.message_id}.")
+        return ""
 
     messages_content = [
         {
@@ -146,19 +163,26 @@ async def describe_image_agent(
     if agent.response_format:
         try:
             payload["response_format"] = json.loads(agent.response_format)
-        except Exception:
-            pass
+        except Exception as e:
+            await logger.error("Agent", "DescribeImage", f"Error parsing response_format: {e}")
 
     req = await completions(payload)
     resp = req["choices"][0]["message"]["content"]
     if agent.response_format:
         try:
-            parsed_json = json.loads(resp)
+            cleaned_resp = resp.strip()
+            if cleaned_resp.startswith("```"):
+                cleaned_resp = cleaned_resp.strip("`")
+                if cleaned_resp.startswith("json"):
+                    cleaned_resp = cleaned_resp[4:]
+                cleaned_resp = cleaned_resp.strip()
+            parsed_json = json.loads(cleaned_resp)
             if isinstance(parsed_json, dict) and "description" in parsed_json:
                 resp = parsed_json["description"]
         except Exception:
             pass
 
+    usage = req.get("usage", {})
     interaction_repo = InteractionRepository(Interaction, db)
     _ = await interaction_repo.create_interaction(
         model_id=model.id,
@@ -167,8 +191,8 @@ async def describe_image_agent(
         agent_id=agent.id,
         user_prompt=current_context,
         response=resp,
-        input_tokens=req["usage"]["prompt_tokens"],
-        output_tokens=req["usage"]["completion_tokens"],
+        input_tokens=usage.get("prompt_tokens", 0),
+        output_tokens=usage.get("completion_tokens", 0),
         system_behavior=system_prompt,
     )
 
