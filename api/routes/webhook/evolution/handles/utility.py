@@ -259,6 +259,18 @@ def _usage_period_label(start_date: datetime, end_date: datetime, unit: str) -> 
     return f"{start_date:%d/%m/%Y}–{end_date:%d/%m/%Y}"
 
 
+def _format_usage_user(index: int, user: dict) -> list[str]:
+    phone_number = user.get("user_phone_number") or "número não informado"
+    user_name = user.get("user_name") or "Usuário sem nome"
+    return [
+        f"{index}. *{user_name}*",
+        f"   📞 {phone_number}",
+        f"   💬 {user['total_interactions']:,} interações | "
+        f"🔢 {user['total_tokens']:,} tokens | "
+        f"💰 ${user['estimated_cost']:.6f}",
+    ]
+
+
 async def token_consumption(
     user_id: Optional[int] = None,
     group_id: Optional[int] = None,
@@ -304,6 +316,46 @@ async def token_consumption(
                 f"{start_date:%d/%m/%Y %H:%M} e agora."
             )
 
+        if normalized_user_name:
+            message_parts = [
+                "📊 *RELATÓRIO DE USO*",
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                f"📅 Período: {start_date:%d/%m/%Y %H:%M} até agora",
+                "👥 *USUÁRIOS ENCONTRADOS*",
+            ]
+            for index, user in enumerate(consumption_data, 1):
+                message_parts.extend(_format_usage_user(index, user))
+                message_parts.extend([
+                    "",
+                    f"   💬 Interações: {user['total_interactions']:,}",
+                    f"   🔢 Tokens: {user['total_tokens']:,}",
+                    f"     ├─ 📥 Input: {user['total_input_tokens']:,}",
+                    f"     └─ 📤 Output: {user['total_output_tokens']:,}",
+                    f"   💰 Custo: ${user['estimated_cost']:.6f} USD",
+                    "",
+                    "   📆 *CONSUMO POR PERÍODO*",
+                ])
+                for period_start, period_end in periods:
+                    period_data = await interaction_repo.get_consumption_by_user(
+                        group_id=group_id,
+                        user_id=user["user_id"],
+                        start_date=period_start,
+                        end_date=period_end,
+                    )
+                    period_totals = _usage_totals(period_data)
+                    label = _usage_period_label(period_start, period_end, granularity_unit)
+                    message_parts.append(
+                        f"   • {label}: {period_totals['interactions']:,} interações | "
+                        f"{period_totals['tokens']:,} tokens | ${period_totals['cost']:.6f}"
+                    )
+                message_parts.append("")
+
+            message_parts.extend([
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━",
+                "*💡 Relatório gerado automaticamente*",
+            ])
+            return "\n".join(message_parts)
+
         totals = _usage_totals(consumption_data)
         granularity_labels = {"d": "24 horas", "w": "semana", "m": "mês"}
         message_parts = [
@@ -343,12 +395,15 @@ async def token_consumption(
             )
 
         if user_id is None:
-            message_parts.extend(["", "👥 *USUÁRIOS POR CUSTO*"])
-            for index, user in enumerate(consumption_data[:10], 1):
-                message_parts.append(
-                    f"{index}. {user['user_name']}: ${user['estimated_cost']:.6f} | "
-                    f"{user['total_tokens']:,} tokens"
-                )
+            users_to_show = consumption_data if normalized_user_name else consumption_data[:10]
+            section_title = (
+                "👥 *USUÁRIOS ENCONTRADOS*"
+                if normalized_user_name
+                else "👥 *USUÁRIOS POR CUSTO*"
+            )
+            message_parts.extend(["", section_title])
+            for index, user in enumerate(users_to_show, 1):
+                message_parts.extend(_format_usage_user(index, user))
 
         message_parts.extend([
             "",

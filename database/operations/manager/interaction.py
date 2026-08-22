@@ -52,6 +52,7 @@ class InteractionRepository(BaseRepository[Interaction]):
             select(
                 Interaction.user_id,
                 User.name.label('user_name'),
+                User.phone_number.label('user_phone_number'),
                 Interaction.model_id,
                 Model.name.label('model_name'),
                 Model.input_price,
@@ -66,6 +67,7 @@ class InteractionRepository(BaseRepository[Interaction]):
             .group_by(
                 Interaction.user_id,
                 User.name,
+                User.phone_number,
                 Interaction.model_id,
                 Model.name,
                 Model.input_price,
@@ -84,6 +86,7 @@ class InteractionRepository(BaseRepository[Interaction]):
                 user_data[user_id] = {
                     'user_id': user_id,
                     'user_name': row.user_name,
+                    'user_phone_number': row.user_phone_number,
                     'total_interactions': 0,
                     'total_input_tokens': 0,
                     'total_output_tokens': 0,
