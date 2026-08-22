@@ -39,9 +39,11 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
 
     Query Types:
     - "get_group_users": Get list of users in group
+    - "get_group_messages": Get messages from the current group
     - "get_user_messages": Get messages from specific user
     - "search_messages": Search messages by text
     - "get_user_images": Get images sent by user
+    - "get_conversation_messages": Get messages from the current private conversation
 
     Action Types:
     - "message": Requires "content" and "language" fields

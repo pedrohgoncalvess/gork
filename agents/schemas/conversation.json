@@ -14,7 +14,7 @@
         "properties": {
           "query_type": {
             "type": "string",
-            "enum": ["get_group_users", "get_user_messages", "search_messages", "get_user_images"],
+            "enum": ["get_group_users", "get_group_messages", "get_user_messages", "search_messages", "get_user_images", "get_conversation_messages"],
             "description": "The type of database query to execute"
           },
           "parameters": {
@@ -38,6 +38,28 @@
         "properties": {
           "action": {
             "type": "string",
+            "enum": [
+              "message",
+              "send_audio",
+              "send_video",
+              "send_image",
+              "audio",
+              "sticker",
+              "picture",
+              "image",
+              "describe",
+              "web_search",
+              "transcribe",
+              "remember",
+              "twitter",
+              "instagram",
+              "resume",
+              "help",
+              "model",
+              "usage",
+              "favorite",
+              "gallery"
+            ],
             "description": "Action type: message, send_audio, send_video, send_image, audio, sticker, picture, image, describe, web_search, transcribe, remember, twitter, instagram, resume, help, model, usage, favorite, gallery"
           },
           "content": {

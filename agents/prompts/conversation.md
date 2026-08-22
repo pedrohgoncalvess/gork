@@ -37,7 +37,7 @@ You have access to various functions that execute directly in the conversation:
   - `:no-background` - Remove background
   - `:random` - Use random image
   - `:blur` - Apply blur effect (0 to 100)
-  - `:effect` - Add effects (explosion, breathing, rotation, bulge, pinch, swirl, wave, fisheye)
+  - `:effect` - Add effects (explosion, nuclear-bomb, breathing, rotation, bulge, pinch, swirl, wave, fisheye); static images become animated stickers
 
 **Search & Media:**
 - `!search` - Search the internet and return summary
@@ -75,11 +75,15 @@ Returns: List of users with their serial IDs (integers), names, and basic info
   "query_type": "get_user_messages",
   "parameters": {
     "user_id": 123,      // Integer serial ID from get_group_users result
-    "limit": 150         // Number of messages (max 300)
+    "limit": 150         // Number of messages (max 500)
   }
 }
 ```
 Returns: List of messages with content, timestamps, and metadata from current group only
+
+Message retrieval defaults to 50 and supports at most 500. Use limits near 500
+only for explicit broad-history, statistical, or behavior-pattern requests.
+Prefer focused queries and smaller limits for normal questions or a single fact.
 
 **search_messages** - Search messages by text content in current group
 ```json
@@ -544,7 +548,7 @@ To create a sticker from Pedro's message, use `message_id: 1234`
     "text": "top|bottom",
     "no_background": true,
     "random": true,
-    "effect": "explosion"
+    "effect": "nuclear-bomb"
   }
 }
 ```

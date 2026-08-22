@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import Any, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -37,6 +38,7 @@ from database.operations.manager import (
 from external import completions
 from external.evolution import send_audio, send_message
 from llm_access import (
+    get_conversation_messages,
     get_group_messages,
     get_group_users,
     get_user_images,
@@ -44,14 +46,94 @@ from llm_access import (
     search_messages,
 )
 from log import logger
-from services import BLACK_LIST_MESSAGE, is_feature_blocked
+from services import BLACK_LIST_MESSAGE, is_feature_blocked, log_blocked_request
 from services.action_rate_limiter import reserve_audio_action
 from tts import text_to_speech
+from utils import INSTANCE_NUMBER
 
 
 MAX_WEB_SEARCH_DEPTH = 10
 MAX_DATABASE_QUERY_ITERATIONS = 10
 DATABASE_QUERY_STOP_ITERATION = 7
+
+
+def _sent_message_id(send_response: Any) -> str | None:
+    """Extract Evolution's external message ID across common response shapes."""
+    if not isinstance(send_response, dict):
+        return None
+
+    candidates = [send_response]
+    data = send_response.get("data")
+    if isinstance(data, dict):
+        candidates.append(data)
+
+    for candidate in candidates:
+        key = candidate.get("key")
+        if isinstance(key, dict) and key.get("id"):
+            return str(key["id"])
+        if candidate.get("messageId"):
+            return str(candidate["messageId"])
+        if candidate.get("message_id"):
+            return str(candidate["message_id"])
+    return None
+
+
+def _sent_message_created_at(send_response: Any) -> datetime:
+    candidates = [send_response] if isinstance(send_response, dict) else []
+    if candidates and isinstance(send_response.get("data"), dict):
+        candidates.append(send_response["data"])
+
+    for candidate in candidates:
+        timestamp = candidate.get("messageTimestamp") or candidate.get("message_timestamp")
+        if timestamp is None:
+            continue
+        try:
+            return datetime.fromtimestamp(float(timestamp))
+        except (TypeError, ValueError, OSError):
+            continue
+    return datetime.now()
+
+
+async def _persist_sent_text_response(
+        db: AsyncSession,
+        send_response: Any,
+        content: str,
+        quoted_message: Message,
+        is_first_message: bool,
+        group_id: Optional[int],
+) -> None:
+    if isinstance(send_response, dict) and send_response.get("error"):
+        await logger.error(
+            "ConversationHandle",
+            "PersistDirectMessage",
+            f"Evolution reported a send error: {send_response.get('error')}",
+        )
+        return
+
+    message_id = _sent_message_id(send_response)
+    if not message_id:
+        await logger.info(
+            "ConversationHandle",
+            "MessageReconciliationDeferred",
+            "Evolution send response had no message ID; waiting for send.message webhook.",
+        )
+        return
+
+    user_repo = UserRepository(db)
+    gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
+    if not gork_user:
+        await logger.error("ConversationHandle", "PersistDirectMessage", "Gork user not found.")
+        return
+
+    message_repo = MessageRepository(db)
+    await message_repo.find_or_create(
+        message_id=message_id,
+        sender_id=gork_user.id,
+        group_id=group_id,
+        content=content,
+        created_at=_sent_message_created_at(send_response),
+        quoted_message_id=quoted_message.id if is_first_message else None,
+    )
 
 async def handle_conversation_agent(
         remote_id: str,
@@ -71,6 +153,13 @@ async def handle_conversation_agent(
         db_message.group_id is not None
         and await is_feature_blocked(db, user.id, "interaction")
     ):
+        await log_blocked_request(
+            user_id=user.id,
+            group_id=db_message.group_id,
+            feature="interaction",
+            message_id=db_message.message_id,
+            source="conversation",
+        )
         await send_message(
             remote_id,
             BLACK_LIST_MESSAGE,
@@ -142,6 +231,13 @@ async def _dispatch_gork_response(
     if group_id is not None:
         for action in actions:
             if await is_feature_blocked(db, user.id, action.get("action", "")):
+                await log_blocked_request(
+                    user_id=user.id,
+                    group_id=group_id,
+                    feature=action.get("action", "interaction"),
+                    message_id=message_id,
+                    source="conversation-action",
+                )
                 await send_message(remote_id, BLACK_LIST_MESSAGE, message_id)
                 return
 
@@ -216,6 +312,7 @@ async def _continue_with_database_queries(
             await _execute_database_query(
                 db=db,
                 group_id=group_id,
+                user_id=user.id,
                 query=query,
             )
         )
@@ -257,20 +354,33 @@ async def _continue_with_database_queries(
 async def _execute_database_query(
         db: AsyncSession,
         group_id: Optional[int],
+        user_id: int,
         query: dict,
 ) -> dict[str, Any]:
     query_type = query.get("query_type")
     params = _query_parameters(query)
 
-    if group_id is None:
-        return {
-            "query_type": query_type,
-            "parameters": params,
-            "error": "Database queries are only available inside a group context.",
-        }
-
     try:
-        if query_type == "get_group_users":
+        if query_type == "get_conversation_messages":
+            if group_id is not None:
+                raise ValueError(
+                    "get_conversation_messages is only available in a private conversation."
+                )
+            gork_user = await UserRepository(db).find_by_phone_or_id(INSTANCE_NUMBER)
+            if not gork_user:
+                raise ValueError("Instance user not found")
+            result = await get_conversation_messages(
+                db=db,
+                user_id=user_id,
+                gork_user_id=gork_user.id,
+                query=params.get("query") or params.get("search") or params.get("text"),
+                limit=params.get("limit"),
+            )
+        elif group_id is None:
+            raise ValueError(
+                "Only get_conversation_messages is available in a private conversation."
+            )
+        elif query_type == "get_group_users":
             result = await get_group_users(
                 db=db,
                 group_id=group_id,
@@ -468,6 +578,13 @@ async def _dispatch_action(
         group_id is not None
         and await is_feature_blocked(db, user.id, action_type)
     ):
+        await log_blocked_request(
+            user_id=user.id,
+            group_id=group_id,
+            feature=action_type or "interaction",
+            message_id=db_message.message_id,
+            source="action-dispatch",
+        )
         await send_message(
             remote_id,
             BLACK_LIST_MESSAGE,
@@ -487,7 +604,20 @@ async def _dispatch_action(
 
     if action_type == "message":
         content = action.get("content", "")
-        _ = await send_message(remote_id, content, db_message.message_id, is_first_message)
+        send_response = await send_message(
+            remote_id,
+            content,
+            db_message.message_id,
+            is_first_message,
+        )
+        await _persist_sent_text_response(
+            db=db,
+            send_response=send_response,
+            content=content,
+            quoted_message=db_message,
+            is_first_message=is_first_message,
+            group_id=group_id,
+        )
         return True
 
     elif action_type == "audio":
@@ -578,10 +708,18 @@ async def _dispatch_action(
         if not referred_message:
             referred_message = db_message
 
+        image_context = (
+            context
+            if referred_message.id == db_message.id
+            else None
+        )
+
         await handle_image_command(
             remote_id=remote_id,
             user_id=user.id,
             db_message=referred_message,
+            action_params=params,
+            context=image_context,
         )
         return True
 

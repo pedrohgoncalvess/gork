@@ -5,11 +5,28 @@ agents:
     prompt_path: agents/prompts/conversation.md
     schema_path: agents/schemas/conversation.json
 
+  - name: conversation-dm
+    description: Agent responsible for direct WhatsApp conversations.
+    model: qwen/qwen3.6-flash
+    prompt_path: agents/prompts/conversation-dm.md
+    schema_path: agents/schemas/conversation.json
+
+  - name: conversation-group
+    description: Agent responsible for WhatsApp group conversations.
+    model: qwen/qwen3.6-flash
+    prompt_path: agents/prompts/conversation-group.md
+    schema_path: agents/schemas/conversation.json
+
   - name: filter
     description: Agent that decides whether Gork should respond to a conversation.
     model: qwen/qwen3.6-flash
     prompt_path: agents/prompts/filter.md
     schema_path: agents/schemas/filter.json
+
+  - name: modify-image
+    description: Multimodal assistant for generating and editing images.
+    model: google/gemini-3.1-flash-image-preview
+    prompt_path: agents/prompts/modify-image.md
 
   - name: remember-formatter
     description: Agent assigned to extract dates, times, and messages to schedule reminders.

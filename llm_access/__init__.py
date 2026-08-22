@@ -1,4 +1,5 @@
 from llm_access.database import (
+    get_conversation_messages,
     get_group_messages,
     get_group_users,
     get_user_images,
@@ -7,6 +8,7 @@ from llm_access.database import (
 )
 
 __all__ = [
+    "get_conversation_messages",
     "get_group_messages",
     "get_group_users",
     "get_user_images",

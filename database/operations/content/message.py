@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import and_, desc, distinct, func, select
+from sqlalchemy import and_, desc, distinct, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import joinedload
 
@@ -69,7 +69,7 @@ class MessageRepository(BaseRepository[Message]):
             select(Message)
             .options(joinedload(Message.sender))
             .filter(Message.id.in_(message_ids))
-            .order_by(Message.created_at)
+            .order_by(Message.created_at, Message.id)
         )
         return list(result.unique().scalars().all())
 
@@ -88,17 +88,73 @@ class MessageRepository(BaseRepository[Message]):
         )
         return list(result.scalars().all())
 
-    async def find_by_group(self, group_id: int, limit: int = 50) -> List[Message]:
+    async def find_private_conversation(
+            self,
+            user_id: int,
+            gork_user_id: int,
+            limit: int = 40,
+            until: Optional[Message] = None,
+    ) -> List[Message]:
+        """Return both sides of one DM without leaking group messages.
+
+        ``find_by_sender`` is intentionally sender-oriented and therefore is
+        not suitable for conversation memory: it excludes Gork's replies and
+        also includes messages that the same user sent in groups.  A direct
+        conversation is represented by messages from either participant with
+        no group attached.
+        """
+        filters = [
+            Message.group_id.is_(None),
+            Message.user_id.in_([user_id, gork_user_id]),
+            Message.deleted_at.is_(None),
+        ]
+
+        if until and until.created_at:
+            filters.append(
+                or_(
+                    Message.created_at < until.created_at,
+                    and_(
+                        Message.created_at == until.created_at,
+                        Message.id <= until.id,
+                    ),
+                )
+            )
+
         result = await self.db.execute(
             select(Message)
             .options(joinedload(Message.sender))
-            .filter(
-                and_(
-                    Message.group_id == group_id,
-                    Message.deleted_at.is_(None)
+            .filter(and_(*filters))
+            .order_by(desc(Message.created_at), desc(Message.id))
+            .limit(limit)
+        )
+        return list(result.unique().scalars().all())
+
+    async def find_by_group(
+            self,
+            group_id: int,
+            limit: int = 50,
+            until: Optional[Message] = None,
+    ) -> List[Message]:
+        filters = [
+            Message.group_id == group_id,
+            Message.deleted_at.is_(None),
+        ]
+        if until and until.created_at:
+            filters.append(
+                or_(
+                    Message.created_at < until.created_at,
+                    and_(
+                        Message.created_at == until.created_at,
+                        Message.id <= until.id,
+                    ),
                 )
             )
-            .order_by(desc(Message.created_at))
+
+        result = await self.db.execute(
+            select(Message)
+            .options(joinedload(Message.sender))
+            .filter(and_(*filters))
+            .order_by(desc(Message.created_at), desc(Message.id))
             .limit(limit)
         )
         return list(result.unique().scalars().all())

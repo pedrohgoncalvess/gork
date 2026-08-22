@@ -10,12 +10,19 @@ from database.models.content import Media, Message
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
+MAX_MESSAGE_LIMIT = 500
 
 
 def _limit(value: int | None) -> int:
     if value is None:
         return DEFAULT_LIMIT
     return max(1, min(value, MAX_LIMIT))
+
+
+def _message_limit(value: int | None) -> int:
+    if value is None:
+        return DEFAULT_LIMIT
+    return max(1, min(value, MAX_MESSAGE_LIMIT))
 
 
 def _like(value: str | None) -> str | None:
@@ -130,8 +137,8 @@ async def get_group_messages(
         .join(User, Message.user_id == User.id)
         .outerjoin(Media, Message.media_id == Media.id)
         .where(and_(*filters))
-        .order_by(desc(Message.created_at))
-        .limit(_limit(limit))
+        .order_by(desc(Message.created_at), desc(Message.id))
+        .limit(_message_limit(limit))
     )
 
     result = await db.execute(stmt)
@@ -171,6 +178,66 @@ async def get_user_messages(
         limit=limit,
         include_deleted=include_deleted,
     )
+
+
+async def get_conversation_messages(
+        db: AsyncSession,
+        user_id: int,
+        gork_user_id: int,
+        query: str | None = None,
+        limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Return history from one private conversation, never from groups."""
+    filters = [
+        Message.group_id.is_(None),
+        Message.user_id.in_([user_id, gork_user_id]),
+        Message.deleted_at.is_(None),
+    ]
+
+    like_query = _like(query)
+    if like_query:
+        filters.append(Message.content.ilike(like_query))
+
+    stmt = (
+        select(
+            Message.id,
+            Message.message_id,
+            Message.content,
+            Message.created_at,
+            Message.quoted_message_id,
+            Message.is_favorite,
+            User.id.label("user_id"),
+            User.src_id.label("user_src_id"),
+            User.phone_number.label("user_phone_number"),
+            User.name.label("user_name"),
+            Media.type.label("media_type"),
+        )
+        .join(User, Message.user_id == User.id)
+        .outerjoin(Media, Message.media_id == Media.id)
+        .where(and_(*filters))
+        .order_by(desc(Message.created_at), desc(Message.id))
+        .limit(_message_limit(limit))
+    )
+
+    result = await db.execute(stmt)
+    return [
+        {
+            "id": row.id,
+            "message_id": row.message_id,
+            "content": row.content,
+            "created_at": _serialize_datetime(row.created_at),
+            "quoted_message_id": row.quoted_message_id,
+            "is_favorite": row.is_favorite,
+            "sender": {
+                "id": row.user_id,
+                "src_id": row.user_src_id,
+                "phone_number": row.user_phone_number,
+                "name": row.user_name,
+            },
+            "media_type": row.media_type,
+        }
+        for row in reversed(result.all())
+    ]
 
 
 async def search_messages(

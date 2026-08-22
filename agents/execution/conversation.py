@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
-from database.operations.content import MessageRepository
+from database.operations.content import MediaRepository, MessageRepository
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from log import logger
@@ -28,6 +28,78 @@ def replace_mentions(content: str, users_map: dict) -> str:
     return content
 
 
+def _message_body(message, media_by_id: dict[int, object]) -> str:
+    content = message.content or ""
+    if content:
+        return content
+    if not message.media_id:
+        return ""
+
+    media = media_by_id.get(message.media_id)
+    media_type = media.type if media and media.type else "unknown"
+    description = media.description.strip() if media and media.description else ""
+    if description:
+        return f"[Media: {media_type}; description: {description[:600]}]"
+    return f"[Media: {media_type}]"
+
+
+def _format_direct_message_content(
+        message,
+        messages_by_id: dict[int, object],
+        media_by_id: Optional[dict[int, object]] = None,
+) -> str:
+    """Format one DM turn while preserving actionable message metadata."""
+    media_by_id = media_by_id or {}
+    content = _message_body(message, media_by_id)
+    if not content:
+        return ""
+
+    timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S") if message.created_at else "unknown"
+    parts = [f"[message_id={message.id}; sent_at={timestamp}]"]
+
+    if message.quoted_message_id:
+        quoted = messages_by_id.get(message.quoted_message_id)
+        if quoted:
+            quoted_content = _message_body(quoted, media_by_id)
+            if quoted_content:
+                parts.append(f"[replying_to={quoted.id}: {quoted_content}]")
+        else:
+            parts.append(f"[replying_to_message_id={message.quoted_message_id}]")
+
+    parts.append(content)
+    return "\n".join(parts)
+
+
+def _format_group_message_content(
+        message,
+        messages_by_id: dict[int, object],
+        media_by_id: dict[int, object],
+        users_map: dict[str, str],
+) -> str:
+    content = replace_mentions(_message_body(message, media_by_id), users_map)
+    if not content:
+        return ""
+
+    sender_name = message.sender.name if message.sender and message.sender.name else "Usuário Desconhecido"
+    timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S") if message.created_at else "unknown"
+    parts = [f"[message_id={message.id}; sender={sender_name}; sent_at={timestamp}]"]
+
+    if message.quoted_message_id:
+        quoted = messages_by_id.get(message.quoted_message_id)
+        if quoted:
+            quoted_sender = quoted.sender.name if quoted.sender and quoted.sender.name else "Usuário Desconhecido"
+            quoted_content = replace_mentions(_message_body(quoted, media_by_id), users_map)
+            parts.append(
+                f"[replying_to={quoted.id}; sender={quoted_sender}: "
+                f"{quoted_content or '[content unavailable]'}]"
+            )
+        else:
+            parts.append(f"[replying_to_message_id={message.quoted_message_id}]")
+
+    parts.append(content)
+    return "\n".join(parts)
+
+
 async def conversation_agent(
         db: AsyncSession,
         user_id: int,
@@ -40,13 +112,10 @@ async def conversation_agent(
     message_repo = MessageRepository(db)
     user_repo = UserRepository(db)
 
-    users_map = {}
-    if group_id:
-        users_group = await user_repo.find_users_by_group_id(group_id)
-        raw_messages = await message_repo.find_by_group(group_id, 80)
-        users_map = {u.src_id.split('@')[0]: (u.name or "Usuário") for u in users_group if u.src_id}
-    else:
-        raw_messages = await message_repo.find_by_sender(user_id, 40)
+    last_message = await message_repo.find_by_id(last_message_id)
+    if not last_message:
+        await logger.error("Agent", "Conversation", f"Message {last_message_id} not found.")
+        return ""
 
     user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
     user_sender = await user_repo.find_by_id(user_id)
@@ -55,14 +124,38 @@ async def conversation_agent(
         await logger.error("Agent", "Generic", "Instance user not found.")
         return ""
 
+    users_map = {}
+    if group_id:
+        users_group = await user_repo.find_users_by_group_id(group_id)
+        raw_messages = await message_repo.find_by_group(group_id, 50, until=last_message)
+        users_map = {u.src_id.split('@')[0]: (u.name or "Usuário") for u in users_group if u.src_id}
+    else:
+        raw_messages = await message_repo.find_private_conversation(
+            user_id=user_id,
+            gork_user_id=user_gork.id,
+            limit=40,
+            until=last_message,
+        )
+
     # Sort raw_messages chronologically (oldest message first, newest message last)
     raw_messages = sorted(raw_messages, key=lambda m: (m.created_at or datetime.min, m.id))
     messages_rel = {msg.id: msg for msg in raw_messages}
 
-    # Fetch last_message if not present in window
-    last_message = messages_rel.get(last_message_id)
-    if not last_message:
-        last_message = await message_repo.find_by_id(last_message_id)
+    missing_quoted_ids = {
+        msg.quoted_message_id
+        for msg in raw_messages
+        if msg.quoted_message_id and msg.quoted_message_id not in messages_rel
+    }
+    for quoted_message in await message_repo.find_by_ids(list(missing_quoted_ids)):
+        if quoted_message.group_id == group_id:
+            messages_rel[quoted_message.id] = quoted_message
+
+    media_repo = MediaRepository(db)
+    media_ids = {msg.media_id for msg in messages_rel.values() if msg.media_id}
+    media_by_id = {
+        media.id: media
+        for media in await media_repo.find_by_ids(list(media_ids))
+    }
 
     # Exclude last_message from system prompt conversation history to prevent duplication
     history_messages = [msg for msg in raw_messages if msg.id != last_message_id]
@@ -134,12 +227,22 @@ async def conversation_agent(
         f"{last_msg_id_str}{sender_display_name} - [{datetime.now().strftime('%H:%M')}]: {last_content}"
     )
 
-    agent = await agent_repo.find_by_name("conversation")
+    agent_name = "conversation-group" if group_id else "conversation-dm"
+    agent = await agent_repo.find_by_name(agent_name)
     if not agent:
-        await logger.error("Agent", "Conversation", "Conversation agent not found.")
+        await logger.error("Agent", "Conversation", f"Agent {agent_name} not found.")
         return ""
 
-    model = await model_conversation_repo.resolve_agent_model(agent, user_id=user_id, group_id=group_id)
+    # Keep existing per-user model overrides attached to the original
+    # conversation agent while using the smaller DM-specific prompt.
+    model_agent = agent
+    model_agent = await agent_repo.find_by_name("conversation") or agent
+
+    model = await model_conversation_repo.resolve_agent_model(
+        model_agent,
+        user_id=user_id,
+        group_id=group_id,
+    )
     if not model:
         await logger.error("Agent", "Conversation", f"Model not found for agent {agent.name}.")
         return ""
@@ -177,18 +280,33 @@ async def conversation_agent(
     system_prompt = system_prompt.replace("$$ADDITIONAL_CONTEXT$$", additional_context)
     system_prompt = system_prompt.replace("$$CURRENT_DATE$$", now.strftime("%B %d, %Y"))
 
+    request_messages = [{"role": "system", "content": system_prompt}]
+    for msg in history_messages:
+        if group_id:
+            content = _format_group_message_content(msg, messages_rel, media_by_id, users_map)
+        else:
+            content = _format_direct_message_content(msg, messages_rel, media_by_id)
+        if not content:
+            continue
+        request_messages.append({
+            "role": "assistant" if msg.user_id == user_gork.id else "user",
+            "content": content,
+        })
+
+    if group_id:
+        latest_content = _format_group_message_content(
+            last_message,
+            messages_rel,
+            media_by_id,
+            users_map,
+        )
+    else:
+        latest_content = _format_direct_message_content(last_message, messages_rel, media_by_id)
+    request_messages.append({"role": "user", "content": latest_content})
+
     payload_term_formatter = {
         "model": model.openrouter_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": current_message,
-            }
-        ]
+        "messages": request_messages,
     }
 
     if agent.response_format:

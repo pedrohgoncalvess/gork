@@ -18,6 +18,14 @@ class MediaRepository(BaseRepository[Media]):
         )
         return result.scalar_one_or_none()
 
+    async def find_by_ids(self, media_ids: list[int]) -> List[Media]:
+        if not media_ids:
+            return []
+        result = await self.db.execute(
+            select(Media).filter(Media.id.in_(media_ids))
+        )
+        return list(result.scalars().all())
+
     async def find_by_similar_phash(
             self,
             phash: int,
