@@ -1,5 +1,6 @@
 import base64
 import binascii
+import re
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Optional
@@ -24,10 +25,17 @@ from external.evolution import download_media
 from log import logger
 from s3 import S3Client
 from services import get_mentions_from_content
+from services.message_context import _has_me_mention
 from utils import INSTANCE_NUMBER
 
 
 MAX_GENERATED_IMAGE_BYTES = 20 * 1024 * 1024
+IMAGE_FORMAT_MIME_TYPES = {
+    "GIF": "image/gif",
+    "JPEG": "image/jpeg",
+    "PNG": "image/png",
+    "WEBP": "image/webp",
+}
 
 
 @dataclass(frozen=True)
@@ -38,11 +46,178 @@ class ImageGenerationResult:
     user_message: str | None = None
 
 
+@dataclass(frozen=True)
+class ImageInputReference:
+    image_base64: str
+    mime_type: str
+    role: str
+    label: str
+
+    def payload_item(self) -> dict:
+        return {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{self.mime_type};base64,{self.image_base64}",
+            },
+        }
+
+
 class ImageGenerationError(Exception):
     def __init__(self, code: str, user_message: str, detail: str = ""):
         super().__init__(detail or user_message)
         self.code = code
         self.user_message = user_message
+
+
+def _image_reference(
+        image_base64: str,
+        role: str,
+        label: str,
+) -> ImageInputReference:
+    encoded = image_base64.strip()
+    if encoded.startswith("data:"):
+        if "," not in encoded:
+            raise ImageGenerationError(
+                "invalid_input_reference",
+                f"A referência {label} está em um formato inválido.",
+                f"Malformed data URL for {label}.",
+            )
+        encoded = encoded.split(",", 1)[1]
+
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+        with Image.open(BytesIO(image_bytes)) as image:
+            image_format = str(image.format or "").upper()
+            image.verify()
+    except (binascii.Error, ValueError, OSError) as error:
+        raise ImageGenerationError(
+            "invalid_input_reference",
+            f"Não consegui ler a referência {label}.",
+            f"Invalid {label}: {type(error).__name__}: {error}",
+        ) from error
+
+    mime_type = IMAGE_FORMAT_MIME_TYPES.get(image_format)
+    if not mime_type:
+        raise ImageGenerationError(
+            "unsupported_input_reference",
+            f"A referência {label} usa um formato de imagem não suportado.",
+            f"Unsupported format for {label}: {image_format}",
+        )
+
+    return ImageInputReference(encoded, mime_type, role, label)
+
+
+def _clean_image_request(
+        raw_request: str,
+        gork_user: User | None,
+        referenced_users: list[User],
+        me_user: User | None = None,
+) -> str:
+    request = raw_request
+
+    if gork_user:
+        request = _replace_user_identifiers(request, gork_user, "")
+
+    for user in referenced_users:
+        request = _replace_user_identifiers(request, user, user.name or "Usuário")
+
+    if me_user:
+        request = re.sub(
+            r"(?<!\w)@me\b",
+            me_user.name or "Usuário",
+            request,
+            flags=re.IGNORECASE,
+        )
+
+    request = re.sub(r"!image\b", "", request, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", request).strip()
+
+
+def _replace_user_identifiers(text: str, user: User, replacement: str) -> str:
+    identifiers = (
+        f"@{user.phone_number}@s.whatsapp.net" if user.phone_number else "",
+        f"{user.src_id}@lid" if user.src_id else "",
+        f"@{user.src_id}" if user.src_id else "",
+        f"@{user.phone_number}" if user.phone_number else "",
+    )
+    for identifier in identifiers:
+        if identifier:
+            text = text.replace(identifier, replacement)
+    return text
+
+
+def _exclude_gork_user(
+        referenced_users: list[User],
+        gork_user: User | None,
+) -> list[User]:
+    if not gork_user:
+        return referenced_users
+    return [user for user in referenced_users if user.id != gork_user.id]
+
+
+def _build_image_prompt(
+        system_prompt: str,
+        user_request: str,
+        references: list[ImageInputReference],
+) -> str:
+    if references:
+        manifest_lines = [
+            f"Reference [{index}]: role={reference.role}; label={reference.label}"
+            for index, reference in enumerate(references, start=1)
+        ]
+    else:
+        manifest_lines = ["No input references were provided."]
+
+    manifest = "\n".join(manifest_lines)
+    return (
+        f"{system_prompt.strip()}\n\n"
+        f"INPUT REFERENCE MANIFEST:\n{manifest}\n\n"
+        f"USER REQUEST:\n{user_request.strip()}"
+    )
+
+
+async def _download_media_reference(
+        message_id: str,
+        role: str,
+        label: str,
+) -> ImageInputReference:
+    try:
+        image_base64, _ = await download_media(message_id)
+    except Exception as error:
+        raise ImageGenerationError(
+            "input_reference_download_failed",
+            f"Não consegui carregar a referência {label}.",
+            f"Failed to download {label} ({message_id}): {type(error).__name__}: {error}",
+        ) from error
+
+    if not image_base64:
+        raise ImageGenerationError(
+            "input_reference_download_failed",
+            f"Não consegui carregar a referência {label}.",
+            f"Empty media response for {label} ({message_id}).",
+        )
+    return _image_reference(image_base64, role, label)
+
+
+async def _include_quoted_author(
+        referenced_users: list[User],
+        quoted_message: Message | None,
+        gork_user: User | None,
+        user_repo: UserRepository,
+        quoted_has_image_reference: bool = False,
+) -> None:
+    if quoted_has_image_reference:
+        return
+    if not quoted_message or not quoted_message.user_id:
+        return
+    if gork_user and quoted_message.user_id == gork_user.id:
+        return
+    if any(user.id == quoted_message.user_id for user in referenced_users):
+        return
+
+    quoted_user = await user_repo.find_by_id(quoted_message.user_id)
+    if quoted_user:
+        referenced_users.append(quoted_user)
 
 
 def _provider_error(error: httpx.HTTPStatusError) -> ImageGenerationError:
@@ -189,9 +364,15 @@ async def generate_image(
         user_id: int,
         db_message: Message,
         action_params: Optional[dict] = None,
+        context: Optional[dict] = None,
 ) -> ImageGenerationResult:
     try:
-        image_base64 = await _generate_image(user_id, db_message, action_params)
+        image_base64 = await _generate_image(
+            user_id,
+            db_message,
+            action_params,
+            context,
+        )
         return ImageGenerationResult(success=True, image_base64=image_base64)
     except ImageGenerationError as error:
         await _log_generation_error(error.code, str(error))
@@ -245,8 +426,9 @@ async def _generate_image(
         user_id: int,
         db_message: Message,
         action_params: Optional[dict] = None,
+        context: Optional[dict] = None,
 ) -> str:
-    mention_photo: list[tuple[str, User]] = []
+    identity_photos: list[tuple[str, User]] = []
     
     async with PgConnection() as db:
         agent_repo = AgentRepository(db)
@@ -272,18 +454,9 @@ async def _generate_image(
         elif db_message and db_message.content:
             raw_user_message = db_message.content
 
-        if gork_user:
-            user_message = (
-                raw_user_message
-                .replace(f"@{gork_user.phone_number}@s.whatsapp.net", "")
-                .replace(f"{gork_user.src_id}@lid", "")
-                .replace(f"@{gork_user.src_id}", "")
-            )
-        else:
-            user_message = raw_user_message
-
         # Fetch explicitly mentioned users
         mentions = await get_mentions_from_content(db_message, db) if db_message else []
+        explicitly_referenced_user_ids = {mention.id for mention in mentions}
 
         # Also support mentions passed in action_params
         if action_params and action_params.get("mentioned_users"):
@@ -298,23 +471,84 @@ async def _generate_image(
                         u_obj = await user_repo.find_by_phone_or_id(str(u_id))
                 if u_obj and all(m.id != u_obj.id for m in mentions):
                     mentions.append(u_obj)
+                if u_obj:
+                    explicitly_referenced_user_ids.add(u_obj.id)
+
+        me_user = None
+        if _has_me_mention(raw_user_message):
+            me_user = await user_repo.find_by_id(user_id)
+            if me_user and all(user.id != me_user.id for user in mentions):
+                mentions.append(me_user)
+            if me_user:
+                explicitly_referenced_user_ids.add(me_user.id)
+
+        if gork_user:
+            mentions = _exclude_gork_user(mentions, gork_user)
+            explicitly_referenced_user_ids.discard(gork_user.id)
 
         # Quoted message handling
         quoted_message = await message_repo.find_by_id(db_message.quoted_message_id) if db_message and db_message.quoted_message_id else None
+        quoted_image_id = (
+            context.get("image_quote")
+            if context and context.get("image_quote")
+            else (
+                quoted_message.message_id
+                if quoted_message and quoted_message.media_id
+                else None
+            )
+        )
 
-        if mentions:
+        await _include_quoted_author(
+            mentions,
+            quoted_message,
+            gork_user,
+            user_repo,
+            quoted_has_image_reference=bool(quoted_image_id),
+        )
+
+        user_message = _clean_image_request(
+            raw_user_message,
+            gork_user,
+            mentions,
+            me_user=me_user,
+        )
+        if not user_message:
+            raise ImageGenerationError(
+                "empty_image_request",
+                "Descreva o que você quer gerar ou modificar com o comando !image.",
+            )
+
+        users_with_profile = [user for user in mentions if user.profile_pic_path]
+        missing_required_profiles = [
+            user.name or "Usuário"
+            for user in mentions
+            if user.id in explicitly_referenced_user_ids and not user.profile_pic_path
+        ]
+        if missing_required_profiles:
+            names = ", ".join(missing_required_profiles)
+            raise ImageGenerationError(
+                "identity_reference_unavailable",
+                f"Não encontrei uma foto de perfil para usar como referência: {names}.",
+            )
+
+        if users_with_profile:
             s3_client = S3Client()
-            await s3_client.connect()
-            for mention in mentions:
-                if gork_user and mention.phone_number == gork_user.phone_number:
-                    continue
-                if mention and mention.profile_pic_path:
-                    try:
-                        photo_base64 = await s3_client.get_image_base64("whatsapp", mention.profile_pic_path)
-                        if photo_base64:
-                            mention_photo.append((photo_base64, mention))
-                    except Exception:
-                        pass
+            try:
+                await s3_client.connect()
+                for mention in users_with_profile:
+                    photo_base64 = await s3_client.get_image_base64(
+                        "whatsapp",
+                        mention.profile_pic_path,
+                    )
+                    if not photo_base64:
+                        raise ValueError("empty profile image")
+                    identity_photos.append((photo_base64, mention))
+            except Exception as error:
+                raise ImageGenerationError(
+                    "identity_reference_unavailable",
+                    "Não consegui carregar uma das fotos de perfil usadas como referência.",
+                    f"{type(error).__name__}: {error}",
+                ) from error
 
         new_command = await command_repo.create_command(
             command="image",
@@ -335,118 +569,50 @@ async def _generate_image(
                 "O modelo de geração de imagens não está configurado.",
             )
 
-        # Collect images from the message itself and from the quoted message
-        message_image_base64 = None
-        quoted_image_base64 = None
-
-        if db_message and db_message.media_id and db_message.message_id:
-            try:
-                res, _ = await download_media(db_message.message_id)
-                if res:
-                    message_image_base64 = res
-            except Exception:
-                message_image_base64 = None
-
-        if quoted_message and quoted_message.media_id and quoted_message.message_id:
-            try:
-                res, _ = await download_media(quoted_message.message_id)
-                if res:
-                    quoted_image_base64 = res
-            except Exception:
-                quoted_image_base64 = None
-
-        # Determine which is the "principal" image:
-        # - If the message itself has an image, it's the principal
-        # - Otherwise, the quoted image becomes the principal
-        if message_image_base64:
-            primary_image_base64 = message_image_base64
-            secondary_image_base64 = quoted_image_base64
-        else:
-            primary_image_base64 = quoted_image_base64
-            secondary_image_base64 = None
-
-        photo_context = ""
-        if mention_photo:
-            for idx, (_, us) in enumerate(mention_photo, start=1):
-                offset = 1
-                if primary_image_base64:
-                    offset += 1
-                if secondary_image_base64:
-                    offset += 1
-                idx = idx + offset - 1
-                user_message = user_message.replace(f"@{us.phone_number}@s.whatsapp.net", us.name or "Usuário").replace(f"{us.src_id}@lid", us.name or "Usuário").replace(f"@{us.src_id}", us.name or "Usuário")
-                photo_context = f"{photo_context}Foto [{idx}]: É a pessoa: {us.name or 'Usuário'}\n"
-
-        base64_context = ""
-        if primary_image_base64 and secondary_image_base64:
-            base64_context = (
-                "A primeira foto é chamada de 'principal'. A segunda foto é uma imagem de referência/contexto adicional. "
-                "Leve ambas em consideração quando analisar a requisição final do usuario."
-            )
-        elif primary_image_base64:
-            base64_context = (
-                "A primeira foto é chamada de 'principal'. Leve isso em consideração quando analisar a requisição final do usuario."
-            )
-
-        final_message = ""
-        if base64_context:
-            final_message = f"{base64_context}\n"
-        if photo_context:
-            final_message = f"{final_message}{photo_context}\n\n"
-
-        user_message = f"{final_message}\n\n{user_message}"
-        messages_content = [
-            {
-                "type": "text",
-                "text": user_message
-            }
-        ]
-
-        if primary_image_base64:
-            data_url = f"data:image/jpeg;base64,{primary_image_base64}"
-            messages_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": data_url
-                    }
-                }
-            )
-
-        if secondary_image_base64:
-            data_url = f"data:image/jpeg;base64,{secondary_image_base64}"
-            messages_content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": data_url
-                    }
-                }
-            )
-
-        if mention_photo:
-            for photo, _ in mention_photo:
-                data_url = f"data:image/jpeg;base64,{photo}"
-                messages_content.append(
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": data_url
-                        }
-                    }
+        message_image_id = (
+            context.get("image_message")
+            if context and context.get("image_message")
+            else db_message.message_id if db_message and db_message.media_id else None
+        )
+        references: list[ImageInputReference] = []
+        if message_image_id:
+            references.append(
+                await _download_media_reference(
+                    message_image_id,
+                    "primary",
+                    "imagem principal da mensagem",
                 )
+            )
+        if quoted_image_id:
+            quoted_role = "context" if references else "primary"
+            references.append(
+                await _download_media_reference(
+                    quoted_image_id,
+                    quoted_role,
+                    "imagem da mensagem citada",
+                )
+            )
+        for photo_base64, user in identity_photos:
+            references.append(
+                _image_reference(
+                    photo_base64,
+                    "identity",
+                    f"foto de identidade de {user.name or 'Usuário'}",
+                )
+            )
 
         payload = {
             "model": image_model.openrouter_id,
-            "prompt": f"{image_system_prompt}\n\nUSER REQUEST:\n{user_message}",
+            "prompt": _build_image_prompt(
+                image_system_prompt,
+                user_message,
+                references,
+            ),
         }
-        input_references = [
-            item
-            for item in messages_content
-            if isinstance(item, dict) and item.get("type") == "image_url"
-        ]
-        if input_references:
-            payload["input_references"] = input_references
+        if references:
+            payload["input_references"] = [
+                reference.payload_item() for reference in references
+            ]
 
         req = await generate_images(payload)
         usage = req.get("usage") if isinstance(req, dict) else {}

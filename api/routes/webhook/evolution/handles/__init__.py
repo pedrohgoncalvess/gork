@@ -3,7 +3,6 @@ from api.routes.webhook.evolution.handles.chat import handle_conversation_agent
 from api.routes.webhook.evolution.handles.core import (
     clean_text,
     COMMANDS,
-    get_explicit_command_feature,
     has_explicit_command,
     is_message_too_old,
 )

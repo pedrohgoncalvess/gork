@@ -17,11 +17,13 @@ COMMANDS = [
         "image",
         [
             (":no-background", "Remove fundo da imagem ou video.", [("t", "Verdadeiro"),]),
+            (":no-color", "Deixa a imagem ou vídeo em preto e branco.", [("t", "Verdadeiro"),]),
             (":random", "Usa uma imagem aleatória", [("t", "Verdadeiro"),]),
             (":fill", "Preenche todo o tamanho do sticker cortando o excesso da imagem.", [("true", "Verdadeiro"),]),
             (":url", "Usa uma URL do Twitter/X como fonte do sticker.", [("https://x.com/usuario/status/12345", "Link do post"),]),
-            (":effect", "Adiciona um efeito. *Apenas figurinhas animadas*", [
-                ("explosion", "Efeito de explosão"),
+            (":effect", "Adiciona um efeito e transforma imagens estáticas em figurinhas animadas.", [
+                ("explosion", "Explosão ActionVFX repetida no centro da imagem/vídeo"),
+                ("nuclear-bomb", "Explosão nuclear sobreposta à imagem/vídeo"),
                 ("breathing", "Efeito de respiração (infla e desinfla)"),
                 ("rotation", "Efeito de rotação (360 graus)"),
                 ("bulge", "Efeito de balão/infla"),
@@ -31,8 +33,9 @@ COMMANDS = [
                 ("fisheye", "Efeito olho de peixe"),
             ]),
             (":cut", "Recorta o video da figurinha animada. Use segundos ou minuto:segundo, com inicio-fim.", [("43-46", "Corta de 43s a 46s"), ("1:00-1:05", "Corta de 1min a 1min05s"), ("43-", "Corta a partir de 43s ate o limite"), ("-46", "Corta os segundos anteriores a 46s")]),
-            (":speed", "Altera a velocidade da figurinha animada. Valores acima de 1 aceleram; abaixo de 1 desaceleram.", [("2.0", "Dobra a velocidade"), ("0.5", "Metade da velocidade")]),
+            (":speed", "Altera a velocidade da figurinha animada. Com rotation, define a quantidade de voltas; com explosion, define quantas vezes a explosão se repete.", [("2.0", "2 voltas com rotation ou 2 explosões com explosion"), ("10", "10 explosões durante o sticker com explosion"), ("0.5", "Metade da velocidade nos demais efeitos")]),
             (":blur", "Aplica desfoque à imagem do sticker (0 a 100).", [("50", "Desfoque médio (50)"), ("100", "Desfoque máximo (100)")]),
+            (":dead", "Cria uma lápide com a foto e o texto da mensagem citada.", [("t", "Verdadeiro"),]),
         ]
     ),
     ("!english", "", "hidden", []),
@@ -90,7 +93,7 @@ def clean_text(text: str | None, remove_mentions: bool = True) -> str:
 
     if remove_mentions:
         treated_text = re.compile(r'@\d{6,15}').sub('', treated_text)
-    treated_text = re.compile(r'\s*:[a-zA-Z-]+=\S+').sub('', treated_text)
+    treated_text = re.compile(r'\s*:[a-zA-Z-]+(?:=\S+)?').sub('', treated_text)
     return treated_text.strip()
 
 

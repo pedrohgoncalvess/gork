@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 from io import BytesIO
+from pathlib import Path
 
 import httpx
 import numpy as np
@@ -12,8 +13,10 @@ from PIL import Image
 
 from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
+from api.routes.webhook.evolution.handles.image.sticker_filters import remove_color
 from database.models.content import Message
 from external.evolution import download_media
+from utils import project_root
 
 
 VIDEO_REMBG_FPS = 2
@@ -21,6 +24,22 @@ VIDEO_REMBG_SCALE = 320
 VIDEO_REMBG_DURATION = 3
 VIDEO_REMBG_MODEL = "u2netp"
 VIDEO_CUT_MAX_DURATION = 7.0
+STATIC_EFFECT_FPS = 15
+STATIC_EFFECT_DURATION = 3
+STATIC_EXPLOSION_FPS = 30
+STATIC_STICKER_MAX_BYTES = 490_000
+VIDEO_STICKER_MAX_BYTES = 350_000
+NUCLEAR_BOMB_EFFECTS = {"nuclear-bomb", "nuclear_bomb"}
+NUCLEAR_BOMB_GIF_URL = "https://media.giphy.com/media/CWn8Pu7ezdiiJ6dVgo/giphy.gif"
+NUCLEAR_BOMB_START_PROGRESS = 0.35
+NUCLEAR_BOMB_MAX_FRAME_RATIO = 0.72
+NUCLEAR_BOMB_OPACITY = 0.78
+EXPLOSION_GIF_URL = "https://media.giphy.com/media/1vZccDvoiwzCmv5OKZ/giphy.gif"
+EXPLOSION_GIF_PATH = (
+    Path(project_root) / "assets" / "image" / "actionvfx-explosion.gif"
+)
+EXPLOSION_MAX_FRAME_RATIO = 0.65
+EXPLOSION_MAX_SOURCE_FRAMES = 60
 
 
 def _parse_cut_timestamp(value: str) -> float | None:
@@ -243,8 +262,12 @@ def _apply_breathing_effect(frame: Image.Image, progress: float) -> Image.Image:
         return _apply_pinch_effect(frame, abs(intensity))
 
 
-def _apply_rotation_effect(frame: Image.Image, progress: float) -> Image.Image:
-    angle = progress * 360
+def _apply_rotation_effect(
+        frame: Image.Image,
+        progress: float,
+        rotations: int = 1,
+) -> Image.Image:
+    angle = progress * 360 * max(1, rotations)
     fillcolor = (0, 0, 0, 0) if frame.mode == "RGBA" else (255, 255, 255)
     return frame.rotate(-angle, resample=Image.BICUBIC, expand=False, fillcolor=fillcolor)
 
@@ -359,17 +382,179 @@ def _apply_breathing_effect(frame: Image.Image, progress: float) -> Image.Image:
         return _apply_pinch_effect(frame, abs(intensity))
 
 
-def _apply_rotation_effect(frame: Image.Image, progress: float) -> Image.Image:
-    angle = progress * 360
+def _apply_rotation_effect(
+        frame: Image.Image,
+        progress: float,
+        rotations: int = 1,
+) -> Image.Image:
+    angle = progress * 360 * max(1, rotations)
     fillcolor = (0, 0, 0, 0) if frame.mode == "RGBA" else (255, 255, 255)
     return frame.rotate(-angle, resample=Image.BICUBIC, expand=False, fillcolor=fillcolor)
 
 
-def _apply_explosion_effect(frame: Image.Image, progress: float, explosion_frames: list = None,
-                           explosion_index: int = 0) -> Image.Image:
-    if progress >= 0.8 and explosion_frames and isinstance(explosion_frames, list) and len(explosion_frames) > 0:
-        return explosion_frames[min(explosion_index, len(explosion_frames) - 1)]
-    return frame
+def _apply_nuclear_bomb_effect(
+        frame: Image.Image,
+        progress: float,
+        explosion_frames: list[Image.Image] | None = None,
+) -> Image.Image:
+    """Composite the semi-transparent meme explosion over the source frame."""
+    if progress < NUCLEAR_BOMB_START_PROGRESS or not explosion_frames:
+        return frame
+
+    overlay_progress = (
+        (progress - NUCLEAR_BOMB_START_PROGRESS)
+        / (1.0 - NUCLEAR_BOMB_START_PROGRESS)
+    )
+    overlay_index = min(
+        int(overlay_progress * len(explosion_frames)),
+        len(explosion_frames) - 1,
+    )
+    overlay = explosion_frames[overlay_index].convert("RGBA")
+    scale = min(
+        frame.width * NUCLEAR_BOMB_MAX_FRAME_RATIO / overlay.width,
+        frame.height * NUCLEAR_BOMB_MAX_FRAME_RATIO / overlay.height,
+    )
+    overlay_size = (
+        max(1, round(overlay.width * scale)),
+        max(1, round(overlay.height * scale)),
+    )
+    overlay = overlay.resize(overlay_size, Image.LANCZOS)
+    alpha = overlay.getchannel("A").point(
+        lambda value: round(value * NUCLEAR_BOMB_OPACITY)
+    )
+    overlay.putalpha(alpha)
+
+    composed = frame.convert("RGBA")
+    position = (
+        (frame.width - overlay.width) // 2,
+        (frame.height - overlay.height) // 2,
+    )
+    composed.alpha_composite(overlay, position)
+    return composed if frame.mode == "RGBA" else composed.convert("RGB")
+
+
+def _load_nuclear_bomb_frames() -> list[Image.Image]:
+    try:
+        response = httpx.get(NUCLEAR_BOMB_GIF_URL, timeout=5)
+        response.raise_for_status()
+        explosion_gif = Image.open(BytesIO(response.content))
+        frames = []
+        for frame_index in range(min(explosion_gif.n_frames, 30)):
+            explosion_gif.seek(frame_index)
+            frames.append(explosion_gif.convert("RGBA"))
+        explosion_gif.close()
+        return frames
+    except Exception:
+        return []
+
+
+def _load_explosion_frames() -> list[Image.Image]:
+    """Load the ActionVFX explosion and turn its black matte into alpha."""
+    try:
+        if EXPLOSION_GIF_PATH.is_file():
+            explosion_bytes = EXPLOSION_GIF_PATH.read_bytes()
+        else:
+            response = httpx.get(EXPLOSION_GIF_URL, timeout=10)
+            response.raise_for_status()
+            explosion_bytes = response.content
+        explosion_gif = Image.open(BytesIO(explosion_bytes))
+        source_frame_count = explosion_gif.n_frames
+        output_frame_count = min(
+            source_frame_count,
+            EXPLOSION_MAX_SOURCE_FRAMES,
+        )
+        frame_indices = np.linspace(
+            0,
+            source_frame_count - 1,
+            output_frame_count,
+            dtype=int,
+        )
+        frames = []
+        for frame_index in frame_indices:
+            explosion_gif.seek(int(frame_index))
+            frame_array = np.array(explosion_gif.convert("RGBA"))
+            brightness = np.max(frame_array[:, :, :3], axis=2).astype(np.float32)
+            matte_alpha = np.clip(
+                (brightness - 8.0) * (255.0 / 247.0),
+                0,
+                255,
+            ).astype(np.uint8)
+            frame_array[:, :, 3] = np.minimum(
+                frame_array[:, :, 3],
+                matte_alpha,
+            )
+            frames.append(Image.fromarray(frame_array))
+        explosion_gif.close()
+        alpha_boxes = [
+            frame.getchannel("A").getbbox()
+            for frame in frames
+        ]
+        alpha_boxes = [box for box in alpha_boxes if box]
+        if alpha_boxes:
+            content_bounds = (
+                min(box[0] for box in alpha_boxes),
+                min(box[1] for box in alpha_boxes),
+                max(box[2] for box in alpha_boxes),
+                max(box[3] for box in alpha_boxes),
+            )
+            frames = [frame.crop(content_bounds) for frame in frames]
+        return frames
+    except Exception:
+        return []
+
+
+def _apply_explosion_effect(
+        frame: Image.Image,
+        progress: float,
+        explosion_frames: list[Image.Image] | None = None,
+) -> Image.Image:
+    if not explosion_frames:
+        return frame
+
+    overlay_index = min(
+        round(progress * (len(explosion_frames) - 1)),
+        len(explosion_frames) - 1,
+    )
+    overlay = explosion_frames[overlay_index]
+    scale = min(
+        frame.width * EXPLOSION_MAX_FRAME_RATIO / overlay.width,
+        frame.height * EXPLOSION_MAX_FRAME_RATIO / overlay.height,
+    )
+    overlay = overlay.resize(
+        (
+            max(1, round(overlay.width * scale)),
+            max(1, round(overlay.height * scale)),
+        ),
+        Image.LANCZOS,
+    )
+    composed = frame.convert("RGBA")
+    composed.alpha_composite(
+        overlay,
+        (
+            (frame.width - overlay.width) // 2,
+            (frame.height - overlay.height) // 2,
+        ),
+    )
+    return composed if frame.mode == "RGBA" else composed.convert("RGB")
+
+
+def _repeating_effect_progress(
+        frame_index: int,
+        total_frames: int,
+        requested_cycles: float,
+) -> float:
+    """Return 0..1 progress while guaranteeing each cycle reaches its end."""
+    total_frames = max(total_frames, 1)
+    cycle_count = max(1, math.floor(float(requested_cycles) + 0.5))
+    cycle_count = min(cycle_count, max(1, total_frames // 2))
+    cycle_index = min(
+        (frame_index * cycle_count) // total_frames,
+        cycle_count - 1,
+    )
+    cycle_start = math.ceil(cycle_index * total_frames / cycle_count)
+    cycle_stop = math.ceil((cycle_index + 1) * total_frames / cycle_count)
+    frames_in_cycle = max(cycle_stop - cycle_start, 1)
+    return (frame_index - cycle_start) / max(frames_in_cycle - 1, 1)
 
 
 def _save_animation_frames(
@@ -391,8 +576,8 @@ def _save_animation_frames(
             duration=durations,
             loop=0,
             lossless=False,
-            quality=95,
-            method=6,
+            quality=82,
+            method=3,
         )
         return output_path
 
@@ -472,6 +657,31 @@ def _remove_background_from_animation(input_path: str, output_path: str) -> str:
     return _save_animation_frames(frames, durations, output_path, preserve_alpha=True)
 
 
+def _remove_color_from_animation(
+        input_path: str,
+        output_path: str,
+        preserve_alpha: bool = False,
+) -> str:
+    animation = Image.open(input_path)
+    frames = []
+    durations = []
+    try:
+        frame_index = 0
+        while True:
+            frame = animation.copy()
+            frame = frame.convert("RGBA") if preserve_alpha else _convert_to_rgb(frame)
+            frames.append(remove_color(frame))
+            durations.append(animation.info.get("duration", 66))
+            frame_index += 1
+            animation.seek(frame_index)
+    except EOFError:
+        pass
+    finally:
+        animation.close()
+
+    return _save_animation_frames(frames, durations, output_path, preserve_alpha)
+
+
 def _add_caption_to_gif_frames(
         gif_path: str,
         caption_text: str,
@@ -502,31 +712,23 @@ def _add_effect_to_gif_frames(
         output_path: str,
         effect: str,
         preserve_alpha: bool = False,
+        effect_speed: float = 1.0,
 ) -> str:
     gif = Image.open(gif_path)
     frames = []
     durations = []
-    explosion_frames = []
-    if effect == "explosion":
-        try:
-            explosion_url = "https://media.giphy.com/media/HhTXt43pk1I1W/giphy.gif"
-            response = httpx.get(explosion_url, timeout=5)
-            explosion_gif = Image.open(BytesIO(response.content))
-            explosion_frame_count = 0
-            try:
-                while explosion_frame_count < 30:
-                    explosion_gif.seek(explosion_frame_count)
-                    exp_frame = explosion_gif.copy()
-                    exp_frame = exp_frame.convert("RGBA") if preserve_alpha else _convert_to_rgb(exp_frame)
-                    exp_frame = exp_frame.resize((gif.width, gif.height), Image.LANCZOS)
-                    explosion_frames.append(exp_frame)
-                    explosion_frame_count += 1
-            except EOFError:
-                pass
-        except:
-            pass
+    normalized_effect = str(effect).strip().lower()
+    explosion_frames = (
+        _load_nuclear_bomb_frames()
+        if normalized_effect in NUCLEAR_BOMB_EFFECTS
+        else []
+    )
+    action_explosion_frames = (
+        _load_explosion_frames()
+        if normalized_effect == "explosion"
+        else []
+    )
     frame_count = 0
-    explosion_frame_index = 0
     try:
         while True:
             frame = gif.copy()
@@ -536,24 +738,43 @@ def _add_effect_to_gif_frames(
             except:
                 total_frames = 30
             progress = frame_count / max(total_frames - 1, 1)
-            if effect == "bulge":
+            if normalized_effect == "bulge":
                 frame_effect = _apply_bulge_effect(frame, 0.5)
-            elif effect == "pinch":
+            elif normalized_effect == "pinch":
                 frame_effect = _apply_pinch_effect(frame, 0.5)
-            elif effect == "swirl":
+            elif normalized_effect == "swirl":
                 frame_effect = _apply_swirl_effect(frame, 0.5)
-            elif effect == "wave":
+            elif normalized_effect == "wave":
                 frame_effect = _apply_wave_effect(frame, 10)
-            elif effect == "fisheye":
+            elif normalized_effect == "fisheye":
                 frame_effect = _apply_fisheye_effect(frame, 0.5)
-            elif effect == "explosion":
-                frame_effect = _apply_explosion_effect(frame, progress, explosion_frames, explosion_frame_index)
-                if progress >= 0.7 and explosion_frames:
-                    explosion_frame_index += 1
-            elif effect == "breathing":
+            elif normalized_effect == "explosion":
+                explosion_progress = _repeating_effect_progress(
+                    frame_count,
+                    total_frames,
+                    effect_speed,
+                )
+                frame_effect = _apply_explosion_effect(
+                    frame,
+                    explosion_progress,
+                    action_explosion_frames,
+                )
+            elif normalized_effect in NUCLEAR_BOMB_EFFECTS:
+                frame_effect = _apply_nuclear_bomb_effect(
+                    frame,
+                    progress,
+                    explosion_frames,
+                )
+            elif normalized_effect == "breathing":
                 frame_effect = _apply_breathing_effect(frame, progress)
-            elif effect == "rotation":
-                frame_effect = _apply_rotation_effect(frame, progress)
+            elif normalized_effect == "rotation":
+                rotation_progress = frame_count / max(total_frames, 1)
+                rotation_count = max(1, math.floor(float(effect_speed) + 0.5))
+                frame_effect = _apply_rotation_effect(
+                    frame,
+                    rotation_progress,
+                    rotation_count,
+                )
             else:
                 frame_effect = frame
             frames.append(frame_effect)
@@ -629,6 +850,7 @@ def _compress_webp_sticker(
         output_path: str,
         max_bytes: int = 490_000,
         fill: bool = False,
+        max_fps: int | None = None,
 ) -> str:
     configs = [
         {"scale": 512, "fps": 30, "quality": 85, "duration": 7},
@@ -637,7 +859,13 @@ def _compress_webp_sticker(
         {"scale": 512, "fps": 15, "quality": 55, "duration": 7},
         {"scale": 384, "fps": 15, "quality": 60, "duration": 7},
         {"scale": 256, "fps": 15, "quality": 60, "duration": 7},
+        {"scale": 224, "fps": 12, "quality": 52, "duration": 7},
+        {"scale": 192, "fps": 10, "quality": 48, "duration": 7},
+        {"scale": 160, "fps": 8, "quality": 42, "duration": 6},
+        {"scale": 128, "fps": 8, "quality": 38, "duration": 5},
     ]
+    if max_fps is not None:
+        configs = [config for config in configs if config["fps"] <= max_fps]
 
     for cfg in configs:
         tmp_out = output_path + ".tmp.webp"
@@ -690,6 +918,76 @@ def _compress_webp_sticker(
     return output_path
 
 
+def _compress_alpha_webp_sticker(
+        input_path: str,
+        output_path: str,
+        max_bytes: int = 490_000,
+        minimum_stride: int = 1,
+) -> str:
+    """Compress an alpha animation without routing it through a GIF/FFmpeg."""
+    configs = [
+        {"scale": 512, "quality": 78, "stride": 1},
+        {"scale": 384, "quality": 70, "stride": 1},
+        {"scale": 320, "quality": 62, "stride": 1},
+        {"scale": 256, "quality": 55, "stride": 1},
+        {"scale": 256, "quality": 48, "stride": 2},
+        {"scale": 192, "quality": 42, "stride": 2},
+        {"scale": 160, "quality": 36, "stride": 3},
+    ]
+
+    for config_index, config in enumerate(configs):
+        animation = Image.open(input_path)
+        frames = []
+        durations = []
+        frame_stride = max(config["stride"], minimum_stride)
+        try:
+            for frame_index in range(animation.n_frames):
+                if frame_index % frame_stride:
+                    continue
+                animation.seek(frame_index)
+                frame = animation.convert("RGBA")
+                if frame.size != (config["scale"], config["scale"]):
+                    frame = frame.resize(
+                        (config["scale"], config["scale"]),
+                        Image.LANCZOS,
+                    )
+                frames.append(frame)
+                durations.append(
+                    max(
+                        20,
+                        int(animation.info.get("duration", 66))
+                        * frame_stride,
+                    )
+                )
+        finally:
+            animation.close()
+
+        if not frames:
+            continue
+
+        temp_output = output_path + ".tmp.webp"
+        frames[0].save(
+            temp_output,
+            format="WEBP",
+            save_all=True,
+            append_images=frames[1:],
+            duration=durations,
+            loop=0,
+            lossless=False,
+            quality=config["quality"],
+            method=3,
+        )
+        if (
+                os.path.getsize(temp_output) <= max_bytes
+                or config_index == len(configs) - 1
+        ):
+            os.replace(temp_output, output_path)
+            return output_path
+        os.remove(temp_output)
+
+    return output_path
+
+
 def _build_animated_sticker_webp(
         media_bytes: bytes,
         caption_text: str = None,
@@ -700,6 +998,7 @@ def _build_animated_sticker_webp(
         speed: float = 1.0,
         cut_spec=None,
         blur: int = 0,
+        no_color: bool = False,
 ) -> tuple[str, list[str]]:
     with tempfile.NamedTemporaryFile(suffix='.media', delete=False) as f:
         f.write(media_bytes)
@@ -717,22 +1016,61 @@ def _build_animated_sticker_webp(
         else:
             input_path = webp_path
 
+        static_source = False
+        try:
+            with Image.open(BytesIO(media_bytes)) as source_image:
+                static_source = not (
+                    getattr(source_image, "is_animated", False)
+                    or getattr(source_image, "n_frames", 1) > 1
+                )
+        except Exception:
+            pass
+
         speed = max(float(speed), 0.1)
-        source_fps = VIDEO_REMBG_FPS if remove_background else 30
+        normalized_effect = str(effect or "").strip().lower()
+        source_fps = (
+            VIDEO_REMBG_FPS
+            if remove_background
+            else (
+                STATIC_EXPLOSION_FPS
+                if static_source and normalized_effect == "explosion"
+                else STATIC_EFFECT_FPS if static_source else 30
+            )
+        )
         source_scale = VIDEO_REMBG_SCALE if remove_background else 512
-        source_duration = VIDEO_REMBG_DURATION if remove_background else 6
+        source_duration = (
+            VIDEO_REMBG_DURATION
+            if remove_background
+            else STATIC_EFFECT_DURATION if static_source else 6
+        )
         cut_range = _parse_cut_range(cut_spec)
         cut_args = []
         if cut_range:
             cut_start, cut_duration = cut_range
             cut_args = ["-ss", f"{cut_start:.3f}"]
             source_duration = cut_duration
-        speed_filter = f"setpts=PTS/{speed}," if speed != 1.0 else ""
+        timeline_speed = (
+            1.0
+            if normalized_effect in {"rotation", "explosion"}
+            else speed
+        )
+        speed_filter = (
+            f"setpts=PTS/{timeline_speed},"
+            if timeline_speed != 1.0
+            else ""
+        )
         blur_level = max(0, min(100, int(blur or 0)))
         blur_filter = f"gblur=sigma={(blur_level / 100.0) * 30.0:.2f}," if blur_level else ""
+        loop_args = (
+            ["-stream_loop", "-1", "-t", str(source_duration)]
+            if static_source
+            else []
+        )
+
         subprocess.run([
             'ffmpeg',
             *cut_args,
+            *loop_args,
             '-i', input_path,
             '-vf',
             f'fps={source_fps},'
@@ -746,34 +1084,78 @@ def _build_animated_sticker_webp(
         ], check=True, capture_output=True)
 
         working_gif = gif_path
+        effect_preserves_alpha = (
+            remove_background
+            or str(effect or "").strip().lower() == "rotation"
+        )
 
+        # Keep background removal as the first transformation. Effects and
+        # captions must operate on the already transparent frames.
         if remove_background:
             no_bg = tempfile.mktemp(suffix='.webp')
             temp_paths.append(no_bg)
             working_gif = _remove_background_from_animation(working_gif, no_bg)
 
         if caption_text:
-            captioned = tempfile.mktemp(suffix='.webp' if remove_background else '.gif')
+            captioned = tempfile.mktemp(
+                suffix='.webp' if effect_preserves_alpha else '.gif'
+            )
             temp_paths.append(captioned)
             working_gif = _add_caption_to_gif_frames(
                 working_gif,
                 caption_text,
                 captioned,
                 font_size_param,
-                preserve_alpha=remove_background,
+                preserve_alpha=effect_preserves_alpha,
             )
 
         if effect:
-            effected = tempfile.mktemp(suffix='.webp' if remove_background else '.gif')
+            effected = tempfile.mktemp(
+                suffix='.webp' if effect_preserves_alpha else '.gif'
+            )
             temp_paths.append(effected)
             working_gif = _add_effect_to_gif_frames(
                 working_gif,
                 effected,
                 effect,
-                preserve_alpha=remove_background,
+                preserve_alpha=effect_preserves_alpha,
+                effect_speed=speed,
             )
 
-        _compress_webp_sticker(working_gif, output_webp_path, fill=fill)
+        if no_color:
+            colorless = tempfile.mktemp(
+                suffix='.webp' if effect_preserves_alpha else '.gif'
+            )
+            temp_paths.append(colorless)
+            working_gif = _remove_color_from_animation(
+                working_gif,
+                colorless,
+                preserve_alpha=effect_preserves_alpha,
+            )
+
+        # Keep alpha animations in WebP throughout the pipeline. Converting
+        # them to GIF here can make FFmpeg reject the final encode or collapse
+        # the result to a single frame.
+        max_output_bytes = (
+            STATIC_STICKER_MAX_BYTES
+            if static_source
+            else VIDEO_STICKER_MAX_BYTES
+        )
+        if working_gif.lower().endswith('.webp'):
+            _compress_alpha_webp_sticker(
+                working_gif,
+                output_webp_path,
+                max_bytes=max_output_bytes,
+                minimum_stride=1 if static_source else 2,
+            )
+        else:
+            _compress_webp_sticker(
+                working_gif,
+                output_webp_path,
+                max_bytes=max_output_bytes,
+                fill=fill,
+                max_fps=None if static_source else 20,
+            )
         return output_webp_path, temp_paths
 
     except Exception:
@@ -793,6 +1175,7 @@ async def animated_sticker_from_bytes(
         speed: float = 1.0,
         cut_spec=None,
         blur: int = 0,
+        no_color: bool = False,
 ) -> str:
     output_webp_path, temp_paths = await asyncio.to_thread(
         _build_animated_sticker_webp,
@@ -805,6 +1188,7 @@ async def animated_sticker_from_bytes(
         speed,
         cut_spec,
         blur,
+        no_color,
     )
     try:
         gif_url = await _upload_to_tmpfile(output_webp_path)
@@ -826,6 +1210,7 @@ async def animated_sticker(
         speed: float = 1.0,
         cut_spec=None,
         blur: int = 0,
+        no_color: bool = False,
 ) -> str:
     if caption_text is None:
         caption_text = clean_text(db_message.content) if db_message.content else None
@@ -841,4 +1226,5 @@ async def animated_sticker(
         speed=speed,
         cut_spec=cut_spec,
         blur=blur,
+        no_color=no_color,
     )

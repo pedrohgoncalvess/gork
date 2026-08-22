@@ -88,7 +88,12 @@ async def process_explicit_commands(
         return
 
     if "!image" in lw_conversation:
-        await handle_image_command(remote_id, user.id, db_message)
+        await handle_image_command(
+            remote_id,
+            user.id,
+            db_message,
+            context=context,
+        )
         return
 
     if "!describe" in lw_conversation:
@@ -157,7 +162,6 @@ async def process_explicit_commands(
         return
 
     if "!philo" in lw_conversation:
-        from services import parse_params
         params = parse_params(conversation)
         await handle_philo_command(
             remote_id=remote_id,

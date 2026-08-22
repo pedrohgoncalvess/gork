@@ -30,7 +30,12 @@ _VARIATION_SELECTORS = {"\ufe0e", "\ufe0f"}
 _ZERO_WIDTH_JOINER = "\u200d"
 
 
-def add_caption_to_image(img: Image.Image, caption_text: str = "", font_size_param: str = "l") -> Image.Image:
+def add_caption_to_image(
+        img: Image.Image,
+        caption_text: str = "",
+        font_size_param: str = "l",
+        top_font_size_param: str | None = None,
+) -> Image.Image:
     if not caption_text:
         return img
 
@@ -60,7 +65,15 @@ def add_caption_to_image(img: Image.Image, caption_text: str = "", font_size_par
     draw = ImageDraw.Draw(img)
 
     if top_text:
-        _draw_meme_text(img, draw, top_text, width, height, position="top", size_param=font_size_param)
+        _draw_meme_text(
+            img,
+            draw,
+            top_text,
+            width,
+            height,
+            position="top",
+            size_param=top_font_size_param or font_size_param,
+        )
 
     if bottom_text:
         _draw_meme_text(img, draw, bottom_text, width, height, position="bottom", size_param=font_size_param)

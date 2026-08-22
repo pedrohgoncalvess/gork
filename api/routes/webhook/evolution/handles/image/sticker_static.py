@@ -1,5 +1,8 @@
 import base64
+import calendar
 import re
+import random
+from datetime import date
 from io import BytesIO
 
 import httpx
@@ -8,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
+from api.routes.webhook.evolution.handles.image.sticker_filters import remove_color
 from database.models.content import Message
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
@@ -17,6 +21,24 @@ from utils import get_env_var
 
 
 NINJA_KEY = get_env_var("NINJA_KEY")
+
+
+def _dead_caption(
+        epitaph: str,
+        today: date | None = None,
+        birth_date: date | None = None,
+) -> str:
+    today = today or date.today()
+    if birth_date is None:
+        # Keep every generated age deliberately absurd (at least about 100 years).
+        birth_year = random.randint(1500, max(1500, today.year - 100))
+        birth_month = random.randint(1, 12)
+        last_day = calendar.monthrange(birth_year, birth_month)[1]
+        birth_date = date(birth_year, birth_month, random.randint(1, last_day))
+
+    memorial = f"✝ RIP ✝  {birth_date:%d/%m/%Y} – {today:%d/%m/%Y}"
+    return f"{memorial}|{epitaph}"
+
 
 def _resize_contain_transparent(img: Image.Image, size: tuple) -> Image.Image:
     target_w, target_h = size
@@ -67,6 +89,8 @@ async def static_sticker(
         source_image_bytes: bytes | None = None,
         caption_text: str | None = None,
         context: dict | None = None,
+        dead: bool = False,
+        no_color: bool = False,
 ) -> str:
     message_repo = MessageRepository(db)
 
@@ -107,6 +131,8 @@ async def static_sticker(
             users_mentions = zip(users_mentioned, mentions)
             for user_m, mention in users_mentions:
                 caption_text = caption_text.replace(f"@{mention}", user_m.name)
+        if dead and caption_text and not current_has_media and not quoted_has_media:
+            caption_text = _dead_caption(caption_text)
         if user.profile_pic_path:
             s3_client = S3Client()
             _ = await s3_client.connect()
@@ -145,8 +171,16 @@ async def static_sticker(
         if radius > 0:
             img = img.filter(ImageFilter.GaussianBlur(radius))
 
+    if no_color:
+        img = remove_color(img)
+
     if caption_text:
-        img = add_caption_to_image(img, caption_text, font_size_param)
+        img = add_caption_to_image(
+            img,
+            caption_text,
+            font_size_param,
+            top_font_size_param="s" if dead else None,
+        )
 
     buffer = BytesIO()
     img.save(buffer, format='WEBP', quality=95)

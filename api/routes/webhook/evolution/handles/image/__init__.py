@@ -10,7 +10,11 @@ from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.gallery import list_images, search_images
 from api.routes.webhook.evolution.handles.image.generate import generate_image
 from api.routes.webhook.evolution.handles.image.picture import get_pictures
-from api.routes.webhook.evolution.handles.social import download_twitter_media, extract_twitter_url
+from api.routes.webhook.evolution.handles.social import (
+    download_twitter_media,
+    extract_twitter_url,
+    remove_twitter_urls,
+)
 from database.models.base import User
 from database.models.content import Message
 from database.operations.content import MessageRepository, MediaRepository
@@ -93,8 +97,14 @@ async def _download_media_bytes_from_message_id(message_id: str | None) -> bytes
     return base64.b64decode(media_base64)
 
 
-async def _load_source_media_bytes(source_message: Message, media=None) -> bytes | None:
-    source_bytes = await _download_media_bytes_from_message_id(source_message.message_id)
+async def _load_source_media_bytes(
+        source_message: Message,
+        media=None,
+        source_message_id: str | None = None,
+) -> bytes | None:
+    source_bytes = await _download_media_bytes_from_message_id(
+        source_message_id or source_message.message_id
+    )
     if source_bytes or media is None:
         return source_bytes
 
@@ -107,14 +117,28 @@ async def _load_source_media_bytes(source_message: Message, media=None) -> bytes
         return None
 
 
+def _context_media_id(context: dict | None, source: str, media_kind: str) -> str | None:
+    if not context:
+        return None
+
+    key = f"{media_kind}_{'message' if source == 'message' else 'quote'}"
+    return context.get(key)
+
+
 async def handle_image_command(
         remote_id: str,
         user_id: int,
         db_message: Message,
         action_params: Optional[dict] = None,
+        context: dict | None = None,
 ):
     try:
-        result = await generate_image(user_id, db_message, action_params=action_params)
+        result = await generate_image(
+            user_id,
+            db_message,
+            action_params=action_params,
+            context=context,
+        )
     except Exception as error:
         await _log_image_command_error(
             "unhandled_generation_error", f"{type(error).__name__}: {error}"
@@ -190,7 +214,27 @@ async def handle_sticker_command(
             norm_key = k.replace("_", "-")
             if norm_key not in params and k not in params:
                 params[norm_key] = str(v).lower() if isinstance(v, bool) else str(v)
-    twitter_url = params.get("url") or extract_twitter_url(db_message.content if db_message and db_message.content else "")
+    quoted_message = (
+        await message_repo.find_by_id(db_message.quoted_message_id)
+        if db_message.quoted_message_id
+        else None
+    )
+    current_content = db_message.content if db_message and db_message.content else ""
+    quoted_content = quoted_message.content if quoted_message and quoted_message.content else ""
+    context_quote = context.get("text_quote") if context else None
+    if isinstance(context_quote, (tuple, list)):
+        context_quote_content = str(context_quote[0]) if context_quote else ""
+    elif isinstance(context_quote, str):
+        context_quote_content = context_quote
+    else:
+        context_quote_content = ""
+
+    twitter_url = (
+        params.get("url")
+        or extract_twitter_url(current_content)
+        or extract_twitter_url(quoted_content)
+        or extract_twitter_url(context_quote_content)
+    )
     if twitter_url:
         result = await download_twitter_media(twitter_url)
         if not result.is_success:
@@ -204,8 +248,13 @@ async def handle_sticker_command(
         speed = float(params.get("speed", 1.0))
         cut_spec = params.get("cut")
         blur = _parse_blur(params)
-        caption_text = clean_text(db_message.content).replace(twitter_url, "").strip()
-        if result.media_type == "video":
+        no_color = _param_enabled(params.get("no-color", "false"))
+        caption_text = clean_text(remove_twitter_urls(current_content))
+        if not caption_text:
+            caption_text = clean_text(remove_twitter_urls(quoted_content))
+        if not caption_text:
+            caption_text = clean_text(remove_twitter_urls(context_quote_content))
+        if result.media_type == "video" or effect:
             from api.routes.webhook.evolution.handles.image.sticker_animated import animated_sticker_from_bytes
 
             sticker_url = await animated_sticker_from_bytes(
@@ -218,6 +267,7 @@ async def handle_sticker_command(
                 speed=speed,
                 cut_spec=cut_spec,
                 blur=blur,
+                no_color=no_color,
             )
             await send_animated_sticker(remote_id, sticker_url)
         else:
@@ -235,19 +285,15 @@ async def handle_sticker_command(
                 font_size_param=font_size,
                 source_image_bytes=result.media_bytes,
                 caption_text=caption_text,
+                no_color=no_color,
             )
             await send_sticker(remote_id, webp_base64)
         return
 
-    quoted_message = (
-        await message_repo.find_by_id(db_message.quoted_message_id)
-        if db_message.quoted_message_id
-        else None
-    )
-
     source_message = db_message
     source_kind = _context_media_kind(context, "message")
     source_media = None
+    source_message_id = _context_media_id(context, "message", source_kind) or db_message.message_id
     if db_message.media_id:
         media_repo = MediaRepository(db)
         media = await media_repo.find_by_id(db_message.media_id)
@@ -259,10 +305,15 @@ async def handle_sticker_command(
                 source_kind = "sticker"
             else:
                 source_kind = "image"
+            source_message_id = db_message.message_id
 
     if not source_kind and quoted_message:
         source_message = quoted_message
         source_kind = _context_media_kind(context, "quoted")
+        source_message_id = (
+            _context_media_id(context, "quoted", source_kind)
+            or quoted_message.message_id
+        )
         if quoted_message.media_id:
             media_repo = MediaRepository(db)
             media = await media_repo.find_by_id(quoted_message.media_id)
@@ -274,32 +325,64 @@ async def handle_sticker_command(
                     source_kind = "sticker"
                 else:
                     source_kind = "image"
+                source_message_id = quoted_message.message_id
 
+    # O webhook traz os dados da mídia citada mesmo que a mensagem original não
+    # esteja armazenada localmente. Nesse caso, use o id da citação diretamente.
+    if not source_kind:
+        quoted_source_kind = _context_media_kind(context, "quoted")
+        quoted_source_id = _context_media_id(context, "quoted", quoted_source_kind)
+        if quoted_source_kind and quoted_source_id:
+            source_message = quoted_message or db_message
+            source_kind = quoted_source_kind
+            source_message_id = quoted_source_id
+
+    effect = params.get("effect")
     source_bytes = None
-    if source_message and source_kind in ("video", "sticker"):
-        source_bytes = await _load_source_media_bytes(source_message, source_media)
+    if source_message and (
+            source_kind in ("video", "sticker")
+            or (effect and source_kind == "image")
+    ):
+        source_bytes = await _load_source_media_bytes(
+            source_message,
+            source_media,
+            source_message_id,
+        )
         if source_kind == "sticker" and source_bytes and _sticker_is_animated(source_bytes):
             source_kind = "animated_sticker"
 
-    if source_message and source_kind in ("video", "animated_sticker"):
-        from api.routes.webhook.evolution.handles.image.sticker_animated import (
-            animated_sticker,
-            animated_sticker_from_bytes,
-        )
+    if source_message and (
+            source_kind in ("video", "animated_sticker")
+            or (effect and source_kind in ("image", "sticker"))
+    ):
+        from api.routes.webhook.evolution.handles.image.sticker_animated import animated_sticker_from_bytes
 
-        effect = params.get("effect")
         fill = _param_enabled(params.get("fill", "false"))
         font_size = params.get("font-size", "l")
         remove_background = _remove_background_enabled(params)
         speed = float(params.get("speed", 1.0))
         cut_spec = params.get("cut")
         blur = _parse_blur(params)
+        no_color = _param_enabled(params.get("no-color", "false"))
 
         caption_text = clean_text(db_message.content) if db_message.content else None
         if not caption_text and source_message.content:
             caption_text = clean_text(source_message.content) if source_message.content else None
 
-        if source_bytes:
+        if not source_bytes:
+            await logger.error(
+                "Sticker",
+                "AnimatedSourceDownloadFailed",
+                f"message_id={source_message_id} source_kind={source_kind}",
+            )
+            await send_message(
+                remote_id,
+                "Não consegui baixar a mídia para criar a figurinha animada. Tente novamente.",
+                db_message.message_id,
+            )
+            return
+
+        try:
             gif_url = await animated_sticker_from_bytes(
                 source_bytes,
                 caption_text,
@@ -310,19 +393,20 @@ async def handle_sticker_command(
                 speed=speed,
                 cut_spec=cut_spec,
                 blur=blur,
+                no_color=no_color,
             )
-        else:
-            gif_url = await animated_sticker(
-                source_message,
-                effect,
-                fill,
-                font_size,
-                caption_text,
-                remove_background=remove_background,
-                speed=speed,
-                cut_spec=cut_spec,
-                blur=blur,
+        except Exception as error:
+            await logger.error(
+                "Sticker",
+                "AnimatedGenerationFailed",
+                f"message_id={source_message_id} error={type(error).__name__}: {error}",
             )
+            await send_message(
+                remote_id,
+                "Não consegui criar a figurinha animada. Tente novamente.",
+                db_message.message_id,
+            )
+            return
         await send_animated_sticker(remote_id, gif_url)
         return
 
@@ -331,6 +415,12 @@ async def handle_sticker_command(
     fill = _param_enabled(params.get("fill", "false"))
     font_size = params.get("font-size", "l")
     blur = _parse_blur(params)
+    dead = _param_enabled(params.get("dead", "false"))
+    no_color = (
+        _param_enabled(params["no-color"])
+        if "no-color" in params
+        else dead
+    )
     from api.routes.webhook.evolution.handles.image.sticker_static import static_sticker
 
     webp_base64 = await static_sticker(
@@ -342,6 +432,8 @@ async def handle_sticker_command(
         blur=blur,
         font_size_param=font_size,
         context=context,
+        dead=dead,
+        no_color=no_color,
     )
     await send_sticker(remote_id, webp_base64)
 
