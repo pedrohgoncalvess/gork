@@ -9,6 +9,10 @@ from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
 
 
+def _has_me_mention(content: str | None) -> bool:
+    return bool(content and re.search(r"(?<!\w)@me\b", content, re.IGNORECASE))
+
+
 def verifiy_media(body: dict) -> dict[str, str]:
     event_data = body.get("data")
     message_id = event_data["key"]["id"]
@@ -101,23 +105,24 @@ def verifiy_media(body: dict) -> dict[str, str]:
             .get("audioMessage")
         )
 
-    mentions: list[str] = context_info.get("mentionedJid", [])
+    mentions: list[str] = list(context_info.get("mentionedJid", []) or [])
     if not mentions:
-        mentions: list[str] = (
+        mentions = list((
             context_info
             .get("ephemeralMessage", {})
             .get("message", {})
             .get("extendedTextMessage", {})
             .get("contextInfo", {})
             .get("mentionedJid", [])
-        )
+        ) or [])
 
-    if conversation:
-        if "@me" in conversation:
-            mentions.append(phone_send)
+    if _has_me_mention(conversation) and phone_send:
+        mentions.append(phone_send)
 
     clean_id = lambda t: t.replace("@s.whatsapp.net", "").replace("@lid", "")
-    tt_mentions = list(map(clean_id, mentions))
+    tt_mentions = list(dict.fromkeys(
+        clean_id(mention) for mention in mentions if isinstance(mention, str)
+    ))
 
     medias = {}
     if quoted_id:
@@ -150,25 +155,29 @@ def verifiy_media(body: dict) -> dict[str, str]:
 
 async def get_mentions_from_content(db_message: Message, db: AsyncSession) -> List[User]:
     content = db_message.content or ""
+    mention_ids = re.findall(r'@(\d{7,25})', content)
+    mentions_all = bool(re.search(r"(?<!\w)@all\b", content, re.IGNORECASE))
+    mentions_me = _has_me_mention(content)
 
-    pattern = re.compile(r'@(\d{7,25})')
-
-    mentions = pattern.findall(content)
-    _all = "@all" in content
-
-    if not mentions or _all or not db_message.group_id:
+    if not mention_ids and not mentions_all and not mentions_me:
         return []
 
-    if _all:
+    if mentions_all and db_message.group_id:
         message_repo = MessageRepository(db)
-        return await message_repo.get_users_by_group(db_message.group_id)
+        mentioned_users = await message_repo.get_users_by_group(db_message.group_id)
+    else:
+        mentioned_users = []
+        if db_message.group_id:
+            user_repo = UserRepository(db)
+            for mention_id in mention_ids:
+                user = await user_repo.find_by_phone_or_id(mention_id)
+                if user and all(existing.id != user.id for existing in mentioned_users):
+                    mentioned_users.append(user)
 
-    mentioned_user = []
-    for mention in mentions:
+    if mentions_me and db_message.user_id:
         user_repo = UserRepository(db)
-        user = await user_repo.find_by_phone_or_id(mention)
+        sender = await user_repo.find_by_id(db_message.user_id)
+        if sender and all(existing.id != sender.id for existing in mentioned_users):
+            mentioned_users.append(sender)
 
-        if user:
-            mentioned_user.append(user)
-
-    return mentioned_user
+    return mentioned_users
