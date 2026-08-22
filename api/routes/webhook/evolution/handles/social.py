@@ -37,18 +37,28 @@ class InvalidURLError(Exception):
 
 _TWITTER_REGEX = re.compile(
     rf"https?://(?:www\.)?(?:{'|'.join(map(re.escape, TWITTER_DOMAINS))})/"\
-    r"[\w-]+/status/\d+",
+    r"[\w-]+/status/\d+(?:[/?#][^\s]*)?",
     re.IGNORECASE,
 )
 
 
+def normalize_twitter_url(url: str) -> str:
+    parsed = urlparse(str(url).strip())
+    return parsed._replace(query="", fragment="").geturl()
+
+
 def extract_twitter_url(text: str) -> str | None:
     match = _TWITTER_REGEX.search(text)
-    return match.group(0) if match else None
+    return normalize_twitter_url(match.group(0)) if match else None
+
+
+def remove_twitter_urls(text: str) -> str:
+    return _TWITTER_REGEX.sub("", text or "").strip()
 
 
 def _validate_twitter_url(url: str) -> str:
-    parsed = urlparse(url)
+    normalized_url = normalize_twitter_url(url)
+    parsed = urlparse(normalized_url)
 
     if parsed.scheme not in {"http", "https"}:
         raise InvalidURLError("URL deve começar com http:// ou https://")
@@ -60,7 +70,7 @@ def _validate_twitter_url(url: str) -> str:
     if not re.match(r"^/[\w-]+/status/\d+", parsed.path):
         raise InvalidURLError("Formato inválido")
 
-    return url
+    return normalized_url
 
 
 async def download_twitter_media(twitter_url: str) -> TwitterMediaDownloadResult:
