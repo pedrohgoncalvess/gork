@@ -7,6 +7,8 @@ initializes an async engine with SQLAlchemy 2.0 style.
 """
 import asyncio
 import sys
+from contextvars import ContextVar, Token
+from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -25,6 +27,19 @@ if sys.platform == "win32":
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+
+
+@dataclass
+class _SessionScope:
+    session: AsyncSession
+    task: asyncio.Task | None
+    active: bool = True
+
+
+_current_session_scope: ContextVar[_SessionScope | None] = ContextVar(
+    "current_database_session_scope",
+    default=None,
+)
 
 
 def _database_url() -> str:
@@ -73,53 +88,123 @@ async def dispose_database_engine() -> None:
 class PgConnection:
     def __init__(self):
         self.session: AsyncSession | None = None
+        self._owns_session = False
+        self._scope: _SessionScope | None = None
+        self._scope_token: Token[_SessionScope | None] | None = None
 
     async def connect(self):
+        if self.session is not None:
+            raise RuntimeError("This PgConnection is already connected")
+
+        current_task = asyncio.current_task()
+        current_scope = _current_session_scope.get()
+        if (
+            current_scope is not None
+            and current_scope.active
+            and current_scope.task is current_task
+        ):
+            # Repository helpers often open their own PgConnection while a webhook
+            # already owns one. Reusing it in the same task prevents nested pool
+            # checkouts; sessions are never shared with concurrently running tasks.
+            self.session = current_scope.session
+            self._scope = current_scope
+            return
+
         try:
             self.session = get_session_factory()()
+            self._owns_session = True
+            self._scope = _SessionScope(self.session, current_task)
+            self._scope_token = _current_session_scope.set(self._scope)
         except Exception as error:
             await logger.error("Database", f"Error while creating session: {error}")
             raise
 
         try:
             await logger.info("Database", "Connection", "New SQLAlchemy Session")
+        except asyncio.CancelledError:
+            # __aenter__ will not call __aexit__ when cancellation happens here.
+            # Close explicitly so the just-created session cannot leak.
+            await self.close()
+            raise
         except Exception as log_error:
-            import sys
             sys.stderr.write(f"Logging error during database session creation: {log_error}\n")
 
     async def close(self):
-        if self.session:
+        session = self.session
+        if session is None:
+            return
+
+        if not self._owns_session:
+            self.session = None
+            self._scope = None
+            return
+
+        async def cleanup() -> None:
             try:
-                await logger.info("Database", "Connection", "Session Closed")
-            except Exception as log_error:
-                import sys
-                sys.stderr.write(f"Logging error during database session close: {log_error}\n")
-            
+                if session.in_transaction():
+                    await session.rollback()
+            finally:
+                await session.close()
+
+        cleanup_task = asyncio.create_task(cleanup())
+        cancellation_requested = False
+        cleanup_error: BaseException | None = None
+
+        # A cancelled webhook must not abandon session.close(). Keep the cleanup
+        # task strongly referenced and wait until the connection is checked in.
+        while not cleanup_task.done():
             try:
-                await asyncio.shield(self.session.close())
-            except Exception as error:
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError:
+                cancellation_requested = True
+            except BaseException as error:
+                cleanup_error = error
+                break
+
+        if cleanup_error is None and cleanup_task.done() and not cleanup_task.cancelled():
+            cleanup_error = cleanup_task.exception()
+
+        try:
+            if cleanup_error is not None:
                 try:
-                    await logger.error("Database", f"Error during session close: {error}")
+                    await logger.error(
+                        "Database",
+                        "SessionCloseError",
+                        str(cleanup_error),
+                    )
                 except Exception:
                     pass
-            finally:
-                self.session = None
+            else:
+                try:
+                    await logger.info("Database", "Connection", "Session Closed")
+                except Exception as log_error:
+                    sys.stderr.write(
+                        f"Logging error during database session close: {log_error}\n"
+                    )
+        finally:
+            if self._scope is not None:
+                self._scope.active = False
+            if self._scope_token is not None:
+                try:
+                    _current_session_scope.reset(self._scope_token)
+                except ValueError:
+                    # close() may be delegated to another task. The originating
+                    # context still sees the scope as inactive and cannot reuse it.
+                    _current_session_scope.set(None)
+            self.session = None
+            self._owns_session = False
+            self._scope = None
+            self._scope_token = None
+
+        if cancellation_requested:
+            raise asyncio.CancelledError
 
     async def __aenter__(self):
         await self.connect()
         return self.session
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        try:
-            if exc_type and self.session:
-                await asyncio.shield(self.session.rollback())
-        except Exception as error:
-            try:
-                await logger.error("Database", f"Error during rollback: {error}")
-            except Exception:
-                pass
-        finally:
-            await self.close()
+        await self.close()
 
 
 async def get_db():

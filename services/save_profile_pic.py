@@ -32,7 +32,14 @@ async def save_profile_pic(
         if not should_update:
             return user
 
-        profile_infos = await get_profile_info(user.phone_number)
+        phone_number = user.phone_number
+        user_ext_id = user.ext_id
+
+        # A SELECT starts an implicit transaction. End it before network and S3
+        # calls so this operation does not reserve a pooled connection while idle.
+        await db.commit()
+
+        profile_infos = await get_profile_info(phone_number)
         image_url = profile_infos.get("picture")
 
         if image_url is None:
@@ -46,7 +53,7 @@ async def save_profile_pic(
 
     s3_client = S3Client()
 
-    object_path = f"profile/{user.ext_id}.jpeg"
+    object_path = f"profile/{user_ext_id}.jpeg"
     _ = await s3_client.connect()
     _ = await s3_client.upload_image(
         image_source=image_bytes,
@@ -54,10 +61,13 @@ async def save_profile_pic(
         object_name=object_path,
     )
 
-    return await user_repo.update(
-        user.id,
-        {
-            "profile_pic_path": object_path,
-            "last_att_profile_pic": datetime.now(),
-        },
-    )
+    # The first context is closed for standalone calls. Acquire/reuse a valid
+    # session instead of retaining a repository bound to the closed session.
+    async with PgConnection() as db:
+        return await UserRepository(db).update(
+            user_id,
+            {
+                "profile_pic_path": object_path,
+                "last_att_profile_pic": datetime.now(),
+            },
+        )

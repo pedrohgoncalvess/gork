@@ -3,6 +3,7 @@ import time
 import traceback
 
 import redis.asyncio as redis
+from redis.exceptions import LockError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from agents.execution.filter import filter_agent
@@ -10,6 +11,7 @@ from api.routes.webhook.evolution.handles.chat import handle_conversation_agent
 from database import PgConnection
 from database.operations.content import MessageRepository
 from log import logger
+from services.conversation_lock import serialize_group_conversation
 from utils import get_env_var
 
 
@@ -134,49 +136,58 @@ async def flush_group_message_buffer(
         scheduler: AsyncIOScheduler,
 ) -> None:
     client = None
-    lock_key = _lock_key(group_id)
+    flush_lock = None
+    lock_acquired = False
 
     try:
         client = _client()
-        lock_acquired = await client.set(lock_key, "1", nx=True, ex=30)
+        flush_lock = client.lock(
+            _lock_key(group_id),
+            timeout=10 * 60,
+            blocking_timeout=0,
+        )
+        lock_acquired = await flush_lock.acquire()
         if not lock_acquired:
             return
 
-        message_ids = await client.lrange(_messages_key(group_id), 0, -1)
-        if not message_ids:
-            await client.delete(_deadline_key(group_id))
-            return
-
-        async with PgConnection() as db:
-            message_repo = MessageRepository(db)
-            messages = await message_repo.find_by_ids([int(message_id) for message_id in message_ids])
-
-            if not messages:
-                await clear_group_message_buffer(group_id)
+        async with serialize_group_conversation(group_id):
+            # Re-read only after acquiring the conversation lock. A direct
+            # mention may have cleared the buffer while this flush was waiting.
+            message_ids = await client.lrange(_messages_key(group_id), 0, -1)
+            if not message_ids:
+                await client.delete(_deadline_key(group_id))
                 return
 
-            response = await filter_agent(db, messages)
-            if not response.get("should_respond"):
-                await clear_group_message_buffer(group_id)
-                return
+            async with PgConnection() as db:
+                message_repo = MessageRepository(db)
+                messages = await message_repo.find_by_ids([int(message_id) for message_id in message_ids])
 
-            last_message = messages[-1]
-            await handle_conversation_agent(
-                remote_id=remote_id,
-                user=last_message.sender,
-                db_message=last_message,
-                db=db,
-                scheduler=scheduler,
-                context={},
-            )
+                if not messages:
+                    await clear_group_message_buffer(group_id)
+                    return
 
-        # Limpa o buffer somente após processamento bem-sucedido
-        await clear_group_message_buffer(group_id)
+                response = await filter_agent(db, messages)
+                if not response.get("should_respond"):
+                    await clear_group_message_buffer(group_id)
+                    return
+
+                last_message = messages[-1]
+                await handle_conversation_agent(
+                    remote_id=remote_id,
+                    user=last_message.sender,
+                    db_message=last_message,
+                    db=db,
+                    scheduler=scheduler,
+                    context={},
+                )
+
+            # Limpa o buffer somente após processamento bem-sucedido
+            await clear_group_message_buffer(group_id)
     except Exception as error:
         await logger.error("GroupMessageBuffer", "FlushError", str(error))
     finally:
-        if client:
+        if flush_lock and lock_acquired:
             try:
-                await client.delete(lock_key)
-            except Exception as unlock_error:
+                await flush_lock.release()
+            except LockError as unlock_error:
                 await logger.error("GroupMessageBuffer", "UnlockError", str(unlock_error))

@@ -8,6 +8,7 @@ from api.routes.webhook.evolution.processors import (
 from database import PgConnection
 from external.evolution import send_message
 from log import logger
+from services.conversation_lock import serialize_direct_message
 from utils import get_env_var
 
 
@@ -56,6 +57,7 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
                 body, remote_id, db, scheduler
             )
         elif is_private:
-            await process_private_message(
-                body, event_data, remote_id, phone_number, db, scheduler
-            )
+            async with serialize_direct_message(phone_number):
+                await process_private_message(
+                    body, event_data, remote_id, phone_number, db, scheduler
+                )

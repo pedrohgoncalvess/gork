@@ -98,6 +98,12 @@ async def process_private_message(
 
     if "audio_message" in context.keys():
         conversation = await transcribe_audio(body, user.id, group_id=None)
+        if conversation:
+            db_message = await message_repo.update(
+                db_message.id,
+                {"content": conversation},
+            )
+            context["text_message"] = conversation
 
     if "!status" in conversation:
         await send_message(number, "🤖 Robo do mito está pronto", message_id)

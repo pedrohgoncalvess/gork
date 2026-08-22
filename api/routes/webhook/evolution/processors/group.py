@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.audio import transcribe_audio
 from api.routes.webhook.evolution.handles.core import (
-    get_explicit_command_feature,
+    COMMANDS,
     has_explicit_command,
     is_message_too_old,
 )
@@ -17,6 +17,7 @@ from log import logger
 from services import (
     BLACK_LIST_MESSAGE,
     is_feature_blocked,
+    log_blocked_request,
     save_image_if_new,
     save_media_if_new,
     save_profile_pic,
@@ -24,7 +25,19 @@ from services import (
     verifiy_media,
 )
 from services.message_buffer import buffer_group_message, clear_group_message_buffer
+from services.conversation_lock import serialize_group_conversation
 from utils import INSTANCE_NUMBER
+
+
+def _explicit_command_feature(text: str | None) -> str | None:
+    if not text:
+        return None
+
+    lowered_text = text.lower()
+    for command, _, _, _ in COMMANDS:
+        if command.startswith("!") and command.lower() in lowered_text:
+            return command.removeprefix("!").lower()
+    return None
 
 
 async def process_group_message(
@@ -43,7 +56,30 @@ async def process_group_message(
     context_message = verifiy_media(body)
 
     if await is_message_too_old(event_data["messageTimestamp"]):
-        return
+        received_at_raw = body.get("date_time")
+        try:
+            received_at = datetime.fromisoformat(
+                received_at_raw.replace("Z", "+00:00")
+            ).astimezone(timezone.utc).replace(tzinfo=None)
+        except (AttributeError, ValueError):
+            received_at = None
+
+        # O Evolution pode reenviar timestamps com o relógio da instância defasado.
+        # Se o webhook foi recebido agora, processamos a mensagem e registramos o desvio.
+        if received_at and not await is_message_too_old(received_at.timestamp()):
+            await logger.warn(
+                "GroupMessage",
+                "TimestampClockSkew",
+                f"message_id={message_id} timestamp={event_data['messageTimestamp']} "
+                f"webhook_date_time={received_at_raw}",
+            )
+        else:
+            await logger.info(
+                "GroupMessage",
+                "IgnoredStaleMessage",
+                f"message_id={message_id} timestamp={event_data['messageTimestamp']}",
+            )
+            return
 
     user_repo = UserRepository(db)
     group_repo = GroupRepository(db)
@@ -178,7 +214,7 @@ async def process_group_message(
         return
 
     requested_feature = (
-        get_explicit_command_feature(conversation)
+        _explicit_command_feature(conversation)
         if has_explicit
         else "interaction"
     )
@@ -187,25 +223,39 @@ async def process_group_message(
         user.id,
         requested_feature or "interaction",
     ):
+        await log_blocked_request(
+            user_id=user.id,
+            group_id=group.id,
+            feature=requested_feature or "interaction",
+            message_id=message_id,
+            source="group-command",
+        )
         await send_message(remote_id, BLACK_LIST_MESSAGE, message_id)
         return
 
     if "audio_message" in context_message.keys():
         conversation = await transcribe_audio(body, user.id, group.id)
+        if conversation:
+            db_message = await message_repo.update(
+                db_message.id,
+                {"content": conversation},
+            )
+            context_message["text_message"] = conversation
 
-    if "!status" in conversation:
-        await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
-        return
+    async with serialize_group_conversation(group.id):
+        if "!status" in conversation:
+            await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
+            return
 
-    await process_commands(
-        conversation,
-        remote_id,
-        message_id,
-        user,
-        body,
-        group.id,
-        db,
-        scheduler,
-        context_message,
-        db_message,
-    )
+        await process_commands(
+            conversation,
+            remote_id,
+            message_id,
+            user,
+            body,
+            group.id,
+            db,
+            scheduler,
+            context_message,
+            db_message,
+        )
