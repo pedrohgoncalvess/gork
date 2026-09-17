@@ -25,7 +25,7 @@ agents:
 
   - name: modify-image
     description: Multimodal assistant for generating and editing images.
-    model: google/gemini-3.1-flash-image-preview
+    model: x-ai/grok-imagine-image-quality
     prompt_path: agents/prompts/modify-image.md
 
   - name: remember-formatter
@@ -36,13 +36,13 @@ agents:
 
   - name: transcriber
     description: Agent specialized in transcribing audio files.
-    model: google/gemini-3.1-flash-image-preview
+    model: google/gemini-2.5-flash-lite
     prompt_path: agents/prompts/transcriber.md
     schema_path: agents/schemas/transcriber.json
 
   - name: describe-image
     description: Agent responsible for describing images with WhatsApp conversation context.
-    model: google/gemini-3.1-flash-image-preview
+    model: google/gemini-2.5-flash-lite
     prompt_path: agents/prompts/describe-image.md
     schema_path: agents/schemas/describe-image.json
 

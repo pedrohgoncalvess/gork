@@ -1,12 +1,14 @@
 import base64
 import binascii
+import hashlib
+import math
 import re
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Optional
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageOps
 
 from database import PgConnection
 from database.models.base import User
@@ -18,10 +20,11 @@ from database.operations.manager import (
     AgentRepository,
     CommandRepository,
     InteractionRepository,
+    ModelRepository,
     ModelConversationRepository,
 )
 from external import generate_images
-from external.evolution import download_media
+from external.evolution import download_media, send_message
 from log import logger
 from s3 import S3Client
 from services import get_mentions_from_content
@@ -30,6 +33,8 @@ from utils import INSTANCE_NUMBER
 
 
 MAX_GENERATED_IMAGE_BYTES = 20 * 1024 * 1024
+MAX_IMAGE_INPUT_REFERENCES = 3
+IDENTITY_SHEET_CELL_SIZE = 512
 IMAGE_FORMAT_MIME_TYPES = {
     "GIF": "image/gif",
     "JPEG": "image/jpeg",
@@ -176,6 +181,157 @@ def _build_image_prompt(
     )
 
 
+def _identity_reference_sheet(
+        references: list[ImageInputReference],
+) -> ImageInputReference:
+    """Combine identity photos so providers count them as one input reference."""
+    if not references:
+        raise ValueError("At least one identity reference is required")
+
+    columns = min(3, len(references))
+    rows = math.ceil(len(references) / columns)
+    sheet = Image.new(
+        "RGB",
+        (columns * IDENTITY_SHEET_CELL_SIZE, rows * IDENTITY_SHEET_CELL_SIZE),
+        "white",
+    )
+
+    for index, reference in enumerate(references):
+        image_bytes = base64.b64decode(reference.image_base64, validate=True)
+        with Image.open(BytesIO(image_bytes)) as source:
+            tile = ImageOps.contain(
+                ImageOps.exif_transpose(source).convert("RGB"),
+                (IDENTITY_SHEET_CELL_SIZE, IDENTITY_SHEET_CELL_SIZE),
+                method=Image.Resampling.LANCZOS,
+            )
+        x = (index % columns) * IDENTITY_SHEET_CELL_SIZE
+        y = (index // columns) * IDENTITY_SHEET_CELL_SIZE
+        sheet.paste(tile, (
+            x + (IDENTITY_SHEET_CELL_SIZE - tile.width) // 2,
+            y + (IDENTITY_SHEET_CELL_SIZE - tile.height) // 2,
+        ))
+
+    output = BytesIO()
+    sheet.save(output, format="JPEG", quality=92, optimize=True)
+    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+    ordered_labels = "; ".join(
+        f"row {index // columns + 1}, column {index % columns + 1}: {reference.label}"
+        for index, reference in enumerate(references)
+    )
+    return ImageInputReference(
+        image_base64=encoded,
+        mime_type="image/jpeg",
+        role="identity",
+        label=f"prancha de identidades ({columns} colunas): {ordered_labels}",
+    )
+
+
+def _fit_provider_reference_limit(
+        references: list[ImageInputReference],
+        limit: int = MAX_IMAGE_INPUT_REFERENCES,
+) -> list[ImageInputReference]:
+    """Fit references into a provider limit while retaining every identity."""
+    if len(references) <= limit:
+        return references
+
+    contextual = [reference for reference in references if reference.role != "identity"]
+    identities = [reference for reference in references if reference.role == "identity"]
+
+    available_identity_slots = limit - len(contextual)
+    if len(contextual) > limit or (identities and available_identity_slots <= 0):
+        raise ImageGenerationError(
+            "input_reference_limit",
+            "O modelo disponível não comporta todas as fotos desse pedido. "
+            "Tente usar menos fotos ou outro modelo de imagem.",
+        )
+    if not identities:
+        return contextual
+    if len(identities) <= available_identity_slots:
+        return contextual + identities
+
+    individually_kept = identities[:max(0, available_identity_slots - 1)]
+    sheet_members = identities[len(individually_kept):]
+    return contextual + individually_kept + [_identity_reference_sheet(sheet_members)]
+
+
+def _deduplicate_context_references(
+        references: list[ImageInputReference],
+) -> list[ImageInputReference]:
+    """Remove a repeated current/quoted image while preserving identity roles."""
+    seen_context_hashes: set[str] = set()
+    unique: list[ImageInputReference] = []
+    for reference in references:
+        if reference.role == "identity":
+            unique.append(reference)
+            continue
+        digest = hashlib.sha256(base64.b64decode(reference.image_base64)).hexdigest()
+        if digest in seen_context_hashes:
+            continue
+        seen_context_hashes.add(digest)
+        unique.append(reference)
+    return unique
+
+
+def _model_reference_limit(model) -> int | None:
+    raw_metadata = getattr(model, "metadata_", None)
+    metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
+    image_metadata = metadata.get("image")
+    if not isinstance(image_metadata, dict):
+        return None
+    supported = image_metadata.get("supported_parameters")
+    if not isinstance(supported, dict):
+        return None
+    descriptor = supported.get("input_references")
+    if not isinstance(descriptor, dict):
+        return None
+    try:
+        return int(descriptor["max"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+async def _select_image_model(
+        default_model,
+        model_repo: ModelRepository,
+        reference_count: int,
+):
+    default_limit = _model_reference_limit(default_model)
+    if default_limit is None or reference_count <= default_limit:
+        return default_model, default_limit
+
+    default_metadata = (
+        default_model.metadata_
+        if isinstance(getattr(default_model, "metadata_", None), dict)
+        else {}
+    )
+    preferred_ids = default_metadata.get("image_fallback_models", [])
+    if not isinstance(preferred_ids, list):
+        preferred_ids = []
+
+    all_models = await model_repo.get_all_active()
+    preference = {
+        str(model_id): index for index, model_id in enumerate(preferred_ids)
+    }
+    candidates = [
+        model
+        for model in all_models
+        if model.id != default_model.id
+        and (_model_reference_limit(model) or -1) >= reference_count
+    ]
+    candidates.sort(
+        key=lambda model: (
+            preference.get(model.openrouter_id, len(preference) + 1),
+            (getattr(model, "metadata_", None) or {}).get(
+                "image_fallback_priority", 100
+            ),
+            model.id,
+        )
+    )
+    if not candidates:
+        return default_model, default_limit
+    return candidates[0], default_limit
+
+
 async def _download_media_reference(
         message_id: str,
         role: str,
@@ -197,27 +353,6 @@ async def _download_media_reference(
             f"Empty media response for {label} ({message_id}).",
         )
     return _image_reference(image_base64, role, label)
-
-
-async def _include_quoted_author(
-        referenced_users: list[User],
-        quoted_message: Message | None,
-        gork_user: User | None,
-        user_repo: UserRepository,
-        quoted_has_image_reference: bool = False,
-) -> None:
-    if quoted_has_image_reference:
-        return
-    if not quoted_message or not quoted_message.user_id:
-        return
-    if gork_user and quoted_message.user_id == gork_user.id:
-        return
-    if any(user.id == quoted_message.user_id for user in referenced_users):
-        return
-
-    quoted_user = await user_repo.find_by_id(quoted_message.user_id)
-    if quoted_user:
-        referenced_users.append(quoted_user)
 
 
 def _provider_error(error: httpx.HTTPStatusError) -> ImageGenerationError:
@@ -365,6 +500,7 @@ async def generate_image(
         db_message: Message,
         action_params: Optional[dict] = None,
         context: Optional[dict] = None,
+        feedback_remote_id: str | None = None,
 ) -> ImageGenerationResult:
     try:
         image_base64 = await _generate_image(
@@ -372,6 +508,7 @@ async def generate_image(
             db_message,
             action_params,
             context,
+            feedback_remote_id,
         )
         return ImageGenerationResult(success=True, image_base64=image_base64)
     except ImageGenerationError as error:
@@ -427,6 +564,7 @@ async def _generate_image(
         db_message: Message,
         action_params: Optional[dict] = None,
         context: Optional[dict] = None,
+        feedback_remote_id: str | None = None,
 ) -> str:
     identity_photos: list[tuple[str, User]] = []
     
@@ -435,6 +573,7 @@ async def _generate_image(
         user_repo = UserRepository(db)
         message_repo = MessageRepository(db)
         model_conversation_repo = ModelConversationRepository(db)
+        model_repo = ModelRepository(db)
         command_repo = CommandRepository(Command, db)
 
         modify_image_agent = await agent_repo.find_by_name("modify-image")
@@ -448,6 +587,10 @@ async def _generate_image(
 
         gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
 
+        # A literal command must never be rewritten using conversation history.
+        if db_message and re.search(r"!image\b", db_message.content or "", re.IGNORECASE):
+            action_params = None
+
         raw_user_message = ""
         if action_params and action_params.get("prompt"):
             raw_user_message = str(action_params.get("prompt"))
@@ -456,6 +599,11 @@ async def _generate_image(
 
         # Fetch explicitly mentioned users
         mentions = await get_mentions_from_content(db_message, db) if db_message else []
+        # These are mentions on the current webhook message, including DMs.
+        for identifier in (context or {}).get("mentions", []):
+            mentioned_user = await user_repo.find_by_phone_or_id(str(identifier))
+            if mentioned_user and all(user.id != mentioned_user.id for user in mentions):
+                mentions.append(mentioned_user)
         explicitly_referenced_user_ids = {mention.id for mention in mentions}
 
         # Also support mentions passed in action_params
@@ -496,14 +644,6 @@ async def _generate_image(
                 if quoted_message and quoted_message.media_id
                 else None
             )
-        )
-
-        await _include_quoted_author(
-            mentions,
-            quoted_message,
-            gork_user,
-            user_repo,
-            quoted_has_image_reference=bool(quoted_image_id),
         )
 
         user_message = _clean_image_request(
@@ -599,6 +739,52 @@ async def _generate_image(
                     "identity",
                     f"foto de identidade de {user.name or 'Usuário'}",
                 )
+            )
+
+        references = _deduplicate_context_references(references)
+        original_reference_count = len(references)
+        selected_model, default_reference_limit = await _select_image_model(
+            image_model,
+            model_repo,
+            original_reference_count,
+        )
+        if selected_model.id != image_model.id:
+            if feedback_remote_id:
+                feedback = (
+                    f"Esse pedido usa {original_reference_count} imagens de referência, "
+                    f"mas o modelo padrão aceita no máximo {default_reference_limit}. "
+                    f"Vou usar {selected_model.name}, que suporta todas elas."
+                )
+                try:
+                    await send_message(
+                        feedback_remote_id,
+                        feedback,
+                        db_message.message_id,
+                    )
+                except Exception as feedback_error:
+                    await logger.warn(
+                        "ImageGeneration",
+                        "FallbackFeedbackFailed",
+                        str(feedback_error),
+                    )
+            await logger.info(
+                "ImageGeneration",
+                "FallbackModelSelected",
+                f"Default={image_model.openrouter_id}; fallback={selected_model.openrouter_id}; "
+                f"references={original_reference_count}; default_limit={default_reference_limit}",
+            )
+            image_model = selected_model
+
+        selected_limit = _model_reference_limit(image_model)
+        if selected_limit is not None and len(references) > selected_limit:
+            references = _fit_provider_reference_limit(references, selected_limit)
+
+        if len(references) != original_reference_count:
+            await logger.info(
+                "ImageGeneration",
+                "ReferencesCompacted",
+                f"Model={image_model.openrouter_id}; original={original_reference_count}; "
+                f"sent={len(references)}; labels={[reference.label for reference in references]}",
             )
 
         payload = {

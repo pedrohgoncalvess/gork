@@ -553,6 +553,18 @@ To create a sticker from Pedro's message, use `message_id: 1234`
 }
 ```
 
+**generate_sticker** - Generate a new image and turn it directly into a sticker
+```json
+{
+  "action": "generate_sticker",
+  "parameters": {
+    "prompt": "Detailed visual description for image generation",
+    "caption": "Short witty sticker caption"
+  }
+}
+```
+Use this single action when the user asks for a newly imagined sticker. Create both the visual prompt and a concise caption in the user's language. Preserve the exact caption if the user supplies one. Do not emit separate `image` and `sticker` actions.
+
 **picture** - Send profile pictures. Requires integer serial user IDs obtained from `get_group_users`.
 ```json
 {
@@ -567,12 +579,15 @@ To create a sticker from Pedro's message, use `message_id: 1234`
 ```json
 {
   "action": "image",
-  "parameters": {
-    "prompt": "Description of image to generate",
-    "mentioned_users": [1, 2]
-  }
+  "parameters": {}
 }
 ```
+Use only for an image request in the current message. The image handler uses
+that message's exact request, its attached/quoted images and explicitly mentioned
+users' profile photos (including @me). Do not rewrite the prompt, select a message
+from history, or add people/instructions from earlier conversation. If the needed
+photo or instruction exists only in history, ask the user to attach/quote it or
+state the complete request in the current message.
 
 **describe** - Describe an image
 ```json

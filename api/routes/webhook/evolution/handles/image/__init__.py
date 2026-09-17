@@ -150,8 +150,11 @@ async def handle_image_command(
         result = await generate_image(
             user_id,
             db_message,
-            action_params=action_params,
+            # Image requests use only the current user's words and mentions.
+            # Agent-generated prompts/users may incorporate conversation history.
+            action_params=None,
             context=context,
+            feedback_remote_id=remote_id,
         )
     except Exception as error:
         await _log_image_command_error(
@@ -187,6 +190,61 @@ async def handle_image_command(
             remote_id,
             "A imagem foi gerada, mas não consegui enviá-la. Tente novamente.",
             db_message,
+        )
+
+
+async def handle_generate_sticker_command(
+        remote_id: str,
+        user_id: int,
+        db_message: Message,
+        db: AsyncSession,
+        action_params: dict | None = None,
+        context: dict | None = None,
+) -> None:
+    """Generate an image and feed it directly into the static sticker pipeline."""
+    params = action_params or {}
+    result = await generate_image(
+        user_id,
+        db_message,
+        action_params=params,
+        context=context,
+        feedback_remote_id=remote_id,
+    )
+    if not result.success or not result.image_base64:
+        await _send_image_error(
+            remote_id,
+            result.user_message or "Não foi possível gerar a imagem da figurinha. Tente novamente.",
+            db_message,
+        )
+        return
+
+    try:
+        image_bytes = base64.b64decode(result.image_base64, validate=True)
+        from api.routes.webhook.evolution.handles.image.sticker_static import static_sticker
+
+        sticker_base64 = await static_sticker(
+            db_message=db_message,
+            db=db,
+            remove_background=_remove_background_enabled(params),
+            fill=_fill_enabled(params),
+            blur=_parse_blur(params),
+            font_size_param=str(params.get("font_size", params.get("font-size", "l"))),
+            source_image_bytes=image_bytes,
+            caption_text=str(params.get("caption") or params.get("text") or "").strip(),
+            no_color=_param_enabled(params.get("no_color", params.get("no-color", "false"))),
+            direction=params.get("direction"),
+        )
+        await send_sticker(remote_id, sticker_base64)
+    except Exception as error:
+        await logger.error(
+            "GeneratedSticker",
+            "StickerGenerationFailed",
+            f"message_id={db_message.message_id} error={type(error).__name__}: {error}",
+        )
+        await send_message(
+            remote_id,
+            "A imagem foi gerada, mas não consegui transformá-la em figurinha. Tente novamente.",
+            db_message.message_id,
         )
 
 

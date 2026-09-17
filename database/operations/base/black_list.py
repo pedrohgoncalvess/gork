@@ -46,6 +46,7 @@ class BlackListRepository(BaseRepository[BlackList]):
             "send_image": "image",
             "send_video": "video",
             "web_search": "search",
+            "generate_sticker": "image",
         }
         return aliases.get(normalized, normalized)
 

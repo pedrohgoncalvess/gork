@@ -10,6 +10,7 @@ from agents.parser.conversation import parse_gork_response
 from api.routes.webhook.evolution.handles.audio import handle_transcribe_command
 from api.routes.webhook.evolution.handles.image import (
     handle_describe_image_command,
+    handle_generate_sticker_command,
     handle_image_command,
     handle_picture_command,
     handle_sticker_command,
@@ -691,6 +692,17 @@ async def _dispatch_action(
         )
         return True
 
+    elif action_type == "generate_sticker":
+        await handle_generate_sticker_command(
+            remote_id=remote_id,
+            user_id=user.id,
+            db_message=db_message,
+            db=db,
+            action_params=params,
+            context=context,
+        )
+        return True
+
     elif action_type == "picture":
         users_requested = params.get("users", [])
         user_repo = UserRepository(db)
@@ -712,29 +724,11 @@ async def _dispatch_action(
         return True
 
     elif action_type == "image":
-        message_id = params.get("message_id")
-        referred_message = None
-        if message_id is not None:
-            try:
-                referred_message = await message_repo.find_by_id(int(message_id))
-            except (ValueError, TypeError):
-                referred_message = await message_repo.find_by_message_id(str(message_id))
-
-        if not referred_message:
-            referred_message = db_message
-
-        image_context = (
-            context
-            if referred_message.id == db_message.id
-            else None
-        )
-
         await handle_image_command(
             remote_id=remote_id,
             user_id=user.id,
-            db_message=referred_message,
-            action_params=params,
-            context=image_context,
+            db_message=db_message,
+            context=context,
         )
         return True
 

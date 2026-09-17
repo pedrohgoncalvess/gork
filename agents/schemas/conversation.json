@@ -45,6 +45,7 @@
               "send_image",
               "audio",
               "sticker",
+              "generate_sticker",
               "picture",
               "image",
               "describe",
@@ -60,7 +61,7 @@
               "favorite",
               "gallery"
             ],
-            "description": "Action type: message, send_audio, send_video, send_image, audio, sticker, picture, image, describe, web_search, transcribe, remember, twitter, instagram, resume, help, model, usage, favorite, gallery"
+            "description": "Action type: message, send_audio, send_video, send_image, audio, sticker, generate_sticker, picture, image, describe, web_search, transcribe, remember, twitter, instagram, resume, help, model, usage, favorite, gallery"
           },
           "content": {
             "type": "string",

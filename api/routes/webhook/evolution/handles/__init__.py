@@ -14,6 +14,7 @@ from api.routes.webhook.evolution.handles.favorite import (
 )
 from api.routes.webhook.evolution.handles.image import (
     handle_describe_image_command,
+    handle_generate_sticker_command,
     handle_image_command,
     handle_list_images_command,
     handle_picture_command,
