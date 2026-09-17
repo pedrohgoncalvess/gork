@@ -13,8 +13,10 @@ from PIL import Image
 
 from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
+from api.routes.webhook.evolution.handles.image.sticker_crop import fill_alignment
 from api.routes.webhook.evolution.handles.image.sticker_filters import remove_color
 from database.models.content import Message
+from external import upload_temporary_file
 from external.evolution import download_media
 from utils import project_root
 
@@ -96,19 +98,12 @@ def _parse_cut_range(cut_spec) -> tuple[float, float] | None:
 
 
 async def _upload_to_tmpfile(gif_path: str) -> str:
-    URL = "https://tmpfile.link/api/upload"
-    async with httpx.AsyncClient() as client:
-        with open(gif_path, "rb") as image:
-            response = await client.post(
-                URL,
-                files={
-                    "file": (gif_path, image, "image/gif")
-                },
-                timeout=30
-            )
-    response.raise_for_status()
-    data = response.json()
-    return data.get("downloadLink")
+    with open(gif_path, "rb") as image:
+        return await upload_temporary_file(
+            image.read(),
+            "animated-sticker.gif",
+            "image/gif",
+        )
 
 
 def _convert_to_rgb(frame: Image.Image) -> Image.Image:
@@ -126,23 +121,35 @@ def _convert_to_rgb(frame: Image.Image) -> Image.Image:
     return frame.convert('RGB')
 
 
-def _resize_cover(frame: Image.Image, size: tuple) -> Image.Image:
+def _resize_cover(
+        frame: Image.Image,
+        size: tuple,
+        direction: str | None = None,
+) -> Image.Image:
     target_w, target_h = size
     orig_w, orig_h = frame.size
     scale = max(target_w / orig_w, target_h / orig_h)
     new_w = int(orig_w * scale)
     new_h = int(orig_h * scale)
     frame = frame.resize((new_w, new_h), Image.LANCZOS)
-    left = (new_w - target_w) // 2
-    top = (new_h - target_h) // 2
+    horizontal, vertical = fill_alignment(direction)
+    left = int((new_w - target_w) * horizontal)
+    top = int((new_h - target_h) * vertical)
     return frame.crop((left, top, left + target_w, top + target_h))
 
 
-def _square_video_filter(size: int, fill: bool) -> str:
+def _square_video_filter(
+        size: int,
+        fill: bool,
+        direction: str | None = None,
+) -> str:
     if fill:
+        horizontal, vertical = fill_alignment(direction)
+        crop_x = "0" if horizontal == 0 else "iw-ow" if horizontal == 1 else "(iw-ow)/2"
+        crop_y = "0" if vertical == 0 else "ih-oh" if vertical == 1 else "(ih-oh)/2"
         return (
             f"scale={size}:{size}:force_original_aspect_ratio=increase:flags=lanczos,"
-            f"crop={size}:{size}"
+            f"crop={size}:{size}:{crop_x}:{crop_y}"
         )
 
     return (
@@ -851,6 +858,7 @@ def _compress_webp_sticker(
         max_bytes: int = 490_000,
         fill: bool = False,
         max_fps: int | None = None,
+        direction: str | None = None,
 ) -> str:
     configs = [
         {"scale": 512, "fps": 30, "quality": 85, "duration": 7},
@@ -875,7 +883,7 @@ def _compress_webp_sticker(
                 '-i', input_path,
                 '-vf',
                 f'fps={cfg["fps"]},'
-                f'{_square_video_filter(cfg["scale"], fill)}',
+                f'{_square_video_filter(cfg["scale"], fill, direction)}',
                 '-vcodec', 'libwebp',
                 '-lossless', '0',
                 '-compression_level', '6',
@@ -903,7 +911,7 @@ def _compress_webp_sticker(
         'ffmpeg', '-i', input_path,
         '-vf',
         f'fps={cfg["fps"]},'
-        f'{_square_video_filter(cfg["scale"], fill)}',
+        f'{_square_video_filter(cfg["scale"], fill, direction)}',
         '-vcodec', 'libwebp',
         '-lossless', '0',
         '-compression_level', '6',
@@ -999,6 +1007,7 @@ def _build_animated_sticker_webp(
         cut_spec=None,
         blur: int = 0,
         no_color: bool = False,
+        direction: str | None = None,
 ) -> tuple[str, list[str]]:
     with tempfile.NamedTemporaryFile(suffix='.media', delete=False) as f:
         f.write(media_bytes)
@@ -1076,7 +1085,7 @@ def _build_animated_sticker_webp(
             f'fps={source_fps},'
             f'{speed_filter}'
             f'{blur_filter}'
-            f'{_square_video_filter(source_scale, fill)},'
+            f'{_square_video_filter(source_scale, fill, direction)},'
             'split[s0][s1];[s0]palettegen=max_colors=256[p];[s1][p]paletteuse=dither=sierra2_4a',
             '-t', str(source_duration),
             '-loop', '0',
@@ -1155,6 +1164,7 @@ def _build_animated_sticker_webp(
                 max_bytes=max_output_bytes,
                 fill=fill,
                 max_fps=None if static_source else 20,
+                direction=direction,
             )
         return output_webp_path, temp_paths
 
@@ -1176,6 +1186,7 @@ async def animated_sticker_from_bytes(
         cut_spec=None,
         blur: int = 0,
         no_color: bool = False,
+        direction: str | None = None,
 ) -> str:
     output_webp_path, temp_paths = await asyncio.to_thread(
         _build_animated_sticker_webp,
@@ -1189,6 +1200,7 @@ async def animated_sticker_from_bytes(
         cut_spec,
         blur,
         no_color,
+        direction,
     )
     try:
         gif_url = await _upload_to_tmpfile(output_webp_path)
@@ -1211,6 +1223,7 @@ async def animated_sticker(
         cut_spec=None,
         blur: int = 0,
         no_color: bool = False,
+        direction: str | None = None,
 ) -> str:
     if caption_text is None:
         caption_text = clean_text(db_message.content) if db_message.content else None
@@ -1227,4 +1240,5 @@ async def animated_sticker(
         cut_spec=cut_spec,
         blur=blur,
         no_color=no_color,
+        direction=direction,
     )

@@ -6,11 +6,12 @@ from datetime import date
 from io import BytesIO
 
 import httpx
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, UnidentifiedImageError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.evolution.handles.core import clean_text
 from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
+from api.routes.webhook.evolution.handles.image.sticker_crop import fill_alignment
 from api.routes.webhook.evolution.handles.image.sticker_filters import remove_color
 from database.models.content import Message
 from database.operations.base import UserRepository
@@ -21,6 +22,27 @@ from utils import get_env_var
 
 
 NINJA_KEY = get_env_var("NINJA_KEY")
+
+
+def _open_image(image_bytes: bytes) -> Image.Image:
+    """Open and fully decode an image before its backing buffer is discarded."""
+    if not image_bytes:
+        raise UnidentifiedImageError("empty image payload")
+
+    with Image.open(BytesIO(image_bytes)) as image:
+        image.load()
+        return image.copy()
+
+
+async def _random_image() -> Image.Image:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://api.api-ninjas.com/v1/randomimage",
+            headers={"X-Api-Key": NINJA_KEY},
+        )
+        response.raise_for_status()
+
+    return _open_image(response.content)
 
 
 def _dead_caption(
@@ -54,15 +76,20 @@ def _resize_contain_transparent(img: Image.Image, size: tuple) -> Image.Image:
     return canvas
 
 
-def _resize_cover(img: Image.Image, size: tuple) -> Image.Image:
+def _resize_cover(
+        img: Image.Image,
+        size: tuple,
+        direction: str | None = None,
+) -> Image.Image:
     target_w, target_h = size
     scale = max(target_w / img.width, target_h / img.height)
     resized_w = round(img.width * scale)
     resized_h = round(img.height * scale)
 
     resized = img.resize((resized_w, resized_h), Image.Resampling.LANCZOS)
-    left = (resized_w - target_w) // 2
-    top = (resized_h - target_h) // 2
+    horizontal, vertical = fill_alignment(direction)
+    left = int((resized_w - target_w) * horizontal)
+    top = int((resized_h - target_h) * vertical)
 
     return resized.crop((left, top, left + target_w, top + target_h))
 
@@ -91,6 +118,7 @@ async def static_sticker(
         context: dict | None = None,
         dead: bool = False,
         no_color: bool = False,
+        direction: str | None = None,
 ) -> str:
     message_repo = MessageRepository(db)
 
@@ -104,6 +132,7 @@ async def static_sticker(
         caption_text = clean_text(quoted_message.content) if quoted_message.content else None
 
     image_base64 = None
+    using_profile_picture = False
     current_image_id = context.get("image_message") if context else None
     quoted_image_id = context.get("image_quote") if context else None
     current_has_media = bool(db_message.media_id or current_image_id)
@@ -137,15 +166,22 @@ async def static_sticker(
             s3_client = S3Client()
             _ = await s3_client.connect()
             image_base64 = await s3_client.get_image_base64("whatsapp", user.profile_pic_path)
-    if random_image or image_base64 is None:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                "https://api.api-ninjas.com/v1/randomimage", headers={"X-Api-Key": NINJA_KEY}
+            using_profile_picture = True
+    if random_image or (image_base64 is None and source_image_bytes is None):
+        img = await _random_image()
+    else:
+        try:
+            image_bytes = (
+                source_image_bytes
+                if source_image_bytes is not None
+                else base64.b64decode(image_base64, validate=True)
             )
-            source_image_bytes = response.content
-
-    image_bytes = source_image_bytes or base64.b64decode(image_base64)
-    img = Image.open(BytesIO(image_bytes))
+            img = _open_image(image_bytes)
+        except (TypeError, ValueError, UnidentifiedImageError, OSError):
+            if not using_profile_picture:
+                raise
+            # A stale/corrupted profile object must behave like a missing photo.
+            img = await _random_image()
 
     if remove_background:
         # rembg/onnxruntime are intentionally loaded only for this feature.
@@ -154,14 +190,14 @@ async def static_sticker(
         img_bytes = BytesIO()
         img.save(img_bytes, format='PNG')
         img_bytes.seek(0)
-        output = remove(img_bytes.read(), session=new_session("u2net_human_seg"))
+        output = remove(img_bytes.read(), session=new_session("u2net"))
         img = Image.open(BytesIO(output))
 
     if img.mode != 'RGBA':
         img = img.convert('RGBA')
 
     if fill:
-        img = _resize_cover(img, (512, 512))
+        img = _resize_cover(img, (512, 512), direction)
     else:
         img = _resize_contain_transparent(img, (512, 512))
 

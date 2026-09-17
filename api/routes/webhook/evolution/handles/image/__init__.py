@@ -28,10 +28,24 @@ def _param_enabled(value) -> bool:
     return str(value).lower() in ["true", "t", "1", "yes", "y"]
 
 
+def _fill_enabled(params: dict) -> bool:
+    direction = params.get("direction")
+    has_direction = (
+        direction is not None
+        and str(direction).strip().lower() not in {"", "false", "f", "0", "no", "n"}
+    )
+    return _param_enabled(params.get("fill", "false")) or has_direction
+
+
 def _remove_background_enabled(params: dict) -> bool:
     return any(
         _param_enabled(params.get(key, "false"))
-        for key in ("no-background", "no-backgorund")
+        for key in (
+            "no-background",
+            "no_background",
+            "no-backgorund",
+            "no_backgorund",
+        )
     )
 
 
@@ -242,14 +256,17 @@ async def handle_sticker_command(
             return
 
         effect = params.get("effect")
-        fill = _param_enabled(params.get("fill", "false"))
+        fill = _fill_enabled(params)
         font_size = params.get("font-size", "l")
         remove_background = _remove_background_enabled(params)
         speed = float(params.get("speed", 1.0))
         cut_spec = params.get("cut")
         blur = _parse_blur(params)
         no_color = _param_enabled(params.get("no-color", "false"))
-        caption_text = clean_text(remove_twitter_urls(current_content))
+        use_tweet_text = _param_enabled(params.get("text", "false"))
+        caption_text = result.text if use_tweet_text else None
+        if not caption_text:
+            caption_text = clean_text(remove_twitter_urls(current_content))
         if not caption_text:
             caption_text = clean_text(remove_twitter_urls(quoted_content))
         if not caption_text:
@@ -268,6 +285,7 @@ async def handle_sticker_command(
                 cut_spec=cut_spec,
                 blur=blur,
                 no_color=no_color,
+                direction=params.get("direction"),
             )
             await send_animated_sticker(remote_id, sticker_url)
         else:
@@ -286,6 +304,7 @@ async def handle_sticker_command(
                 source_image_bytes=result.media_bytes,
                 caption_text=caption_text,
                 no_color=no_color,
+                direction=params.get("direction"),
             )
             await send_sticker(remote_id, webp_base64)
         return
@@ -357,7 +376,7 @@ async def handle_sticker_command(
     ):
         from api.routes.webhook.evolution.handles.image.sticker_animated import animated_sticker_from_bytes
 
-        fill = _param_enabled(params.get("fill", "false"))
+        fill = _fill_enabled(params)
         font_size = params.get("font-size", "l")
         remove_background = _remove_background_enabled(params)
         speed = float(params.get("speed", 1.0))
@@ -394,6 +413,7 @@ async def handle_sticker_command(
                 cut_spec=cut_spec,
                 blur=blur,
                 no_color=no_color,
+                direction=params.get("direction"),
             )
         except Exception as error:
             await logger.error(
@@ -412,7 +432,7 @@ async def handle_sticker_command(
 
     is_random = _param_enabled(params.get("random", "false"))
     remove_background = _remove_background_enabled(params)
-    fill = _param_enabled(params.get("fill", "false"))
+    fill = _fill_enabled(params)
     font_size = params.get("font-size", "l")
     blur = _parse_blur(params)
     dead = _param_enabled(params.get("dead", "false"))
@@ -423,18 +443,32 @@ async def handle_sticker_command(
     )
     from api.routes.webhook.evolution.handles.image.sticker_static import static_sticker
 
-    webp_base64 = await static_sticker(
-        db_message,
-        db,
-        is_random,
-        remove_background,
-        fill,
-        blur=blur,
-        font_size_param=font_size,
-        context=context,
-        dead=dead,
-        no_color=no_color,
-    )
+    try:
+        webp_base64 = await static_sticker(
+            db_message,
+            db,
+            is_random,
+            remove_background,
+            fill,
+            blur=blur,
+            font_size_param=font_size,
+            context=context,
+            dead=dead,
+            no_color=no_color,
+            direction=params.get("direction"),
+        )
+    except Exception as error:
+        await logger.error(
+            "Sticker",
+            "StaticGenerationFailed",
+            f"message_id={db_message.message_id} error={type(error).__name__}: {error}",
+        )
+        await send_message(
+            remote_id,
+            "Não consegui criar a figurinha com essa imagem. Tente novamente.",
+            db_message.message_id,
+        )
+        return
     await send_sticker(remote_id, webp_base64)
 
 
