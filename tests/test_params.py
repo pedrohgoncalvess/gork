@@ -30,6 +30,23 @@ class ParseParamsTests(unittest.TestCase):
     def test_parameter_name_must_match_completely(self):
         self.assertEqual(parse_params("!sticker :no-background-extra"), {})
 
+    def test_text_parameter_defaults_to_false_and_can_be_enabled(self):
+        self.assertEqual(parse_params("!sticker"), {})
+        self.assertEqual(parse_params("!sticker :text"), {"text": True})
+        self.assertEqual(parse_params("!sticker :text=false"), {"text": "false"})
+
+    def test_video_parameters_are_parsed(self):
+        self.assertEqual(
+            parse_params("!video :duration=10 :audio :quality=2k"),
+            {"duration": 10, "audio": True, "quality": "2k"},
+        )
+
+    def test_sticker_fill_direction_is_parsed(self):
+        self.assertEqual(
+            parse_params("!sticker :direction=bottom-left"),
+            {"direction": "bottom-left"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,7 @@ from api.routes.webhook.evolution.handles import (
     handle_sticker_command,
     handle_transcribe_command,
     handle_twitter_command,
+    handle_video_command,
     get_explicit_command_feature,
     has_explicit_command,
 )
@@ -118,6 +119,15 @@ async def process_explicit_commands(
 
     if "!sticker" in lw_conversation:
         await handle_sticker_command(remote_id, db_message, db, context)
+        return
+
+    if "!video" in lw_conversation:
+        await handle_video_command(
+            remote_id=remote_id,
+            user_id=user.id,
+            db_message=db_message,
+            db=db,
+        )
         return
 
     if "!remember" in lw_conversation:

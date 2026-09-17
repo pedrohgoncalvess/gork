@@ -28,6 +28,11 @@ agents:
     model: x-ai/grok-imagine-image-quality
     prompt_path: agents/prompts/modify-image.md
 
+  - name: video-generation
+    description: Assistant responsible for generating videos with OpenRouter.
+    model: bytedance/seedance-2.0-mini
+    prompt_path: agents/prompts/video-generation.md
+
   - name: remember-formatter
     description: Agent assigned to extract dates, times, and messages to schedule reminders.
     model: qwen/qwen3.6-flash

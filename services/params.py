@@ -22,6 +22,9 @@ PARAMS = (
     "user",
     "when",
     "granularity",
+    "duration",
+    "audio",
+    "quality",
 )
 
 PARAM_DEFAULTS = {

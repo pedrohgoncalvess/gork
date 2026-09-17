@@ -421,6 +421,7 @@ async def handle_help_command(remote_id: str, message_id: str):
         "search": ("🔍 *BUSCA & INFORMAÇÃO*", []),
         "audio": ("🎙️ *ÁUDIO & TRANSCRIÇÃO*", []),
         "image": ("🖼️ *IMAGENS & STICKERS*", []),
+        "video": ("🎬 *VÍDEOS*", []),
         "reminder": ("⏰ *LEMBRETES*", []),
         "utility": ("📝 *UTILIDADES*", []),
         "media": ("📹 *MÍDIA*", []),

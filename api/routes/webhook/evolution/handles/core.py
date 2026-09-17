@@ -20,7 +20,9 @@ COMMANDS = [
             (":no-color", "Deixa a imagem ou vídeo em preto e branco.", [("t", "Verdadeiro"),]),
             (":random", "Usa uma imagem aleatória", [("t", "Verdadeiro"),]),
             (":fill", "Preenche todo o tamanho do sticker cortando o excesso da imagem.", [("true", "Verdadeiro"),]),
+            (":direction", "Ativa o preenchimento e escolhe qual região do recorte preservar; o padrão é o centro.", [("top", "Cima"), ("bottom", "Baixo"), ("left", "Esquerda"), ("right", "Direita"), ("top-left", "Cima e esquerda"), ("top-right", "Cima e direita"), ("bottom-left", "Baixo e esquerda"), ("bottom-right", "Baixo e direita")]),
             (":url", "Usa uma URL do Twitter/X como fonte do sticker.", [("https://x.com/usuario/status/12345", "Link do post"),]),
+            (":text", "Usa o texto do post do Twitter/X como legenda do sticker.", [("t", "Verdadeiro"),]),
             (":effect", "Adiciona um efeito e transforma imagens estáticas em figurinhas animadas.", [
                 ("explosion", "Explosão ActionVFX repetida no centro da imagem/vídeo"),
                 ("nuclear-bomb", "Explosão nuclear sobreposta à imagem/vídeo"),
@@ -43,6 +45,16 @@ COMMANDS = [
     ("!transcribe", "Transcreve um áudio. _[Ignora o restante da mensagem]_", "audio", []),
     ("!image", "Gera ou modifica uma imagem mencionada. _[Mencione alguém para adicionar a foto de perfil ao contexto de criação. Adicione @me na mensagem e sua foto vai ser mencionada no contexto.]_", "image", []),
     (
+        "!video",
+        "Gera um vídeo de até 10 segundos. _[Mencione alguém ou use @me para adicionar fotos de referência.]_",
+        "video",
+        [
+            (":duration", "Duração em segundos; padrão 5, máximo 10.", [("5", "Cinco segundos"), ("10", "Dez segundos")]),
+            (":audio", "Gera áudio junto do vídeo; desativado por padrão.", [("t", "Verdadeiro")]),
+            (":quality", "Qualidade solicitada; padrão é a menor suportada pelo modelo.", [("480", "480p"), ("720", "720p"), ("1080", "1080p"), ("2k", "2K"), ("4k", "4K")]),
+        ],
+    ),
+    (
         "!usage",
         "Gera relatório de uso de grupos e usuários.",
         "search",
@@ -57,7 +69,7 @@ COMMANDS = [
     ("!favorite", "Favorita uma mensagem.", "utility", []),
     ("!list", "", "hidden", []),
     ("!remove", "", "hidden", []),
-    ("!twitter", "Baixa vídeos ou imagens de links do X/Twitter e envia. _[Ex: !twitter https://x.com/usuario/status/12345]_", "media", []),
+    ("!twitter", "Baixa e envia o vídeo ou a primeira imagem de um link do X/Twitter. _[Ex: !twitter https://x.com/usuario/status/12345]_", "media", []),
     ("!instagram", "Baixa reels do Instagram e envia. _[Ex: !instagram https://www.instagram.com/reel/XXXXXXXX]_", "media", []),
     (
         "!philo",

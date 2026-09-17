@@ -16,6 +16,7 @@ from api.routes.webhook.evolution.handles.image import (
     handle_sticker_command,
 )
 from api.routes.webhook.evolution.handles.reminder import handle_remember_command
+from api.routes.webhook.evolution.handles.video import handle_video_command
 from api.routes.webhook.evolution.handles.social import handle_instagram_command, handle_twitter_command
 from api.routes.webhook.evolution.handles.utility import (
     handle_help_command,
@@ -729,6 +730,16 @@ async def _dispatch_action(
             user_id=user.id,
             db_message=db_message,
             context=context,
+        )
+        return True
+
+    elif action_type == "video":
+        await handle_video_command(
+            remote_id=remote_id,
+            user_id=user.id,
+            db_message=db_message,
+            db=db,
+            action_params=params,
         )
         return True
 

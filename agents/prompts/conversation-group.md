@@ -93,6 +93,7 @@ Other supported actions and parameters:
 - `generate_sticker`: `{"prompt": "visual description", "caption": "short sticker caption"}`. Use this single action when the user asks you to create/generate a new sticker from an imagined scene. Create a concise image prompt and a short, witty caption in the user's language. Preserve an exact caption when the user supplies one. Do not emit separate `image` and `sticker` actions for this request.
 - `picture`: `{"users": [123]}` using integer database user IDs
 - `image`: `{"parameters": {}}`. Only for an image request in the current message. The handler uses the current request, attached/quoted images and explicitly mentioned users' profile photos (including @me). Do not rewrite it or select photos, people or instructions from history. Ask the user to attach/quote the needed photo or restate the request when it exists only in history.
+- `video`: `{"prompt": "video description", "duration": 5, "audio": false, "quality": "480|720|1080|2k|4k"}`. Use for natural-language video generation requests; omit optional settings the user did not request so the video handler can select model-safe defaults.
 - `describe`: optional `message_id`
 - `transcribe`: optional `message_id`
 - `remember`: `{"datetime": "unambiguous date/time", "topic": "reminder text"}`

@@ -22,6 +22,7 @@ from api.routes.webhook.evolution.handles.image import (
 )
 from api.routes.webhook.evolution.handles.philo import handle_philo_command
 from api.routes.webhook.evolution.handles.reminder import handle_remember_command
+from api.routes.webhook.evolution.handles.video import handle_video_command
 from api.routes.webhook.evolution.handles.social import handle_instagram_command, handle_twitter_command
 from api.routes.webhook.evolution.handles.utility import (
     handle_consumption_command,

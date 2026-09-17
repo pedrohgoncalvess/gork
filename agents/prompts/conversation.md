@@ -589,6 +589,20 @@ from history, or add people/instructions from earlier conversation. If the neede
 photo or instruction exists only in history, ask the user to attach/quote it or
 state the complete request in the current message.
 
+**video** - Generate a video
+```json
+{
+  "action": "video",
+  "parameters": {
+    "prompt": "Description of motion, subjects, scene, lighting, and camera",
+    "duration": 5,
+    "audio": false,
+    "quality": "720"
+  }
+}
+```
+Omit duration, audio, or quality when the user did not request them; the video handler validates model capabilities and chooses the lowest supported quality by default.
+
 **describe** - Describe an image
 ```json
 {
