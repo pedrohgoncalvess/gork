@@ -46,7 +46,12 @@ from llm_access import (
     search_messages,
 )
 from log import logger
-from services import BLACK_LIST_MESSAGE, is_feature_blocked, log_blocked_request
+from services import (
+    BLACK_LIST_MESSAGE,
+    get_disabled_command_message,
+    is_feature_blocked,
+    log_blocked_request,
+)
 from services.action_rate_limiter import reserve_audio_action
 from tts import text_to_speech
 from utils import INSTANCE_NUMBER
@@ -573,6 +578,16 @@ async def _dispatch_action(
 ) -> bool:
     params = action.get("parameters", {}) or {}
     message_repo = MessageRepository(db)
+
+    disabled_message = await get_disabled_command_message(
+        db=db,
+        command=action_type,
+        user_id=user.id,
+        group_id=group_id,
+    )
+    if disabled_message:
+        await send_message(remote_id, disabled_message, db_message.message_id)
+        return False
 
     if (
         group_id is not None

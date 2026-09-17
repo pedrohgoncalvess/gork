@@ -1,5 +1,6 @@
 from database.models.manager.agent import Agent
 from database.models.manager.command import Command
+from database.models.manager.disabled_command import DisabledCommand
 from database.models.manager.embedding import Embedding
 from database.models.manager.interaction import Interaction
 from database.models.manager.model import Model

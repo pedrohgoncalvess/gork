@@ -8,3 +8,4 @@ from services.save_media import save_media_if_new
 from services.save_profile_pic import save_profile_pic
 from services.save_video import save_video_if_new
 from services.black_list import BLACK_LIST_MESSAGE, is_feature_blocked, log_blocked_request
+from services.disabled_commands import DEFAULT_DISABLED_COMMAND_MESSAGE, get_disabled_command_message

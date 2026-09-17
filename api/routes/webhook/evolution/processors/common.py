@@ -23,11 +23,13 @@ from api.routes.webhook.evolution.handles import (
     handle_sticker_command,
     handle_transcribe_command,
     handle_twitter_command,
+    get_explicit_command_feature,
     has_explicit_command,
 )
 from database.models.base import User
 from database.models.content import Message
-from services import get_mentions_from_content, parse_params
+from external.evolution import send_message
+from services import get_disabled_command_message, get_mentions_from_content, parse_params
 
 
 async def process_commands(
@@ -44,6 +46,20 @@ async def process_commands(
 ):
     treated_text = clean_text(conversation)
     has_explicit = has_explicit_command(conversation)
+    requested_command = (
+        get_explicit_command_feature(conversation)
+        if has_explicit
+        else "interaction"
+    )
+    disabled_message = await get_disabled_command_message(
+        db=db,
+        command=requested_command or "interaction",
+        user_id=user.id,
+        group_id=group_id,
+    )
+    if disabled_message:
+        await send_message(remote_id, disabled_message, message_id)
+        return
 
     if has_explicit:
         await process_explicit_commands(

@@ -1,5 +1,6 @@
 from database.operations.manager.agent import AgentRepository
 from database.operations.manager.command import CommandRepository
+from database.operations.manager.disabled_command import DisabledCommandRepository
 from database.operations.manager.embedding import EmbeddingRepository
 from database.operations.manager.interaction import InteractionRepository
 from database.operations.manager.model import ModelRepository
