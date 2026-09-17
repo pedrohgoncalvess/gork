@@ -6,13 +6,13 @@ from database.models import Base
 
 class ModelConversation(Base):
     __tablename__ = "model_conversation"
-    __table_args__ = {"schema": "manager"}
+    __table_args__ = {"schema": "ai"}
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("base.user.id"))
     group_id = Column(Integer, ForeignKey("base.group.id"))
-    agent_id = Column(Integer, ForeignKey("manager.agent.id"), nullable=False)
-    model_id = Column(Integer, ForeignKey("manager.model.id"), nullable=False)
+    agent_id = Column(Integer, ForeignKey("ai.agent.id"), nullable=False)
+    model_id = Column(Integer, ForeignKey("ai.model.id"), nullable=False)
 
     inserted_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 

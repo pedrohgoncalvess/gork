@@ -3,5 +3,6 @@ from database.operations.manager.command import CommandRepository
 from database.operations.manager.embedding import EmbeddingRepository
 from database.operations.manager.interaction import InteractionRepository
 from database.operations.manager.model import ModelRepository
+from database.operations.manager.model_price import ModelPriceRepository
 from database.operations.manager.model_conversation import ModelConversationRepository
 from database.operations.manager.remember import RememberRepository

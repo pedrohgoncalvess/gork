@@ -1,3 +1,5 @@
+import asyncio
+import json
 from datetime import datetime
 
 import httpx
@@ -7,6 +9,164 @@ from utils import get_env_var
 
 
 OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1"
+
+
+class OpenRouterVideoError(RuntimeError):
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        provider_code: str | None = None,
+    ):
+        self.status_code = status_code
+        self.provider_code = provider_code
+        self.provider_message = message
+        super().__init__(
+            f"OpenRouter video request failed with HTTP {status_code}"
+            + (f" ({provider_code})" if provider_code else "")
+            + f": {message}"
+        )
+
+
+def _video_error_details(response: httpx.Response) -> tuple[str | None, str]:
+    try:
+        payload = response.json()
+    except ValueError:
+        return None, response.text[:2000]
+
+    error = payload.get("error") if isinstance(payload, dict) else None
+    code = error.get("code") if isinstance(error, dict) else None
+    message = error.get("message") if isinstance(error, dict) else None
+    message = str(message or response.text[:2000])
+
+    # Providers sometimes serialize their own JSON error inside OpenRouter's
+    # message, prefixed by e.g. "HTTP 400: ". Recover its stable error code.
+    nested_start = message.find("{")
+    if nested_start >= 0:
+        try:
+            nested_payload = json.loads(message[nested_start:])
+            nested_error = nested_payload.get("error")
+            if isinstance(nested_error, dict):
+                code = nested_error.get("code") or code
+                message = str(nested_error.get("message") or message)
+        except ValueError:
+            pass
+
+    return str(code) if code is not None else None, message[:2000]
+
+
+def _video_payload_for_log(payload: dict) -> dict:
+    sanitized = _payload_for_log(payload)
+    prompt = sanitized.pop("prompt", None)
+    if isinstance(prompt, str):
+        sanitized["prompt_characters"] = len(prompt)
+    return sanitized
+
+
+async def get_models() -> list[dict]:
+    """Return the complete OpenRouter catalog, including non-text models."""
+    headers = {"Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            f"{OPENROUTER_ENDPOINT}/models",
+            params={"output_modalities": "all"},
+            headers=headers,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        return payload.get("data", [])
+
+
+async def get_video_models() -> list[dict]:
+    headers = {"Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            f"{OPENROUTER_ENDPOINT}/videos/models",
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.json().get("data", [])
+
+
+async def get_image_models() -> list[dict]:
+    headers = {"Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.get(
+            f"{OPENROUTER_ENDPOINT}/images/models",
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.json().get("data", [])
+
+
+async def submit_video(payload: dict) -> dict:
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}",
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            f"{OPENROUTER_ENDPOINT}/videos",
+            json=payload,
+            headers=headers,
+        )
+        if response.status_code >= 400:
+            provider_code, provider_message = _video_error_details(response)
+            await openrouter_logger.error(
+                "OpenRouter",
+                f"VideoHTTPError_{response.status_code}",
+                f"Provider code: {provider_code or 'unknown'}. "
+                f"Response: {provider_message}. Payload: {_video_payload_for_log(payload)}",
+            )
+            raise OpenRouterVideoError(
+                response.status_code,
+                provider_message,
+                provider_code,
+            )
+        response.raise_for_status()
+        return response.json()
+
+
+async def wait_for_video(
+    job: dict,
+    poll_interval: int = 30,
+    max_attempts: int = 20,
+) -> dict:
+    headers = {"Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}"}
+    current = job
+    async with httpx.AsyncClient(timeout=120) as client:
+        for _ in range(max_attempts):
+            status = str(current.get("status", "")).lower()
+            if status == "completed":
+                return current
+            if status in {"failed", "cancelled", "expired"}:
+                raise RuntimeError(current.get("error") or f"Video job ended as {status}")
+
+            await asyncio.sleep(poll_interval)
+            polling_url = current.get("polling_url")
+            if not polling_url:
+                job_id = current.get("id")
+                polling_url = f"{OPENROUTER_ENDPOINT}/videos/{job_id}"
+            elif str(polling_url).startswith("/"):
+                polling_url = f"https://openrouter.ai{polling_url}"
+
+            response = await client.get(polling_url, headers=headers)
+            response.raise_for_status()
+            current = response.json()
+
+    raise TimeoutError("Video generation did not finish within 10 minutes")
+
+
+async def download_video(job_id: str) -> bytes:
+    headers = {"Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}"}
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.get(
+            f"{OPENROUTER_ENDPOINT}/videos/{job_id}/content",
+            params={"index": 0},
+            headers=headers,
+        )
+        response.raise_for_status()
+        return response.content
 
 
 def _payload_for_log(payload: dict) -> dict:

@@ -1,8 +1,8 @@
 from typing import List, Optional
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 
-from database.models.manager import Model
+from database.models.manager import Model, ModelPrice
 from database.operations import BaseRepository
 
 
@@ -50,3 +50,12 @@ class ModelRepository(BaseRepository[Model]):
 
     async def get_all_active(self) -> List[Model]:
         return await self.find_all()
+
+    async def get_latest_price(self, model_id: int) -> Optional[ModelPrice]:
+        result = await self.db.execute(
+            select(ModelPrice)
+            .filter(ModelPrice.model_id == model_id)
+            .order_by(desc(ModelPrice.fetched_at), desc(ModelPrice.id))
+            .limit(1)
+        )
+        return result.scalar_one_or_none()

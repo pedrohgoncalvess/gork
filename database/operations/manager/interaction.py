@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta
 from typing import List, Optional
 
-from sqlalchemy import and_, desc, func as sql_func, select
+from sqlalchemy import and_, case, desc, func as sql_func, select
 from sqlalchemy.orm import joinedload
 
 from database.models.base import User
-from database.models.manager import Interaction, Model
+from database.models.manager import Interaction, Model, ModelPrice
 from database.operations import BaseRepository
 
 
@@ -42,7 +42,7 @@ class InteractionRepository(BaseRepository[Interaction]):
             filters.append(Interaction.group_id == group_id)
 
         if model_id:
-            filters.append(Interaction.model_id == model_id)
+            filters.append(ModelPrice.model_id == model_id)
         if agent_id:
             filters.append(Interaction.agent_id == agent_id)
         if command_id:
@@ -53,25 +53,43 @@ class InteractionRepository(BaseRepository[Interaction]):
                 Interaction.user_id,
                 User.name.label('user_name'),
                 User.phone_number.label('user_phone_number'),
-                Interaction.model_id,
+                ModelPrice.model_id,
                 Model.name.label('model_name'),
-                Model.input_price,
-                Model.output_price,
                 sql_func.count(Interaction.id).label('interaction_count'),
                 sql_func.sum(Interaction.input_tokens).label('total_input_tokens'),
-                sql_func.sum(Interaction.output_tokens).label('total_output_tokens')
+                sql_func.sum(Interaction.output_tokens).label('total_output_tokens'),
+                sql_func.sum(
+                    Interaction.input_tokens * sql_func.coalesce(ModelPrice.prompt_price, 0)
+                ).label('input_cost'),
+                sql_func.sum(
+                    sql_func.coalesce(Interaction.output_tokens, 0)
+                    * sql_func.coalesce(ModelPrice.completion_price, 0)
+                ).label('output_cost'),
+                sql_func.sum(
+                    sql_func.coalesce(ModelPrice.request_price, 0)
+                ).label('request_cost'),
+                sql_func.sum(
+                    case(
+                        (Interaction.actual_cost.is_not(None), Interaction.actual_cost),
+                        else_=(
+                            Interaction.input_tokens * sql_func.coalesce(ModelPrice.prompt_price, 0)
+                            + sql_func.coalesce(Interaction.output_tokens, 0)
+                            * sql_func.coalesce(ModelPrice.completion_price, 0)
+                            + sql_func.coalesce(ModelPrice.request_price, 0)
+                        ),
+                    )
+                ).label('total_cost')
             )
             .join(User, Interaction.user_id == User.id)
-            .join(Model, Interaction.model_id == Model.id)
+            .join(ModelPrice, Interaction.model_price_id == ModelPrice.id)
+            .join(Model, ModelPrice.model_id == Model.id)
             .filter(and_(*filters))
             .group_by(
                 Interaction.user_id,
                 User.name,
                 User.phone_number,
-                Interaction.model_id,
-                Model.name,
-                Model.input_price,
-                Model.output_price
+                ModelPrice.model_id,
+                Model.name
             )
             .order_by(User.name, Model.name)
         )
@@ -99,13 +117,11 @@ class InteractionRepository(BaseRepository[Interaction]):
             output_tokens = row.total_output_tokens or 0
             total_tokens = input_tokens + output_tokens
 
-            input_price = float(row.input_price or 0)
-            output_price = float(row.output_price or 0)
-
-            model_cost = (
-                    (input_tokens * input_price / 1_000_000) +
-                    (output_tokens * output_price / 1_000_000)
-            )
+            input_cost = float(row.input_cost or 0)
+            output_cost = float(row.output_cost or 0)
+            model_cost = float(row.total_cost or 0)
+            input_price = input_cost / input_tokens if input_tokens else 0
+            output_price = output_cost / output_tokens if output_tokens else 0
 
             user_data[user_id]['models_used'].append({
                 'model_id': row.model_id,
@@ -114,8 +130,8 @@ class InteractionRepository(BaseRepository[Interaction]):
                 'input_tokens': input_tokens,
                 'output_tokens': output_tokens,
                 'total_tokens': total_tokens,
-                'input_price_per_1m': input_price,
-                'output_price_per_1m': output_price,
+                'input_price_per_1m': input_price * 1_000_000,
+                'output_price_per_1m': output_price * 1_000_000,
                 'estimated_cost': round(model_cost, 6)
             })
 
@@ -154,11 +170,21 @@ class InteractionRepository(BaseRepository[Interaction]):
             response: Optional[str] = None,
             command_id: Optional[int] = None,
             agent_id: Optional[int] = None,
-            system_behavior: Optional[str] = None
-    ,
+            system_behavior: Optional[str] = None,
+            actual_cost: Optional[float] = None,
     ) -> Interaction:
+        price_result = await self.db.execute(
+            select(ModelPrice)
+            .filter(ModelPrice.model_id == model_id)
+            .order_by(desc(ModelPrice.fetched_at), desc(ModelPrice.id))
+            .limit(1)
+        )
+        model_price = price_result.scalar_one_or_none()
+        if model_price is None:
+            raise ValueError(f"No pricing snapshot found for model_id={model_id}")
+
         interaction = Interaction(
-            model_id=model_id,
+            model_price_id=model_price.id,
             user_id=user_id,
             user_prompt=user_prompt,
             group_id=group_id,
@@ -168,6 +194,7 @@ class InteractionRepository(BaseRepository[Interaction]):
             output_tokens=output_tokens,
             command_id=command_id,
             agent_id=agent_id,
+            actual_cost=actual_cost,
         )
         return await self.insert(interaction)
 
@@ -185,7 +212,11 @@ class InteractionRepository(BaseRepository[Interaction]):
             filters.append(Interaction.inserted_at <= end_date)
 
         result = await self.db.execute(
-            select(sql_func.sum(Interaction.tokens))
+            select(
+                sql_func.sum(
+                    Interaction.input_tokens + sql_func.coalesce(Interaction.output_tokens, 0)
+                )
+            )
             .filter(and_(*filters))
         )
         total = result.scalar_one_or_none()
@@ -201,7 +232,7 @@ class InteractionRepository(BaseRepository[Interaction]):
         filters = []
 
         if model_id:
-            filters.append(Interaction.model_id == model_id)
+            filters.append(ModelPrice.model_id == model_id)
         if agent_id:
             filters.append(Interaction.agent_id == agent_id)
         if user_id:
@@ -212,6 +243,7 @@ class InteractionRepository(BaseRepository[Interaction]):
 
         result = await self.db.execute(
             select(sql_func.count(Interaction.id))
+            .join(ModelPrice, Interaction.model_price_id == ModelPrice.id)
             .filter(and_(*filters) if filters else True)
         )
         return result.scalar_one()
@@ -226,7 +258,7 @@ class InteractionRepository(BaseRepository[Interaction]):
         time_threshold = datetime.now() - timedelta(hours=hours)
 
         options = [
-            joinedload(Interaction.model),
+            joinedload(Interaction.model_price).joinedload(ModelPrice.model),
             joinedload(Interaction.command)
         ]
         if include_agent:
@@ -264,7 +296,7 @@ class InteractionRepository(BaseRepository[Interaction]):
         if command_id:
             filters.append(Interaction.command_id == command_id)
         if model_id:
-            filters.append(Interaction.model_id == model_id)
+            filters.append(ModelPrice.model_id == model_id)
         if agent_id:
             filters.append(Interaction.agent_id == agent_id)
         if user_id:
@@ -276,9 +308,23 @@ class InteractionRepository(BaseRepository[Interaction]):
 
         result = await self.db.execute(
             select(
-                sql_func.sum(Interaction.tokens).label('total_tokens'),
+                sql_func.sum(
+                    Interaction.input_tokens + sql_func.coalesce(Interaction.output_tokens, 0)
+                ).label('total_tokens'),
+                sql_func.sum(
+                    case(
+                        (Interaction.actual_cost.is_not(None), Interaction.actual_cost),
+                        else_=(
+                            Interaction.input_tokens * sql_func.coalesce(ModelPrice.prompt_price, 0)
+                            + sql_func.coalesce(Interaction.output_tokens, 0)
+                            * sql_func.coalesce(ModelPrice.completion_price, 0)
+                            + sql_func.coalesce(ModelPrice.request_price, 0)
+                        ),
+                    )
+                ).label('estimated_cost'),
                 sql_func.count(Interaction.id).label('interaction_count')
             )
+            .join(ModelPrice, Interaction.model_price_id == ModelPrice.id)
             .filter(and_(*filters) if filters else True)
         )
 
@@ -286,6 +332,7 @@ class InteractionRepository(BaseRepository[Interaction]):
 
         return {
             "total_tokens": row.total_tokens if row and row.total_tokens else 0,
+            "estimated_cost": float(row.estimated_cost or 0) if row else 0.0,
             "interaction_count": row.interaction_count if row else 0
         }
 
@@ -305,10 +352,13 @@ class InteractionRepository(BaseRepository[Interaction]):
         result = await self.db.execute(
             select(
                 sql_func.count(Interaction.id).label('total_interactions'),
-                sql_func.sum(Interaction.tokens).label('total_tokens'),
+                sql_func.sum(
+                    Interaction.input_tokens + sql_func.coalesce(Interaction.output_tokens, 0)
+                ).label('total_tokens'),
                 sql_func.count(sql_func.distinct(Interaction.command_id)).label('unique_commands'),
-                sql_func.count(sql_func.distinct(Interaction.model_id)).label('unique_models')
+                sql_func.count(sql_func.distinct(ModelPrice.model_id)).label('unique_models')
             )
+            .join(ModelPrice, Interaction.model_price_id == ModelPrice.id)
             .filter(and_(*filters))
         )
 

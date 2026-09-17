@@ -3,5 +3,6 @@ from database.models.manager.command import Command
 from database.models.manager.embedding import Embedding
 from database.models.manager.interaction import Interaction
 from database.models.manager.model import Model
+from database.models.manager.model_price import ModelPrice
 from database.models.manager.model_conversation import ModelConversation
 from database.models.manager.remember import Remember
