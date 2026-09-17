@@ -8,7 +8,6 @@ from api.routes.webhook.evolution.handles.core import is_message_too_old
 from api.routes.webhook.evolution.processors.common import process_commands
 from database.operations.base import UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
-from external.evolution import send_message
 from services import save_image_if_new, save_media_if_new, save_profile_pic, save_video_if_new, verifiy_media
 
 
@@ -104,10 +103,6 @@ async def process_private_message(
                 {"content": conversation},
             )
             context["text_message"] = conversation
-
-    if "!status" in conversation:
-        await send_message(number, "🤖 Robo do mito está pronto", message_id)
-        return
 
     await process_commands(
         conversation,

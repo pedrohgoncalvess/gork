@@ -88,6 +88,10 @@ async def process_explicit_commands(
         db_message: Message,
 ):
     lw_conversation = conversation.lower()
+    if "!status" in lw_conversation:
+        await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
+        return
+
     if "!help" in lw_conversation:
         await handle_help_command(remote_id, message_id)
         return

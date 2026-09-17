@@ -243,10 +243,6 @@ async def process_group_message(
             context_message["text_message"] = conversation
 
     async with serialize_group_conversation(group.id):
-        if "!status" in conversation:
-            await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
-            return
-
         await process_commands(
             conversation,
             remote_id,
