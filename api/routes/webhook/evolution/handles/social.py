@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import os
 import re
 import subprocess
 import tempfile
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Literal
 from urllib.parse import urlparse
+
+import httpx
+from PIL import Image
 
 from external.evolution import send_image, send_message, send_video
 
@@ -25,6 +30,7 @@ class TwitterMediaDownloadResult:
     media_bytes: bytes | None
     media_type: TwitterMediaType | None
     error: str | None
+    text: str | None = None
 
     @property
     def is_success(self) -> bool:
@@ -79,48 +85,149 @@ async def download_twitter_media(twitter_url: str) -> TwitterMediaDownloadResult
     except InvalidURLError as e:
         return TwitterMediaDownloadResult(None, None, str(e))
 
+    tweet_id = urlparse(validated_url).path.rstrip("/").split("/")[-1]
+    status_task = asyncio.create_task(_fetch_twitter_status(tweet_id))
+    video_bytes, video_text, video_error = await _download_twitter_video(validated_url)
+
+    try:
+        status = await status_task
+    except Exception:
+        status = None
+
+    tweet_text = _extract_twitter_text(status) or video_text
+    if video_bytes:
+        return TwitterMediaDownloadResult(video_bytes, "video", None, tweet_text)
+
+    photo_url = _find_twitter_photo_url(status)
+    if photo_url:
+        photo_bytes, photo_error = await _download_twitter_photo(photo_url)
+        if photo_bytes:
+            return TwitterMediaDownloadResult(photo_bytes, "image", None, tweet_text)
+        return TwitterMediaDownloadResult(None, None, photo_error, tweet_text)
+
+    return TwitterMediaDownloadResult(
+        None,
+        None,
+        video_error or "Nenhuma mídia encontrada",
+        tweet_text,
+    )
+
+
+async def _download_twitter_video(url: str) -> tuple[bytes | None, str | None, str | None]:
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
             output_template = os.path.join(tmpdir, "%(id)s.%(ext)s")
-
             process = await asyncio.create_subprocess_exec(
                 "yt-dlp",
-                "-f", "best",
-                "-o", output_template,
+                "-f",
+                "best[ext=mp4]/best",
+                "--merge-output-format",
+                "mp4",
+                "--remux-video",
+                "mp4",
+                "--write-info-json",
+                "-o",
+                output_template,
                 "--no-playlist",
-                validated_url,
+                url,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
-
             _, stderr = await process.communicate()
 
-            if process.returncode != 0:
-                return TwitterMediaDownloadResult(
-                    None,
-                    None,
-                    stderr.decode() or "Erro ao baixar mídia",
-                )
+            info_text = None
+            info_files = [name for name in os.listdir(tmpdir) if name.endswith(".info.json")]
+            if info_files:
+                try:
+                    with open(os.path.join(tmpdir, info_files[0]), encoding="utf-8") as file:
+                        info_text = json.load(file).get("description")
+                except (OSError, ValueError, AttributeError):
+                    pass
 
-            files = os.listdir(tmpdir)
-            if not files:
-                return TwitterMediaDownloadResult(None, None, "Nenhuma mídia encontrada")
+            video_extensions = {"mp4", "webm", "mkv", "mov"}
+            video_files = [
+                name
+                for name in os.listdir(tmpdir)
+                if name.rsplit(".", 1)[-1].lower() in video_extensions
+            ]
+            if process.returncode == 0 and video_files:
+                with open(os.path.join(tmpdir, video_files[0]), "rb") as file:
+                    return file.read(), info_text, None
 
-            file_path = os.path.join(tmpdir, files[0])
+            error = stderr.decode(errors="replace").strip()
+            return None, info_text, error or "Nenhum vídeo encontrado"
+    except FileNotFoundError:
+        return None, None, "yt-dlp não está instalado"
+    except Exception as error:
+        return None, None, f"Erro ao baixar vídeo ({type(error).__name__})"
 
-            with open(file_path, "rb") as f:
-                media_bytes = f.read()
 
-            ext = file_path.split(".")[-1].lower()
-            if ext in {"mp4", "webm", "mkv"}:
-                media_type: TwitterMediaType = "video"
-            else:
-                media_type = "image"
+async def _fetch_twitter_status(tweet_id: str) -> dict | None:
+    def fetch() -> dict | None:
+        # Reuse yt-dlp's signed syndication request. Its public extraction result
+        # intentionally omits photos, while the normalized status retains them.
+        from yt_dlp import YoutubeDL
+        from yt_dlp.extractor.twitter import TwitterIE
 
-            return TwitterMediaDownloadResult(media_bytes, media_type, None)
+        with YoutubeDL({"quiet": True, "no_warnings": True}) as downloader:
+            extractor = TwitterIE(downloader)
+            extractor._selected_api = "syndication"
+            return extractor._extract_status(tweet_id)
 
-    except Exception as e:
-        return TwitterMediaDownloadResult(None, None, f"Erro inesperado: {str(e)}")
+    return await asyncio.to_thread(fetch)
+
+
+def _twitter_media(status: dict | None) -> list[dict]:
+    if not status:
+        return []
+
+    media = []
+    for post in (status, status.get("quoted_status")):
+        if not isinstance(post, dict):
+            continue
+        entities = post.get("extended_entities") or {}
+        for item in entities.get("media") or []:
+            if isinstance(item, dict):
+                media.append(item)
+    return media
+
+
+def _extract_twitter_text(status: dict | None) -> str | None:
+    if not status:
+        return None
+
+    text = status.get("full_text") or status.get("text")
+    if not isinstance(text, str) or not text.strip():
+        return None
+
+    for media in _twitter_media(status):
+        media_link = media.get("url")
+        if media_link:
+            text = text.replace(media_link, "")
+    return re.sub(r"\s+", " ", text).strip() or None
+
+
+def _find_twitter_photo_url(status: dict | None) -> str | None:
+    for media in _twitter_media(status):
+        if media.get("type") != "photo":
+            continue
+        return media.get("media_url_https") or media.get("media_url")
+    return None
+
+
+async def _download_twitter_photo(url: str) -> tuple[bytes | None, str | None]:
+    separator = "&" if "?" in url else "?"
+    original_url = f"{url}{separator}name=orig"
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as client:
+            response = await client.get(original_url)
+            response.raise_for_status()
+        image_bytes = response.content
+        with Image.open(BytesIO(image_bytes)) as image:
+            image.verify()
+        return image_bytes, None
+    except Exception as error:
+        return None, f"Não foi possível baixar a imagem ({type(error).__name__})"
 
 
 # ── Instagram ────────────────────────────────────────────────────────────────
