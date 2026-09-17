@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from sqlalchemy import or_, select, desc
+from sqlalchemy import and_, or_, select, desc
 
 from database.models.base import User, Group
 from database.operations import BaseRepository
@@ -11,7 +11,23 @@ class UserRepository(BaseRepository[User]):
         super().__init__(User, db)
 
     async def find_by_phone(self, phone_number: str) -> Optional[User]:
-        return await self.find_one_by(phone_number=phone_number)
+        from database.models.base.white_list import WhiteList
+
+        result = await self.db.execute(
+            select(self.model)
+            .outerjoin(
+                WhiteList,
+                and_(
+                    WhiteList.sender_type == "user",
+                    WhiteList.sender_id == self.model.id,
+                    WhiteList.deleted_at.is_(None),
+                ),
+            )
+            .filter(self.model.phone_number == phone_number)
+            .order_by(WhiteList.id.is_(None), self.model.id.asc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def find_by_phone_or_id(self, _id: str) -> Optional[User]:
         query = select(self.model).filter(
@@ -35,13 +51,29 @@ class UserRepository(BaseRepository[User]):
             phone_number: str = None,
             name: str = None
     ) -> User:
-        user = await self.find_by_lid(lid)
+        # A phone-only DM may already have produced a duplicate whose src_id is
+        # also the phone number. Prefer the whitelisted phone match in that
+        # payload shape so conversation ownership and access are preserved.
+        if phone_number and lid == phone_number:
+            user = await self.find_by_phone(phone_number)
+        else:
+            user = await self.find_by_lid(lid)
+
+        if not user and phone_number:
+            # Evolution sometimes sends the phone JID in both remoteJid and
+            # remoteJidAlt for direct messages. In that case ``lid`` is the
+            # phone number, so looking up only by src_id would create a second
+            # user without the original user's whitelist entry.
+            user = await self.find_by_phone(phone_number)
+
         if user:
             update_data = {}
             if name and user.name is not None:
                 update_data["name"] = name
             if phone_number and user.phone_number != phone_number:
                 update_data["phone_number"] = phone_number
+            if lid != phone_number and user.src_id != lid:
+                update_data["src_id"] = lid
 
             if update_data:
                 return await self.update(user.id, update_data)
