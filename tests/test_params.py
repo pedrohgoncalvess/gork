@@ -47,6 +47,10 @@ class ParseParamsTests(unittest.TestCase):
             {"direction": "bottom-left"},
         )
 
+    def test_sticker_resize_is_parsed(self):
+        self.assertEqual(parse_params("!sticker :resize"), {"resize": True})
+        self.assertEqual(parse_params("!sticker :resize=false"), {"resize": "false"})
+
 
 if __name__ == "__main__":
     unittest.main()

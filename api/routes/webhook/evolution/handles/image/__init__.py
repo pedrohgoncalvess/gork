@@ -351,6 +351,7 @@ async def handle_sticker_command(
 
             is_random = _param_enabled(params.get("random", "false"))
             blur = _parse_blur(params)
+            resize = _param_enabled(params.get("resize", "false"))
             webp_base64 = await static_sticker(
                 db_message,
                 db,
@@ -363,6 +364,7 @@ async def handle_sticker_command(
                 caption_text=caption_text,
                 no_color=no_color,
                 direction=params.get("direction"),
+                resize=resize,
             )
             await send_sticker(remote_id, webp_base64)
         return
@@ -493,6 +495,7 @@ async def handle_sticker_command(
     fill = _fill_enabled(params)
     font_size = params.get("font-size", "l")
     blur = _parse_blur(params)
+    resize = _param_enabled(params.get("resize", "false"))
     dead = _param_enabled(params.get("dead", "false"))
     no_color = (
         _param_enabled(params["no-color"])
@@ -510,10 +513,12 @@ async def handle_sticker_command(
             fill,
             blur=blur,
             font_size_param=font_size,
+            source_image_bytes=source_bytes,
             context=context,
             dead=dead,
             no_color=no_color,
             direction=params.get("direction"),
+            resize=resize,
         )
     except Exception as error:
         await logger.error(

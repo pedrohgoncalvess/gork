@@ -49,7 +49,14 @@ async def init_agents() -> None:
             model_db_id = models_rel.get(model_id)
 
             if not model_db_id:
-                await logger.error("Agents", "Initialization", f"Model {model_id} not found.")
+                from database.models.manager import Model
+                new_model = Model(
+                    name=model_id.split("/")[-1] if "/" in model_id else model_id,
+                    openrouter_id=model_id
+                )
+                inserted_model = await model_repo.insert(new_model)
+                model_db_id = inserted_model.id
+                models_rel[model_id] = model_db_id
 
             response_format_str = None
             schema_path_str = agent_data.get("schema_path")

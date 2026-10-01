@@ -25,6 +25,7 @@ PARAMS = (
     "duration",
     "audio",
     "quality",
+    "resize",
 )
 
 PARAM_DEFAULTS = {
@@ -37,6 +38,7 @@ PARAM_DEFAULTS = {
     "dead": False,
     "text": False,
     "audio": False,
+    "resize": False,
 }
 
 

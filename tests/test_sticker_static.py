@@ -56,6 +56,74 @@ class StaticStickerImageTests(unittest.TestCase):
 
 
 class StaticStickerFallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resize_calls_ai_agent_and_uses_its_result(self):
+        command = SimpleNamespace(
+            quoted_message_id=None,
+            content="!sticker :resize",
+            media_id=1,
+            message_id="command-id",
+            user_id=10,
+        )
+        source = BytesIO()
+        Image.new("RGB", (20, 10), "red").save(source, format="PNG")
+        resized = BytesIO()
+        Image.new("RGB", (512, 512), "green").save(resized, format="PNG")
+
+        with (
+            patch(
+                "api.routes.webhook.evolution.handles.image.sticker_static.MessageRepository"
+            ) as message_repo,
+            patch(
+                "agents.execution.resize_image.resize_image_agent",
+                new=AsyncMock(
+                    return_value=base64.b64encode(resized.getvalue()).decode("ascii")
+                ),
+            ) as resize_agent,
+        ):
+            message_repo.return_value.find_by_id = AsyncMock(return_value=None)
+            result = await static_sticker(
+                command,
+                AsyncMock(),
+                source_image_bytes=source.getvalue(),
+                resize=True,
+            )
+
+        resize_agent.assert_awaited_once()
+        with Image.open(BytesIO(base64.b64decode(result))) as sticker:
+            red, green, blue = sticker.getpixel((256, 256))[:3]
+            self.assertGreater(green, 120)
+            self.assertLess(red, 5)
+            self.assertLess(blue, 5)
+
+    async def test_resize_failure_does_not_silently_create_original_sticker(self):
+        command = SimpleNamespace(
+            quoted_message_id=None,
+            content="!sticker :resize",
+            media_id=1,
+            message_id="command-id",
+            user_id=10,
+        )
+        source = BytesIO()
+        Image.new("RGB", (20, 10), "red").save(source, format="PNG")
+
+        with (
+            patch(
+                "api.routes.webhook.evolution.handles.image.sticker_static.MessageRepository"
+            ) as message_repo,
+            patch(
+                "agents.execution.resize_image.resize_image_agent",
+                new=AsyncMock(side_effect=RuntimeError("provider failed")),
+            ),
+        ):
+            message_repo.return_value.find_by_id = AsyncMock(return_value=None)
+            with self.assertRaisesRegex(RuntimeError, "provider failed"):
+                await static_sticker(
+                    command,
+                    AsyncMock(),
+                    source_image_bytes=source.getvalue(),
+                    resize=True,
+                )
+
     async def test_corrupted_profile_picture_uses_random_fallback(self):
         command = SimpleNamespace(
             quoted_message_id=1,

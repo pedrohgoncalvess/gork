@@ -55,6 +55,28 @@ class ImageGenerationPipelineTests(unittest.TestCase):
             "agents/prompts/modify-image.md",
         )
 
+    def test_resize_agent_uses_the_configured_image_editor(self):
+        config_path = Path(__file__).parents[1] / "agents" / "agents.yaml"
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+
+        agents = {agent["name"]: agent for agent in config["agents"]}
+
+        self.assertEqual(
+            agents["resize-image"]["model"],
+            "black-forest-labs/flux.2-klein-4b",
+        )
+
+    def test_resize_prompt_forbids_creative_changes(self):
+        prompt_path = Path(__file__).parents[1] / "agents" / "prompts" / "resize-image.md"
+        prompt = prompt_path.read_text(encoding="utf-8").lower()
+
+        self.assertIn("scale every visible element proportionally", prompt)
+        self.assertIn("do not invent", prompt)
+        self.assertIn("duplicate", prompt)
+        self.assertIn("written text", prompt)
+        self.assertIn("transparent empty padding", prompt)
+        self.assertIn("never crop or stretch", prompt)
+
     def test_image_reference_detects_real_mime_type(self):
         png_reference = _image_reference(
             _encoded_image("PNG"),

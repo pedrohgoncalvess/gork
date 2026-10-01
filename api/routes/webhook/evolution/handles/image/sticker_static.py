@@ -119,6 +119,7 @@ async def static_sticker(
         dead: bool = False,
         no_color: bool = False,
         direction: str | None = None,
+        resize: bool = False,
 ) -> str:
     message_repo = MessageRepository(db)
 
@@ -182,6 +183,35 @@ async def static_sticker(
                 raise
             # A stale/corrupted profile object must behave like a missing photo.
             img = await _random_image()
+
+    if resize:
+        from agents.execution.resize_image import resize_image_agent
+        from log import logger as sticker_logger
+        await sticker_logger.info(
+            'Sticker', 'Resize', f'Resize requested. Image size: {img.size}'
+        )
+        buffer_tmp = BytesIO()
+        img.save(buffer_tmp, format='PNG')
+        b64_to_resize = base64.b64encode(buffer_tmp.getvalue()).decode('utf-8')
+        resized_b64 = await resize_image_agent(
+            db,
+            db_message.user_id,
+            db_message,
+            b64_to_resize,
+            (512, 512),
+        )
+        try:
+            img = _open_image(base64.b64decode(resized_b64, validate=True))
+        except Exception as error:
+            await sticker_logger.error(
+                'Sticker',
+                'Resize',
+                f'Failed to open resized image: {type(error).__name__}: {error}',
+            )
+            raise
+        await sticker_logger.info(
+            'Sticker', 'Resize', f'Resize successful. New size: {img.size}'
+        )
 
     if remove_background:
         # rembg/onnxruntime are intentionally loaded only for this feature.

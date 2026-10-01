@@ -62,3 +62,8 @@ agents:
     model: qwen/qwen3.6-flash
     prompt_path: agents/prompts/resume.md
     schema_path: agents/schemas/resume.json
+
+  - name: resize-image
+    description: Agent responsible for resizing images to given dimensions.
+    model: black-forest-labs/flux.2-klein-4b
+    prompt_path: agents/prompts/resize-image.md
