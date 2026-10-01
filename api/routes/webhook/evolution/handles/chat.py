@@ -63,6 +63,7 @@ from utils import INSTANCE_NUMBER
 MAX_WEB_SEARCH_DEPTH = 10
 MAX_DATABASE_QUERY_ITERATIONS = 10
 DATABASE_QUERY_STOP_ITERATION = 7
+MAX_RESPONSE_PARSE_RETRIES = 1
 
 
 def _sent_message_id(send_response: Any) -> str | None:
@@ -208,11 +209,62 @@ async def _dispatch_gork_response(
         web_search_depth: int = 0,
         database_query_iteration: int = 0,
         database_context: str = "",
+        parse_retry_count: int = 0,
 ):
     try:
         parsed = await parse_gork_response(raw_response)
     except ValueError as e:
         await logger.error("ConversationHandle", "ParseError", f"Failed to parse raw_response: '{raw_response}'. Error: {str(e)}")
+
+        if parse_retry_count < MAX_RESPONSE_PARSE_RETRIES:
+            retry_instruction = (
+                "[RESPONSE FORMAT RETRY]\n"
+                "The previous model response did not follow the required JSON output contract. "
+                "Answer the user's latest message again. Return exactly one JSON object with "
+                "reasoning, queries, and actions; do not return a bare array, message ID, or text "
+                "outside the JSON object."
+            )
+            additional_context = "\n\n".join(
+                part for part in (database_context.strip(), retry_instruction) if part
+            )
+            try:
+                retry_response = await conversation_agent(
+                    db=db,
+                    user_id=user.id,
+                    last_message_id=db_message.id,
+                    group_id=group_id,
+                    additional_context=additional_context,
+                )
+            except Exception as retry_error:
+                await logger.error(
+                    "ConversationHandle",
+                    "ParseRetryError",
+                    f"Failed to retry malformed model response: {retry_error}",
+                )
+                await send_message(
+                    remote_id,
+                    "Desculpa, tive um problema interno. Tenta de novo",
+                    message_id,
+                )
+                return
+
+            await _dispatch_gork_response(
+                raw_response=retry_response,
+                remote_id=remote_id,
+                message_id=message_id,
+                user=user,
+                db=db,
+                db_message=db_message,
+                scheduler=scheduler,
+                context=context,
+                group_id=group_id,
+                web_search_depth=web_search_depth,
+                database_query_iteration=database_query_iteration,
+                database_context=database_context,
+                parse_retry_count=parse_retry_count + 1,
+            )
+            return
+
         await send_message(remote_id, "Desculpa, tive um problema interno. Tenta de novo", message_id)
         return
 
