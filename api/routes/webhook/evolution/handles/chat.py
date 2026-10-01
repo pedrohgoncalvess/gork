@@ -55,6 +55,7 @@ from services import (
     log_blocked_request,
 )
 from services.action_rate_limiter import reserve_audio_action
+from services.outgoing_mentions import resolve_outgoing_mentions
 from tts import text_to_speech
 from utils import INSTANCE_NUMBER
 
@@ -621,11 +622,18 @@ async def _dispatch_action(
 
     if action_type == "message":
         content = action.get("content", "")
+        send_options = {}
+        if group_id is not None and "@" in content:
+            group_users = await UserRepository(db).find_users_by_group_id(group_id)
+            content, mentioned = resolve_outgoing_mentions(content, group_users)
+            if mentioned:
+                send_options["mentioned"] = mentioned
         send_response = await send_message(
             remote_id,
             content,
             db_message.message_id,
             is_first_message,
+            **send_options,
         )
         await _persist_sent_text_response(
             db=db,

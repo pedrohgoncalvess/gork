@@ -27,6 +27,7 @@ async def send_message(
     message_id: str = None,
     is_first: bool = True,
     simulate_typing: bool = True,
+    mentioned: list[str] | None = None,
 ):
     headers = {
         "Content-Type": "application/json",
@@ -43,6 +44,8 @@ async def send_message(
         "number": contact_id,
         "text": message,
     }
+    if mentioned:
+        payload["mentioned"] = list(dict.fromkeys(mentioned))
 
     if message_id and is_first:
         payload.update({"quoted": {"key": {"id": message_id}}})
