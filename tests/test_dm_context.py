@@ -1,10 +1,14 @@
+import json
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from sqlalchemy.dialects import postgresql
 
 from agents.execution.conversation import (
+    _build_group_request_messages,
+    _load_group_reply_chain,
     _format_direct_message_content,
     _format_group_message_content,
 )
@@ -32,6 +36,57 @@ class _CapturingSession:
 
 
 class DirectMessageContextTests(unittest.IsolatedAsyncioTestCase):
+    def _group_message(self, message_id, sender_name, user_id, content, quoted_id=None, group_id=1):
+        return SimpleNamespace(
+            id=message_id, sender=SimpleNamespace(name=sender_name),
+            user_id=user_id, content=content, quoted_message_id=quoted_id,
+            group_id=group_id, media_id=None,
+            created_at=datetime(2026, 9, 30, 17, 53),
+        )
+
+    async def test_pedro_current_turn_prioritizes_own_reply_chain_over_marcus_interview(self):
+        marcus = self._group_message(177009, "Marcus", 2, "Caguei mole agr é fazer entrevista")
+        murillo = self._group_message(177012, "Murillo Nahas", 3, "vtncccc")
+        gork = self._group_message(177014, "Gork", 9, "Vtn tbm kkkk", 177012)
+        pedro = self._group_message(177018, "Pedro Henrique Gonçalves", 1, "vtn tbm kkkk", 177014)
+        lookup = {message.id: message for message in (marcus, murillo, gork, pedro)}
+        chain = await _load_group_reply_chain(pedro, lookup, SimpleNamespace(find_by_id=AsyncMock()))
+        messages = _build_group_request_messages(
+            "prompt", pedro, [marcus, murillo, gork], chain, lookup, {}, {}, 9,
+        )
+        current = json.loads(messages[-1]["content"])
+        self.assertEqual(current["context_type"], "CURRENT_MESSAGE")
+        self.assertEqual(current["current_message_id"], 177018)
+        self.assertEqual(current["current_sender_name"], "Pedro Henrique Gonçalves")
+        self.assertEqual([entry["role"] for entry in current["reply_chain"]], ["user", "assistant"])
+        self.assertNotIn("Marcus", json.dumps(current))
+        self.assertIn("sender=Marcus", messages[2]["content"])
+        self.assertEqual(len(messages), 4)  # chain appears once, inside the current envelope
+
+    async def test_marcus_reply_does_not_inherit_jose_name_from_parallel_topic(self):
+        jose = self._group_message(177034, "José Thomaz", 4, "Vc simpatiza com negros?")
+        gork = self._group_message(177020, "Gork", 9, "Boa sorte aí, Marcus! Vai dar certo!")
+        marcus = self._group_message(177035, "Marcus", 2, "Vlw gork. Tudo de bom pra ti", 177020)
+        lookup = {message.id: message for message in (jose, gork, marcus)}
+        chain = await _load_group_reply_chain(marcus, lookup, SimpleNamespace(find_by_id=AsyncMock()))
+        messages = _build_group_request_messages("prompt", marcus, [gork, jose], chain, lookup, {}, {}, 9)
+        current = json.loads(messages[-1]["content"])
+        self.assertEqual(current["current_sender_name"], "Marcus")
+        self.assertNotIn("José Thomaz", json.dumps(current))
+
+    async def test_reply_chain_loads_old_ancestors_and_stops_at_cycle_or_other_group(self):
+        current = self._group_message(30, "Pedro", 1, "continua", 20)
+        parent = self._group_message(20, "Gork", 9, "resposta", 10)
+        ancestor = self._group_message(10, "Pedro", 1, "pergunta", 20)
+        repo = SimpleNamespace(find_by_id=AsyncMock(return_value=ancestor))
+        lookup = {20: parent}
+        chain = await _load_group_reply_chain(current, lookup, repo)
+        self.assertEqual([message.id for message in chain], [10, 20])
+        repo.find_by_id.assert_awaited_once_with(10)
+        ancestor.group_id = 2
+        chain = await _load_group_reply_chain(current, {20: parent}, repo)
+        self.assertEqual([message.id for message in chain], [20])
+
     async def test_private_history_is_scoped_to_dm_and_both_participants(self):
         session = _CapturingSession()
         repository = MessageRepository(session)
