@@ -315,13 +315,8 @@ async def conversation_agent(
         await logger.error("Agent", "Conversation", f"Agent {agent_name} not found.")
         return ""
 
-    # Keep existing per-user model overrides attached to the original
-    # conversation agent while using the smaller DM-specific prompt.
-    model_agent = agent
-    model_agent = await agent_repo.find_by_name("conversation") or agent
-
     model = await model_conversation_repo.resolve_agent_model(
-        model_agent,
+        agent,
         user_id=user_id,
         group_id=group_id,
     )

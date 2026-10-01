@@ -1,19 +1,13 @@
 agents:
-  - name: conversation
-    description: Agent responsible for natural conversation and chatting.
-    model: qwen/qwen3.6-flash
-    prompt_path: agents/prompts/conversation.md
-    schema_path: agents/schemas/conversation.json
-
   - name: conversation-dm
     description: Agent responsible for direct WhatsApp conversations.
-    model: qwen/qwen3.6-flash
+    model: openai/gpt-6-luna
     prompt_path: agents/prompts/conversation-dm.md
     schema_path: agents/schemas/conversation.json
 
   - name: conversation-group
     description: Agent responsible for WhatsApp group conversations.
-    model: qwen/qwen3.6-flash
+    model: openai/gpt-6-luna
     prompt_path: agents/prompts/conversation-group.md
     schema_path: agents/schemas/conversation.json
 
