@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from types import SimpleNamespace
 from typing import Any, Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -734,21 +735,45 @@ async def _dispatch_action(
 
     elif action_type == "sticker":
         message_id = params.get("message_id")
-        referred_message = None
+        referred_message = db_message
         if message_id is not None:
             try:
                 referred_message = await message_repo.find_by_id(int(message_id))
             except (ValueError, TypeError):
                 referred_message = await message_repo.find_by_message_id(str(message_id))
-        
-        if not referred_message:
-            referred_message = db_message
+        elif db_message.quoted_message_id:
+            referred_message = await message_repo.find_by_id(db_message.quoted_message_id)
+
+        if (
+            referred_message is None
+            or referred_message.group_id != group_id
+            or (group_id is None and referred_message.user_id != user.id)
+        ):
+            await send_message(
+                remote_id,
+                "Não encontrei essa mensagem nesta conversa para criar a figurinha.",
+                db_message.message_id,
+            )
+            return True
+
+        # Model selection is a virtual !sticker quoting the selected message,
+        # not a command stored in that participant's message. The existing
+        # quoted-message pipeline chooses their caption, media/profile photo.
+        sticker_request = SimpleNamespace(
+            id=db_message.id,
+            message_id=db_message.message_id,
+            user_id=user.id,
+            group_id=group_id,
+            content="!sticker",
+            media_id=None,
+            quoted_message_id=referred_message.id,
+        )
 
         await handle_sticker_command(
             remote_id=remote_id,
-            db_message=referred_message,
+            db_message=sticker_request,
             db=db,
-            context=context,
+            context={},
             action_params=params,
         )
         return True

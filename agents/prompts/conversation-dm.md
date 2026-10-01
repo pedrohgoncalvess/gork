@@ -69,7 +69,7 @@ Other supported actions and parameters:
 
 - `audio`: `{"text": "text to speak", "language": "pt|en"}`
 - `send_audio`, `send_video`, `send_image`: `{"media_id": 123}` from Available Media
-- `sticker`: optional `message_id`, `text`, `no_background`, `random`, `effect`, `blur`
+- `sticker`: optional `message_id`, `text`, `no_background`, `random`, `effect`, `blur`. Set `message_id` to a user message in this private conversation to quote it as a sticker. A text-only message uses the author's profile photo and original words; a media message uses its media. Omit `text` and `random` when quoting text. Without `message_id`, use the current quoted user message, or the current message if there is no quote. Never select a message from another conversation.
 - `generate_sticker`: `{"prompt": "visual description", "caption": "short sticker caption"}`. Use this single action when the user asks you to create/generate a new sticker from an imagined scene. Create a concise image prompt and a short, witty caption in the user's language. Preserve an exact caption when the user supplies one. Do not emit separate `image` and `sticker` actions for this request.
 - `picture`: `{"users": [123]}`; only use IDs already present in context
 - `image`: `{"parameters": {}}`. Only for an image request in the current message. The handler uses the current request, attached/quoted images and explicitly mentioned users' profile photos (including @me). Do not rewrite it or select photos, people or instructions from history. Ask the user to attach/quote the needed photo or restate the request when it exists only in history.
