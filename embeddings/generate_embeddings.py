@@ -2,7 +2,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models.manager import Interaction
+from database.models.manager import Interaction, Model
 from database.operations.content import MessageRepository
 from database.operations.manager import InteractionRepository, ModelRepository
 from external import embeddings
@@ -26,6 +26,7 @@ async def generate_text_embeddings(
         db: Optional[AsyncSession] = None,
         user_id: Optional[int] = None,
         group_id: Optional[int] = None,
+        embedding_model: Optional[Model] = None,
 ) -> list[float]:
     if not text or not text.strip():
         return []
@@ -35,7 +36,7 @@ async def generate_text_embeddings(
         return []
 
     model_repo = ModelRepository(db)
-    embedding_model = await model_repo.get_default_embedding_model()
+    embedding_model = embedding_model or await model_repo.get_default_embedding_model()
     if not embedding_model:
         await logger.error("Embeddings", "GenerateTextEmbeddings", "Default embedding model not found.")
         return []

@@ -41,6 +41,8 @@ from database.operations.manager import (
 from external import completions
 from external.evolution import send_audio, send_message
 from llm_access import (
+    save_observation,
+    search_observations,
     get_conversation_messages,
     get_group_messages,
     get_group_users,
@@ -375,6 +377,7 @@ async def _continue_with_database_queries(
                 group_id=group_id,
                 user_id=user.id,
                 query=query,
+                source_message_id=db_message.id,
             )
         )
 
@@ -417,12 +420,24 @@ async def _execute_database_query(
         group_id: Optional[int],
         user_id: int,
         query: dict,
+        source_message_id: int | None = None,
 ) -> dict[str, Any]:
     query_type = query.get("query_type")
     params = _query_parameters(query)
 
     try:
-        if query_type == "get_conversation_messages":
+        if query_type == "save_observation":
+            result = await save_observation(
+                db=db, group_id=group_id, user_id=user_id,
+                content=params.get("content"), source_message_id=source_message_id,
+            )
+        elif query_type == "search_observations":
+            result = await search_observations(
+                db=db, group_id=group_id, user_id=user_id,
+                query=params.get("query"), mode=params.get("mode", "hybrid"),
+                limit=params.get("limit"),
+            )
+        elif query_type == "get_conversation_messages":
             if group_id is not None:
                 raise ValueError(
                     "get_conversation_messages is only available in a private conversation."
@@ -439,7 +454,8 @@ async def _execute_database_query(
             )
         elif group_id is None:
             raise ValueError(
-                "Only get_conversation_messages is available in a private conversation."
+                "Only get_conversation_messages, save_observation, and search_observations "
+                "are available in a private conversation."
             )
         elif query_type == "get_group_users":
             result = await get_group_users(
@@ -701,7 +717,21 @@ async def _dispatch_action(
     elif action_type == "audio":
         text = params.get("text", "")
         language = params.get("language", "pt")
-        audio_b64 = await text_to_speech(text, language=language)
+        speech_options = {}
+        if params.get("tone") is not None:
+            speech_options["tone"] = params["tone"]
+        try:
+            audio_b64 = await text_to_speech(
+                text, language=language, user_id=user.id, group_id=group_id,
+                **speech_options,
+            )
+        except Exception as error:
+            await logger.error("ConversationHandle", "SpeechGenerationError", str(error))
+            await send_message(
+                remote_id, text or "Não consegui gerar o áudio. Tente novamente.",
+                db_message.message_id,
+            )
+            return True
         await send_audio(remote_id, audio_b64, db_message.message_id)
         return True
 
@@ -810,11 +840,15 @@ async def _dispatch_action(
         return True
 
     elif action_type == "image":
+        image_options = {}
+        if params.get("spontaneous") is True:
+            image_options["action_params"] = params
         await handle_image_command(
             remote_id=remote_id,
             user_id=user.id,
             db_message=db_message,
             context=context,
+            **image_options,
         )
         return True
 

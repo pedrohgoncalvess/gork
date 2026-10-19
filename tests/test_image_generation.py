@@ -403,6 +403,43 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.message_repo.find_by_id.assert_not_awaited()
         self.message_repo.find_by_message_id.assert_not_awaited()
 
+    async def test_spontaneous_image_uses_scene_without_model_selected_people(self):
+        self.message.content = "meu PC vai decolar"
+        with (
+            patch("api.routes.webhook.evolution.handles.image.generate_image", new=AsyncMock(
+                return_value=ImageGenerationResult(success=True, image_base64=self.current_image),
+            )) as generate,
+            patch("api.routes.webhook.evolution.handles.image.send_image", new=AsyncMock()),
+        ):
+            await handle_image_command("chat", 1, self.message, action_params={
+                "spontaneous": True, "prompt": "  Um computador com turbinas  ",
+                "mentioned_users": [88], "message_id": 999,
+            })
+        generate.assert_awaited_once_with(
+            1, self.message, action_params={"prompt": "Um computador com turbinas"},
+            context=None, feedback_remote_id="chat",
+        )
+
+    async def test_spontaneous_image_action_reaches_handler(self):
+        from api.routes.webhook.evolution.handles.chat import _dispatch_action
+
+        module = "api.routes.webhook.evolution.handles.chat"
+        params = {"spontaneous": True, "prompt": "Um computador com turbinas"}
+        with (
+            patch(f"{module}.get_disabled_command_message", new=AsyncMock(return_value=None)),
+            patch(f"{module}.MessageRepository", return_value=self.message_repo),
+            patch(f"{module}.handle_image_command", new=AsyncMock()) as handle,
+        ):
+            await _dispatch_action(
+                action_type="image", action={"parameters": params},
+                remote_id="chat", user=SimpleNamespace(id=1), db=AsyncMock(),
+                db_message=self.message, scheduler=None, context={}, group_id=None,
+            )
+        handle.assert_awaited_once_with(
+            remote_id="chat", user_id=1, db_message=self.message,
+            context={}, action_params=params,
+        )
+
 
 class IdentityReferencePreservationTests(unittest.TestCase):
     def test_reference_limit_never_silently_drops_an_identity(self):

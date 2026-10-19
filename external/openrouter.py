@@ -205,6 +205,31 @@ def _payload_for_log(payload: dict) -> dict:
     return sanitized_payload
 
 
+async def generate_speech(payload: dict) -> bytes:
+    """Call the speech endpoint, which returns audio bytes rather than JSON."""
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}",
+    }
+    async with httpx.AsyncClient(timeout=120) as client:
+        response = await client.post(
+            f"{OPENROUTER_ENDPOINT}/audio/speech", json=payload, headers=headers,
+        )
+        response.raise_for_status()
+        content_type = response.headers.get("content-type", "").split(";", 1)[0].strip()
+        expected_type = {"mp3": "audio/mpeg", "pcm": "audio/pcm"}.get(payload.get("response_format"))
+        if not expected_type or content_type != expected_type or not response.content:
+            raise RuntimeError("OpenRouter returned no valid speech audio.")
+        await openrouter_logger.info(
+            "OpenRouter", "Speech",
+            f"Model: {payload.get('model')} - Voice: {payload.get('voice')} - "
+            f"Input characters: {len(payload.get('input', ''))} - "
+            f"Generation: {response.headers.get('x-generation-id', 'unknown')} - "
+            f"Audio bytes: {len(response.content)}",
+        )
+        return response.content
+
+
 async def completions(payload: dict, is_online: bool = False) -> dict:
     start = datetime.now()
     headers = {

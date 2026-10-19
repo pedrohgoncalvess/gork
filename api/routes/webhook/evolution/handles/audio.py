@@ -1,14 +1,13 @@
 import base64
-from io import BytesIO
+import json
 from typing import Optional
-
-import soundfile as sf
 
 from database import PgConnection
 from database.models.manager import Agent, Command, Interaction, Model
 from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from external.evolution import download_media, send_message
+from services.audio_conversion import audio_to_wav
 
 
 async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[int], command: bool = False) -> str:
@@ -47,12 +46,7 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
                 )
         audio_base64, _ = await download_media(message_id)
         audio_bytes = base64.b64decode(audio_base64)
-        audio_data, sample_rate = sf.read(BytesIO(audio_bytes))
-
-        wav_buffer = BytesIO()
-        sf.write(wav_buffer, audio_data, sample_rate, format='WAV')
-        wav_buffer.seek(0)
-        wav_bytes = wav_buffer.read()
+        wav_bytes = await audio_to_wav(audio_bytes)
 
         base64_audio = base64.b64encode(wav_bytes).decode("utf-8")
 

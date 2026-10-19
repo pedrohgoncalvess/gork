@@ -10,7 +10,8 @@ from database.models.content import Media, Message
 
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 100
-MAX_MESSAGE_LIMIT = 500
+DEFAULT_MESSAGE_LIMIT = 200
+MAX_MESSAGE_LIMIT = 2_000
 
 
 def _limit(value: int | None) -> int:
@@ -21,7 +22,7 @@ def _limit(value: int | None) -> int:
 
 def _message_limit(value: int | None) -> int:
     if value is None:
-        return DEFAULT_LIMIT
+        return DEFAULT_MESSAGE_LIMIT
     return max(1, min(value, MAX_MESSAGE_LIMIT))
 
 

@@ -9,6 +9,7 @@ PARAMS = (
     "no-color",
     "random",
     "effect",
+    "size",
     "fill",
     "direction",
     "url",
@@ -19,6 +20,7 @@ PARAMS = (
     "blur",
     "dead",
     "text",
+    "tweet",
     "user",
     "when",
     "granularity",
@@ -37,6 +39,7 @@ PARAM_DEFAULTS = {
     "fill": False,
     "dead": False,
     "text": False,
+    "tweet": False,
     "audio": False,
     "resize": False,
 }

@@ -1,1 +1,1 @@
-from tts.piper_ import text_to_speech
+from agents.execution.audio_generation import text_to_speech

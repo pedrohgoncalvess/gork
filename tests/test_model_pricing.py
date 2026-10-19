@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from database.models.manager import Interaction
 from database.operations.manager import InteractionRepository
-from services.model_pricing import model_price_values, set_model_price_refresh
+from database.operations.manager.interaction import MissingModelPriceError
+from agents.execution.conversation import _record_conversation_interaction
+from services.model_pricing import (
+    model_price_values,
+    refresh_model_prices_and_reschedule,
+    set_model_price_refresh,
+)
 
 
 class ModelPricingTests(unittest.TestCase):
@@ -50,6 +56,32 @@ class ModelPricingTests(unittest.TestCase):
 
 
 class ModelPricingScheduleTests(unittest.IsolatedAsyncioTestCase):
+    async def test_initial_and_recurring_timer_start_after_fetch_finishes(self):
+        started = datetime(2026, 10, 1, 12, 0, tzinfo=timezone.utc)
+        finished = started + timedelta(minutes=3)
+        for schedule in (set_model_price_refresh, refresh_model_prices_and_reschedule):
+            with self.subTest(schedule=schedule.__name__):
+                scheduler = Mock()
+                with patch("services.model_pricing.datetime") as clock:
+                    clock.now.return_value = started
+
+                    async def fetch():
+                        scheduler.add_job.assert_not_called()
+                        clock.now.return_value = finished
+
+                    with patch(
+                        "services.model_pricing.refresh_model_prices_safely",
+                        new=AsyncMock(side_effect=fetch),
+                    ) as refresh:
+                        await schedule(scheduler)
+
+                refresh.assert_awaited_once_with()
+                scheduler.add_job.assert_called_once()
+                self.assertEqual(
+                    scheduler.add_job.call_args.kwargs["run_date"],
+                    finished + timedelta(hours=2),
+                )
+
     async def test_initial_refresh_anchors_non_catch_up_two_hour_interval(self):
         scheduler = unittest.mock.Mock()
 
@@ -73,6 +105,68 @@ class ModelPricingScheduleTests(unittest.IsolatedAsyncioTestCase):
 
 
 class InteractionPricingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_missing_snapshot_is_fetched_and_persisted_with_interaction(self):
+        empty, model_result = Mock(), Mock()
+        empty.scalar_one_or_none.return_value = None
+        model_result.scalar_one_or_none.return_value = SimpleNamespace(openrouter_id="new/model")
+        db = Mock()
+        db.execute = AsyncMock(side_effect=[empty, model_result])
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+
+        async def flush():
+            db.add.call_args.args[0].id = 77
+
+        db.flush = AsyncMock(side_effect=flush)
+        repository = InteractionRepository(Interaction, db)
+        with patch("external.openrouter.get_models", new=AsyncMock(return_value=[
+            {"id": "new/model", "pricing": {"prompt": "0.000001", "completion": "0.000002"}}
+        ])) as catalog:
+            interaction = await repository.create_interaction(
+                model_id=76, user_id=9, group_id=1, user_prompt="hello",
+                input_tokens=4, output_tokens=2, actual_cost=0.003,
+            )
+        catalog.assert_awaited_once()
+        price = db.add.call_args_list[0].args[0]
+        self.assertEqual(price.model_id, 76)
+        self.assertEqual(price.prompt_price, Decimal("0.000001"))
+        self.assertEqual(interaction.model_price_id, 77)
+        self.assertEqual(interaction.actual_cost, 0.003)
+        db.commit.assert_awaited_once()
+
+    async def test_missing_catalog_price_does_not_invent_zero_cost(self):
+        for catalog_error in (False, True):
+            with self.subTest(catalog_error=catalog_error):
+                empty, model_result = Mock(), Mock()
+                empty.scalar_one_or_none.return_value = None
+                model_result.scalar_one_or_none.return_value = SimpleNamespace(openrouter_id="new/model")
+                db = Mock(execute=AsyncMock(side_effect=[empty, model_result]))
+                catalog = AsyncMock(return_value=[])
+                if catalog_error:
+                    catalog.side_effect = RuntimeError("catalog offline")
+                with patch("external.openrouter.get_models", new=catalog):
+                    with self.assertRaises(MissingModelPriceError):
+                        await InteractionRepository(Interaction, db).create_interaction(
+                            model_id=76, user_id=9, group_id=1, user_prompt="hello", input_tokens=4,
+                        )
+                db.add.assert_not_called()
+
+    async def test_unpriced_usage_does_not_block_completed_conversation(self):
+        repository = SimpleNamespace(create_interaction=AsyncMock(side_effect=MissingModelPriceError("missing")))
+        with patch("agents.execution.conversation.logger.warn", new=AsyncMock()) as warn:
+            await _record_conversation_interaction(
+                repository, model_id=76, user_id=9, group_id=1,
+                input_tokens=4, output_tokens=2, actual_cost=0.003,
+            )
+        self.assertEqual(warn.call_args.args[1], "ConversationUsageUnpriced")
+        self.assertIn("input_tokens=4", warn.call_args.args[2])
+        self.assertIn("actual_cost=0.003", warn.call_args.args[2])
+
+    async def test_unrelated_database_errors_are_not_silenced(self):
+        repository = SimpleNamespace(create_interaction=AsyncMock(side_effect=RuntimeError("database offline")))
+        with self.assertRaisesRegex(RuntimeError, "database offline"):
+            await _record_conversation_interaction(repository, model_id=76)
+
     async def test_interaction_points_to_latest_resolved_price_snapshot(self):
         price = SimpleNamespace(id=17)
         result = Mock()

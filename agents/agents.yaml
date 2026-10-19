@@ -33,6 +33,11 @@ agents:
     prompt_path: agents/prompts/remember-formatter.md
     schema_path: agents/schemas/remember-formatter.json
 
+  - name: audio-generation
+    description: Agent responsible for synthesizing WhatsApp voice replies through OpenRouter.
+    model: google/gemini-3.8-flash-lite-tts
+    prompt_path: agents/prompts/audio-generation.md
+
   - name: transcriber
     description: Agent specialized in transcribing audio files.
     model: google/gemini-2.5-flash-lite

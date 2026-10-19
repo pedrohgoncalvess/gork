@@ -44,6 +44,8 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
     - "search_messages": Search messages by text
     - "get_user_images": Get images sent by user
     - "get_conversation_messages": Get messages from the current private conversation
+    - "save_observation": Save a contextual note in the current group or DM
+    - "search_observations": Retrieve contextual notes by term or semantic similarity
 
     Action Types:
     - "message": Requires "content" and "language" fields

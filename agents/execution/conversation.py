@@ -10,6 +10,7 @@ from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MediaRepository, MessageRepository
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
+from database.operations.manager.interaction import MissingModelPriceError
 from external import completions
 from log import logger
 from utils import INSTANCE_NUMBER, project_root
@@ -19,6 +20,20 @@ from pathlib import Path
 
 
 MAX_REPLY_CHAIN_LENGTH = 8
+
+
+async def _record_conversation_interaction(repository, **values):
+    try:
+        await repository.create_interaction(**values)
+    except MissingModelPriceError as error:
+        # A completed answer must not disappear because catalog pricing is absent.
+        # Keep usage visible for reconciliation, without inventing a zero cost.
+        await logger.warn(
+            "Agent", "ConversationUsageUnpriced",
+            f"{error}; model_id={values['model_id']} user_id={values['user_id']} "
+            f"group_id={values['group_id']} input_tokens={values['input_tokens']} "
+            f"output_tokens={values['output_tokens']} actual_cost={values.get('actual_cost')}",
+        )
 
 
 async def _load_group_reply_chain(message, messages_by_id, message_repo):
@@ -393,7 +408,8 @@ async def conversation_agent(
     resp = req["choices"][0]["message"]["content"]
 
     interaction_repo = InteractionRepository(Interaction, db)
-    _ = await interaction_repo.create_interaction(
+    await _record_conversation_interaction(
+        interaction_repo,
         model_id=model.id,
         user_id=user_id,
         group_id=group_id,
@@ -402,7 +418,8 @@ async def conversation_agent(
         response=resp,
         input_tokens=req["usage"]["prompt_tokens"],
         output_tokens=req["usage"]["completion_tokens"],
-        system_behavior=system_prompt
+        system_behavior=system_prompt,
+        actual_cost=req["usage"].get("cost"),
     )
 
     return resp

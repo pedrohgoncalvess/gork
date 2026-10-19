@@ -23,6 +23,7 @@ COMMANDS = [
             (":direction", "Ativa o preenchimento e escolhe qual região do recorte preservar; o padrão é o centro.", [("top", "Cima"), ("bottom", "Baixo"), ("left", "Esquerda"), ("right", "Direita"), ("top-left", "Cima e esquerda"), ("top-right", "Cima e direita"), ("bottom-left", "Baixo e esquerda"), ("bottom-right", "Baixo e direita")]),
             (":url", "Usa uma URL do Twitter/X como fonte do sticker.", [("https://x.com/usuario/status/12345", "Link do post"),]),
             (":text", "Usa o texto do post do Twitter/X como legenda do sticker.", [("t", "Verdadeiro"),]),
+            (":tweet", "Cria um cartão de tweet com autor, avatar, texto e foto. Use !sticker :tweet <link> ou !sticker :tweet=<link>; também aceita posts só de texto.", [("t", "Verdadeiro"),]),
             (":effect", "Adiciona um efeito e transforma imagens estáticas em figurinhas animadas.", [
                 ("explosion", "Explosão ActionVFX repetida no centro da imagem/vídeo"),
                 ("nuclear-bomb", "Explosão nuclear sobreposta à imagem/vídeo"),
@@ -36,6 +37,8 @@ COMMANDS = [
             ]),
             (":cut", "Recorta o video da figurinha animada. Use segundos ou minuto:segundo, com inicio-fim.", [("43-46", "Corta de 43s a 46s"), ("1:00-1:05", "Corta de 1min a 1min05s"), ("43-", "Corta a partir de 43s ate o limite"), ("-46", "Corta os segundos anteriores a 46s")]),
             (":speed", "Altera a velocidade da figurinha animada. Com rotation, define a quantidade de voltas; com explosion, define quantas vezes a explosão se repete.", [("2.0", "2 voltas com rotation ou 2 explosões com explosion"), ("10", "10 explosões durante o sticker com explosion"), ("0.5", "Metade da velocidade nos demais efeitos")]),
+            (":size", "Multiplica o tamanho da área do bulge ou da explosão; padrão 1, de 0.1 a 3.", [("0.5", "Metade do tamanho"), ("2", "Dobro do tamanho")]),
+            (":duration", "Duração da figurinha com explosion em segundos (0.1 a 7); padrão 3 para imagem e até 6 para vídeo. Com :cut, respeita o limite do recorte e a duração da mídia.", [("2", "Dois segundos"), ("5", "Cinco segundos")]),
             (":blur", "Aplica desfoque à imagem do sticker (0 a 100).", [("50", "Desfoque médio (50)"), ("100", "Desfoque máximo (100)")]),
             (":resize", "Redimensiona a imagem para virar figurinha, mantendo a proporção. (Se for só :resize, ajusta para o tamanho padrão).", [("t", "Verdadeiro")]),
             (":dead", "Cria uma lápide com a foto e o texto da mensagem citada.", [("t", "Verdadeiro"),]),

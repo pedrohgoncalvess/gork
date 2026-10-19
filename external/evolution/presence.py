@@ -48,7 +48,7 @@ def calculate_audio_delay_ms(audio_input: str | bytes) -> int:
     if not raw_bytes:
         return MIN_AUDIO_DELAY_MS
 
-    # Try parsing WAV header first (common for Piper TTS)
+    # Try parsing WAV headers before estimating compressed audio duration.
     if raw_bytes.startswith(b"RIFF") and b"WAVE" in raw_bytes[:16]:
         try:
             with wave.open(io.BytesIO(raw_bytes), "rb") as wav_file:

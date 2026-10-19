@@ -41,6 +41,58 @@ class InvalidURLError(Exception):
     pass
 
 
+@dataclass
+class TwitterCardDownloadResult:
+    text: str | None = None
+    author_name: str = ""
+    author_handle: str = ""
+    avatar_bytes: bytes | None = None
+    photo_bytes: bytes | None = None
+    error: str | None = None
+
+
+async def download_twitter_card(url: str) -> TwitterCardDownloadResult:
+    """Fetch a static tweet card without requiring or downloading a video."""
+    try:
+        validated_url = _validate_twitter_url(url)
+        tweet_id = re.match(r"^/[\w-]+/status/(\d+)", urlparse(validated_url).path)[1]
+        status = await _fetch_twitter_status(tweet_id)
+    except Exception:
+        return TwitterCardDownloadResult(error="Não foi possível carregar o tweet. Confira o link e tente novamente.")
+    if not status:
+        return TwitterCardDownloadResult(error="Tweet indisponível ou privado.")
+
+    user = status.get("user") or {}
+    handle = user.get("screen_name") or urlparse(validated_url).path.split("/")[1]
+    result = TwitterCardDownloadResult(
+        text=_extract_twitter_text(status, preserve_linebreaks=True),
+        author_name=user.get("name") or handle,
+        author_handle=handle,
+    )
+    avatar_url = user.get("profile_image_url_https") or user.get("profile_image_url")
+    photo_url = _find_twitter_photo_url(status)
+    # Video tweets use their preview image; the card remains a static sticker.
+    if not photo_url:
+        photo_url = next((
+            media.get("media_url_https") or media.get("media_url")
+            for media in _twitter_media(status)
+            if media.get("type") in {"video", "animated_gif"}
+        ), None)
+
+    async def optional_image(image_url: str | None) -> bytes | None:
+        if not image_url:
+            return None
+        image_bytes, _ = await _download_twitter_photo(image_url)
+        return image_bytes
+
+    result.avatar_bytes, result.photo_bytes = await asyncio.gather(
+        optional_image(avatar_url), optional_image(photo_url),
+    )
+    if not result.text and not result.photo_bytes:
+        result.error = "Não foi possível obter o texto ou a imagem do tweet."
+    return result
+
+
 _TWITTER_REGEX = re.compile(
     rf"https?://(?:www\.)?(?:{'|'.join(map(re.escape, TWITTER_DOMAINS))})/"\
     r"[\w-]+/status/\d+(?:[/?#][^\s]*)?",
@@ -85,18 +137,21 @@ async def download_twitter_media(twitter_url: str) -> TwitterMediaDownloadResult
     except InvalidURLError as e:
         return TwitterMediaDownloadResult(None, None, str(e))
 
-    tweet_id = urlparse(validated_url).path.rstrip("/").split("/")[-1]
-    status_task = asyncio.create_task(_fetch_twitter_status(tweet_id))
-    video_bytes, video_text, video_error = await _download_twitter_video(validated_url)
-
+    tweet_id = re.match(r"^/[\w-]+/status/(\d+)", urlparse(validated_url).path)[1]
     try:
-        status = await status_task
+        status = await _fetch_twitter_status(tweet_id)
     except Exception:
         status = None
 
-    tweet_text = _extract_twitter_text(status) or video_text
-    if video_bytes:
-        return TwitterMediaDownloadResult(video_bytes, "video", None, tweet_text)
+    tweet_text = _extract_twitter_text(status)
+    video_error = None
+    video_url = _find_twitter_video_url(status)
+    if video_url:
+        # Download the attached stream directly: extracting the tweet URL with
+        # yt-dlp also considers videos belonging to the quoted tweet.
+        video_bytes, _, video_error = await _download_twitter_video(video_url)
+        if video_bytes:
+            return TwitterMediaDownloadResult(video_bytes, "video", None, tweet_text)
 
     photo_url = _find_twitter_photo_url(status)
     if photo_url:
@@ -181,18 +236,36 @@ def _twitter_media(status: dict | None) -> list[dict]:
     if not status:
         return []
 
-    media = []
-    for post in (status, status.get("quoted_status")):
-        if not isinstance(post, dict):
+    # yt-dlp merges quoted_tweet.mediaDetails into extended_entities for
+    # syndication responses. The original list (including an empty one) is
+    # authoritative for attachments belonging to the requested tweet.
+    media = status.get("mediaDetails")
+    if media is None and isinstance(status.get("quoted_tweet"), dict):
+        media = []
+    if not isinstance(media, list):
+        media = (status.get("extended_entities") or {}).get("media") or []
+    return [item for item in media if isinstance(item, dict)]
+
+
+def _find_twitter_video_url(status: dict | None) -> str | None:
+    for media in _twitter_media(status):
+        if media.get("type") not in {"video", "animated_gif"}:
             continue
-        entities = post.get("extended_entities") or {}
-        for item in entities.get("media") or []:
-            if isinstance(item, dict):
-                media.append(item)
-    return media
+        variants = (media.get("video_info") or {}).get("variants") or []
+        mp4_variants = [
+            variant for variant in variants
+            if isinstance(variant, dict) and variant.get("url")
+            and variant.get("content_type") == "video/mp4"
+        ]
+        if mp4_variants:
+            return max(mp4_variants, key=lambda variant: variant.get("bitrate") or 0)["url"]
+        for variant in variants:
+            if isinstance(variant, dict) and variant.get("url"):
+                return variant["url"]
+    return None
 
 
-def _extract_twitter_text(status: dict | None) -> str | None:
+def _extract_twitter_text(status: dict | None, *, preserve_linebreaks: bool = False) -> str | None:
     if not status:
         return None
 
@@ -204,6 +277,8 @@ def _extract_twitter_text(status: dict | None) -> str | None:
         media_link = media.get("url")
         if media_link:
             text = text.replace(media_link, "")
+    if preserve_linebreaks:
+        return "\n".join(re.sub(r"[^\S\n]+", " ", line).strip() for line in text.splitlines()).strip() or None
     return re.sub(r"\s+", " ", text).strip() or None
 
 

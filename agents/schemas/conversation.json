@@ -14,12 +14,12 @@
         "properties": {
           "query_type": {
             "type": "string",
-            "enum": ["get_group_users", "get_group_messages", "get_user_messages", "search_messages", "get_user_images", "get_conversation_messages"],
+            "enum": ["get_group_users", "get_group_messages", "get_user_messages", "search_messages", "get_user_images", "get_conversation_messages", "save_observation", "search_observations"],
             "description": "The type of database query to execute"
           },
           "parameters": {
             "type": "object",
-            "description": "Query-specific parameters (e.g. user_id, limit, query)"
+            "description": "Query-specific parameters. save_observation: content (1-4000 characters). search_observations: optional query, mode (term/similarity/hybrid; default hybrid), limit (default 10, max 50); omit query for recent notes. Observation scope is automatically the current group or DM. Message queries: optional limit (default 200, max 2000)."
           }
         },
         "required": ["query_type", "parameters"]

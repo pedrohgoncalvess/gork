@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from io import BytesIO
 from typing import Optional, List
@@ -11,6 +12,7 @@ from api.routes.webhook.evolution.handles.image.gallery import list_images, sear
 from api.routes.webhook.evolution.handles.image.generate import generate_image
 from api.routes.webhook.evolution.handles.image.picture import get_pictures
 from api.routes.webhook.evolution.handles.social import (
+    download_twitter_card,
     download_twitter_media,
     extract_twitter_url,
     remove_twitter_urls,
@@ -147,12 +149,17 @@ async def handle_image_command(
         context: dict | None = None,
 ):
     try:
+        # Only spontaneous creations accept a model-written scene. Explicit
+        # requests keep the user's words; never forward model-selected people.
+        spontaneous_prompt = None
+        if action_params and action_params.get("spontaneous") is True:
+            prompt = action_params.get("prompt")
+            if isinstance(prompt, str) and prompt.strip():
+                spontaneous_prompt = {"prompt": prompt.strip()}
         result = await generate_image(
             user_id,
             db_message,
-            # Image requests use only the current user's words and mentions.
-            # Agent-generated prompts/users may incorporate conversation history.
-            action_params=None,
+            action_params=spontaneous_prompt,
             context=context,
             feedback_remote_id=remote_id,
         )
@@ -301,12 +308,43 @@ async def handle_sticker_command(
     else:
         context_quote_content = ""
 
+    tweet_param = params.get("tweet", "false")
+    tweet_url = extract_twitter_url(str(tweet_param))
     twitter_url = (
-        params.get("url")
+        tweet_url
+        or params.get("url")
         or extract_twitter_url(current_content)
         or extract_twitter_url(quoted_content)
         or extract_twitter_url(context_quote_content)
     )
+    if tweet_url or _param_enabled(tweet_param):
+        if not twitter_url:
+            await send_message(remote_id, "Use !sticker :tweet <link do Twitter/X> ou responda a uma mensagem com o link.")
+            return
+        from api.routes.webhook.evolution.handles.image.sticker_tweet import render_tweet_sticker
+
+        await logger.info("TweetSticker", "DownloadStarted", f"message_id={db_message.message_id} url={twitter_url}")
+        result = await download_twitter_card(twitter_url)
+        if result.error:
+            await logger.error("TweetSticker", "DownloadFailed", f"message_id={db_message.message_id} error={result.error}")
+            await send_message(remote_id, result.error)
+            return
+        await logger.info("TweetSticker", "DownloadCompleted", f"message_id={db_message.message_id} photo={bool(result.photo_bytes)} avatar={bool(result.avatar_bytes)}")
+        try:
+            webp_base64 = await asyncio.to_thread(render_tweet_sticker, result)
+        except Exception as error:
+            await _log_image_command_error("tweet_sticker_failed", f"{type(error).__name__}: {error}")
+            await send_message(remote_id, "Não foi possível montar a figurinha do tweet. Tente novamente.")
+            return
+        try:
+            await send_sticker(remote_id, webp_base64)
+        except Exception as error:
+            await _log_image_command_error("tweet_sticker_send_failed", f"message_id={db_message.message_id} {type(error).__name__}: {error}")
+            await send_message(remote_id, "A figurinha do tweet foi criada, mas não consegui enviá-la. Tente novamente.")
+            return
+        await logger.info("TweetSticker", "Sent", f"message_id={db_message.message_id}")
+        return
+
     if twitter_url:
         result = await download_twitter_media(twitter_url)
         if not result.is_success:
@@ -344,6 +382,8 @@ async def handle_sticker_command(
                 blur=blur,
                 no_color=no_color,
                 direction=params.get("direction"),
+                effect_size=params.get("size", 1.0),
+                duration=params.get("duration"),
             )
             await send_animated_sticker(remote_id, sticker_url)
         else:
@@ -474,6 +514,8 @@ async def handle_sticker_command(
                 blur=blur,
                 no_color=no_color,
                 direction=params.get("direction"),
+                effect_size=params.get("size", 1.0),
+                duration=params.get("duration"),
             )
         except Exception as error:
             await logger.error(

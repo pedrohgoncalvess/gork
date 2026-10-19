@@ -23,8 +23,9 @@ async def startup_event():
         "Migrations",
         f"Applied {applied_migrations} pending migration(s).",
     )
-    await set_model_price_refresh(scheduler)
     await init_agents()
+    # Register newly configured models before collecting their price snapshots.
+    await set_model_price_refresh(scheduler)
     await init_assets()
     await set_remembers(scheduler)
     scheduler.start()

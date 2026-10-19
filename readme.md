@@ -40,6 +40,7 @@
 - **📡 Webhook-based**: Real-time message processing via Evolution API
 - **🔌 Multi-service Integration**: Search, translation, transcription, image generation
 - **🎨 Sticker Creation**: Convert images to stickers with effects
+- **🐦 Tweet Stickers**: `!sticker :tweet https://x.com/user/status/12345` creates a 512 × 512 tweet card with author, avatar, original text and the first photo (or video preview). Also works with text-only tweets and links in quoted messages. Long text is shortened with an ellipsis to keep it readable.
 - **📹 Media Handling**: Support for images, videos, audio transcription
 - **📝 Post Management**: Create, read, and list blog posts
 - **🖼️ Gallery & Projects**: Dynamic content display

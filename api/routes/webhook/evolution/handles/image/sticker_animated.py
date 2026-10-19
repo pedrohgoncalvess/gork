@@ -44,6 +44,18 @@ EXPLOSION_MAX_FRAME_RATIO = 0.65
 EXPLOSION_MAX_SOURCE_FRAMES = 60
 
 
+def _bounded_effect_number(value, default: float, minimum: float, maximum: float) -> float:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(number):
+        return default
+    return max(minimum, min(maximum, number))
+
+
 def _parse_cut_timestamp(value: str) -> float | None:
     value = value.strip()
     if not value:
@@ -158,11 +170,13 @@ def _square_video_filter(
     )
 
 
-def _apply_bulge_effect(frame: Image.Image, intensity: float = 0.5) -> Image.Image:
+def _apply_bulge_effect(
+        frame: Image.Image, intensity: float = 0.5, size: float = 1.0,
+) -> Image.Image:
     img_array = np.array(frame)
     height, width = img_array.shape[:2]
     center_x, center_y = width // 2, height // 2
-    max_radius = math.sqrt(center_x ** 2 + center_y ** 2)
+    max_radius = math.sqrt(center_x ** 2 + center_y ** 2) * size
     new_img = np.copy(img_array)
     for y in range(height):
         for x in range(width):
@@ -514,6 +528,7 @@ def _apply_explosion_effect(
         frame: Image.Image,
         progress: float,
         explosion_frames: list[Image.Image] | None = None,
+        size: float = 1.0,
 ) -> Image.Image:
     if not explosion_frames:
         return frame
@@ -524,8 +539,8 @@ def _apply_explosion_effect(
     )
     overlay = explosion_frames[overlay_index]
     scale = min(
-        frame.width * EXPLOSION_MAX_FRAME_RATIO / overlay.width,
-        frame.height * EXPLOSION_MAX_FRAME_RATIO / overlay.height,
+        frame.width * EXPLOSION_MAX_FRAME_RATIO * size / overlay.width,
+        frame.height * EXPLOSION_MAX_FRAME_RATIO * size / overlay.height,
     )
     overlay = overlay.resize(
         (
@@ -720,6 +735,7 @@ def _add_effect_to_gif_frames(
         effect: str,
         preserve_alpha: bool = False,
         effect_speed: float = 1.0,
+        effect_size: float = 1.0,
 ) -> str:
     gif = Image.open(gif_path)
     frames = []
@@ -746,7 +762,7 @@ def _add_effect_to_gif_frames(
                 total_frames = 30
             progress = frame_count / max(total_frames - 1, 1)
             if normalized_effect == "bulge":
-                frame_effect = _apply_bulge_effect(frame, 0.5)
+                frame_effect = _apply_bulge_effect(frame, 0.5, size=effect_size)
             elif normalized_effect == "pinch":
                 frame_effect = _apply_pinch_effect(frame, 0.5)
             elif normalized_effect == "swirl":
@@ -765,6 +781,7 @@ def _add_effect_to_gif_frames(
                     frame,
                     explosion_progress,
                     action_explosion_frames,
+                    size=effect_size,
                 )
             elif normalized_effect in NUCLEAR_BOMB_EFFECTS:
                 frame_effect = _apply_nuclear_bomb_effect(
@@ -859,6 +876,7 @@ def _compress_webp_sticker(
         fill: bool = False,
         max_fps: int | None = None,
         direction: str | None = None,
+        duration: float | None = None,
 ) -> str:
     configs = [
         {"scale": 512, "fps": 30, "quality": 85, "duration": 7},
@@ -874,6 +892,9 @@ def _compress_webp_sticker(
     ]
     if max_fps is not None:
         configs = [config for config in configs if config["fps"] <= max_fps]
+
+    if duration is not None:
+        configs = [dict(config, duration=duration) for config in configs]
 
     for cfg in configs:
         tmp_out = output_path + ".tmp.webp"
@@ -1008,6 +1029,8 @@ def _build_animated_sticker_webp(
         blur: int = 0,
         no_color: bool = False,
         direction: str | None = None,
+        effect_size: float = 1.0,
+        duration: float | None = None,
 ) -> tuple[str, list[str]]:
     with tempfile.NamedTemporaryFile(suffix='.media', delete=False) as f:
         f.write(media_bytes)
@@ -1037,6 +1060,7 @@ def _build_animated_sticker_webp(
 
         speed = max(float(speed), 0.1)
         normalized_effect = str(effect or "").strip().lower()
+        effect_size = _bounded_effect_number(effect_size, 1.0, 0.1, 3.0)
         source_fps = (
             VIDEO_REMBG_FPS
             if remove_background
@@ -1058,6 +1082,14 @@ def _build_animated_sticker_webp(
             cut_start, cut_duration = cut_range
             cut_args = ["-ss", f"{cut_start:.3f}"]
             source_duration = cut_duration
+        if normalized_effect == "explosion" and duration is not None:
+            requested_duration = _bounded_effect_number(
+                duration, source_duration, 0.1, VIDEO_CUT_MAX_DURATION,
+            )
+            source_duration = (
+                min(requested_duration, source_duration)
+                if cut_range else requested_duration
+            )
         timeline_speed = (
             1.0
             if normalized_effect in {"rotation", "explosion"}
@@ -1129,6 +1161,7 @@ def _build_animated_sticker_webp(
                 effect,
                 preserve_alpha=effect_preserves_alpha,
                 effect_speed=speed,
+                effect_size=effect_size,
             )
 
         if no_color:
@@ -1165,6 +1198,11 @@ def _build_animated_sticker_webp(
                 fill=fill,
                 max_fps=None if static_source else 20,
                 direction=direction,
+                duration=(
+                    source_duration
+                    if normalized_effect == "explosion" and duration is not None
+                    else None
+                ),
             )
         return output_webp_path, temp_paths
 
@@ -1187,6 +1225,8 @@ async def animated_sticker_from_bytes(
         blur: int = 0,
         no_color: bool = False,
         direction: str | None = None,
+        effect_size: float = 1.0,
+        duration: float | None = None,
 ) -> str:
     output_webp_path, temp_paths = await asyncio.to_thread(
         _build_animated_sticker_webp,
@@ -1201,6 +1241,8 @@ async def animated_sticker_from_bytes(
         blur,
         no_color,
         direction,
+        effect_size,
+        duration,
     )
     try:
         gif_url = await _upload_to_tmpfile(output_webp_path)
@@ -1224,6 +1266,8 @@ async def animated_sticker(
         blur: int = 0,
         no_color: bool = False,
         direction: str | None = None,
+        effect_size: float = 1.0,
+        duration: float | None = None,
 ) -> str:
     if caption_text is None:
         caption_text = clean_text(db_message.content) if db_message.content else None
@@ -1241,4 +1285,6 @@ async def animated_sticker(
         blur=blur,
         no_color=no_color,
         direction=direction,
+        effect_size=effect_size,
+        duration=duration,
     )

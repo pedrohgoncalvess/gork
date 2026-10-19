@@ -9,7 +9,35 @@ from database.models.manager import Interaction, Model, ModelPrice
 from database.operations import BaseRepository
 
 
+class MissingModelPriceError(ValueError):
+    """Usage cannot be priced; this is not a completion failure."""
+
+
 class InteractionRepository(BaseRepository[Interaction]):
+
+    async def _fetch_missing_price(self, model_id: int) -> ModelPrice:
+        # Models added after the scheduled catalog refresh need a snapshot now.
+        from external.openrouter import get_models
+        from services.model_pricing import model_price_values
+
+        result = await self.db.execute(select(Model).filter(Model.id == model_id))
+        model = result.scalar_one_or_none()
+        if model is None:
+            raise MissingModelPriceError(f"No model found for model_id={model_id}")
+        try:
+            catalog = await get_models()
+        except Exception as error:
+            raise MissingModelPriceError(
+                f"Pricing catalog unavailable for model_id={model_id}"
+            ) from error
+        remote = next((item for item in catalog if item.get("id") == model.openrouter_id), None)
+        pricing = remote.get("pricing") if remote else None
+        if not isinstance(pricing, dict) or not pricing:
+            raise MissingModelPriceError(f"No pricing snapshot found for model_id={model_id}")
+        price = ModelPrice(**model_price_values(model_id, pricing))
+        self.db.add(price)
+        await self.db.flush()
+        return price
 
     async def get_consumption_by_user(
             self,
@@ -181,7 +209,7 @@ class InteractionRepository(BaseRepository[Interaction]):
         )
         model_price = price_result.scalar_one_or_none()
         if model_price is None:
-            raise ValueError(f"No pricing snapshot found for model_id={model_id}")
+            model_price = await self._fetch_missing_price(model_id)
 
         interaction = Interaction(
             model_price_id=model_price.id,
