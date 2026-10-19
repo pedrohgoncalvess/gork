@@ -5,3 +5,7 @@ LICENSE
 .python-version
 **/__pycache__
 .venv
+artifacts/admin
+admin-test-results.txt
+waha-test-results.txt
+test-results.txt

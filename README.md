@@ -26,6 +26,10 @@
 
 ### Key Components
 
+The administration panel runs in the existing FastAPI service at `/admin`.
+See [panel setup and features](docs/admin-panel.md) for WhatsApp pairing, whitelist,
+blacklist, agents, models and command permissions.
+
 - **Core Application**: FastAPI server handling webhook events
 - **Database**: PostgreSQL with pgvector extension for embeddings
 - **Storage**: MinIO S3-compatible object storage

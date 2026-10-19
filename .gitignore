@@ -145,6 +145,8 @@ celerybeat.pid
 waha-qr.png
 test-results.txt
 waha-test-results.txt
+admin-test-results.txt
+artifacts/admin/
 .venv
 # env/
 # venv/

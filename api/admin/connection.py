@@ -1,0 +1,67 @@
+"""Server-side WAHA management; provider credentials never reach the browser."""
+from contextlib import asynccontextmanager
+
+import httpx
+from fastapi import HTTPException
+
+from external.waha.base import request, segment, waha_api, waha_api_key, waha_session
+from scripts.waha_session import configure_session
+from utils import get_env_var
+
+
+@asynccontextmanager
+async def provider_errors():
+    try:
+        yield
+    except httpx.HTTPStatusError as error:
+        code = error.response.status_code
+        if code == 404:
+            raise HTTPException(409, "Inicie a conexão antes de solicitar o QR code ou código.") from None
+        if code in (400, 409, 422):
+            raise HTTPException(409, "A sessão ainda não está pronta. Atualize o estado e tente novamente.") from None
+        raise HTTPException(502, "O WhatsApp não respondeu como esperado. Confira a configuração do WAHA.") from None
+    except (httpx.RequestError, RuntimeError):
+        raise HTTPException(502, "Não foi possível acessar o WAHA. Verifique se o serviço está em execução.") from None
+
+
+async def connection_status() -> dict:
+    async with provider_errors():
+        try:
+            result = await request("GET", f"/api/sessions/{segment(waha_session)}")
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code != 404:
+                raise
+            return {"session": waha_session, "status": "NOT_CREATED", "me": None}
+    me = result.get("me") or {}
+    return {"session": waha_session, "status": result.get("status", "UNKNOWN"),
+            "me": {"id": me.get("id"), "name": me.get("pushName")} if me else None}
+
+
+async def start_connection() -> dict:
+    async with provider_errors():
+        await configure_session(get_env_var("WAHA_WEBHOOK_URL") or "http://webhook_fastapi:9001/webhook/waha")
+        return await connection_status()
+
+
+async def qr_image() -> bytes:
+    async with provider_errors():
+        if not waha_api_key:
+            raise RuntimeError("WAHA key not configured")
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(f"{waha_api}/api/{segment(waha_session)}/auth/qr", headers={
+                "X-Api-Key": waha_api_key, "Accept": "image/png",
+            })
+            response.raise_for_status()
+        if not response.content.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise HTTPException(502, "O WAHA não retornou um QR code válido.")
+        return response.content
+
+
+async def pairing_code(phone_number: str) -> dict:
+    async with provider_errors():
+        result = await request("POST", f"/api/{segment(waha_session)}/auth/request-code",
+                               payload={"phoneNumber": phone_number.removeprefix("+")})
+        code = result.get("code")
+        if not isinstance(code, str) or not code.strip():
+            raise HTTPException(502, "O WAHA não retornou um código de conexão.")
+        return {"code": code.strip()}
