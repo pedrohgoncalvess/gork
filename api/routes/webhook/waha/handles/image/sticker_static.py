@@ -1,0 +1,255 @@
+import base64
+import calendar
+import re
+import random
+from datetime import date
+from io import BytesIO
+
+import httpx
+from PIL import Image, ImageFilter, UnidentifiedImageError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from api.routes.webhook.waha.handles.core import clean_text
+from api.routes.webhook.waha.handles.image.sticker_caption import add_caption_to_image
+from api.routes.webhook.waha.handles.image.sticker_crop import fill_alignment
+from api.routes.webhook.waha.handles.image.sticker_filters import remove_color
+from database.models.content import Message
+from database.operations.base import UserRepository
+from database.operations.content import MessageRepository
+from external.waha import download_media
+from s3 import S3Client
+from utils import get_env_var
+
+
+NINJA_KEY = get_env_var("NINJA_KEY")
+
+
+def _open_image(image_bytes: bytes) -> Image.Image:
+    """Open and fully decode an image before its backing buffer is discarded."""
+    if not image_bytes:
+        raise UnidentifiedImageError("empty image payload")
+
+    with Image.open(BytesIO(image_bytes)) as image:
+        image.load()
+        return image.copy()
+
+
+async def _random_image() -> Image.Image:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            "https://api.api-ninjas.com/v1/randomimage",
+            headers={"X-Api-Key": NINJA_KEY},
+        )
+        response.raise_for_status()
+
+    return _open_image(response.content)
+
+
+def _dead_caption(
+        epitaph: str,
+        today: date | None = None,
+        birth_date: date | None = None,
+) -> str:
+    today = today or date.today()
+    if birth_date is None:
+        # Keep every generated age deliberately absurd (at least about 100 years).
+        birth_year = random.randint(1500, max(1500, today.year - 100))
+        birth_month = random.randint(1, 12)
+        last_day = calendar.monthrange(birth_year, birth_month)[1]
+        birth_date = date(birth_year, birth_month, random.randint(1, last_day))
+
+    memorial = f"✝ RIP ✝  {birth_date:%d/%m/%Y} – {today:%d/%m/%Y}"
+    return f"{memorial}|{epitaph}"
+
+
+def _resize_contain_transparent(img: Image.Image, size: tuple) -> Image.Image:
+    target_w, target_h = size
+
+    img.thumbnail((target_w, target_h), Image.Resampling.LANCZOS)
+
+    canvas = Image.new('RGBA', (target_w, target_h), (0, 0, 0, 0))
+
+    offset_x = (target_w - img.width) // 2
+    offset_y = (target_h - img.height) // 2
+    canvas.paste(img, (offset_x, offset_y), mask=img.split()[3])
+
+    return canvas
+
+
+def _resize_cover(
+        img: Image.Image,
+        size: tuple,
+        direction: str | None = None,
+) -> Image.Image:
+    target_w, target_h = size
+    scale = max(target_w / img.width, target_h / img.height)
+    resized_w = round(img.width * scale)
+    resized_h = round(img.height * scale)
+
+    resized = img.resize((resized_w, resized_h), Image.Resampling.LANCZOS)
+    horizontal, vertical = fill_alignment(direction)
+    left = int((resized_w - target_w) * horizontal)
+    top = int((resized_h - target_h) * vertical)
+
+    return resized.crop((left, top, left + target_w, top + target_h))
+
+
+async def _download_media_base64(message_id: str | None) -> str | None:
+    if not message_id:
+        return None
+
+    try:
+        media_data = await download_media(message_id)
+    except Exception:
+        return None
+
+    return media_data[0] if media_data else None
+
+
+async def static_sticker(
+        db_message: Message,
+        db: AsyncSession, random_image: bool = False,
+        remove_background: bool = False, fill: bool = False,
+        blur: int = 0,
+        gork_req: bool = False,
+        font_size_param: str = "l",
+        source_image_bytes: bytes | None = None,
+        caption_text: str | None = None,
+        context: dict | None = None,
+        dead: bool = False,
+        no_color: bool = False,
+        direction: str | None = None,
+        resize: bool = False,
+) -> str:
+    message_repo = MessageRepository(db)
+
+    quoted_message = await message_repo.find_by_id(
+        db_message.quoted_message_id
+    ) if db_message.quoted_message_id else None
+
+    if caption_text is None:
+        caption_text = clean_text(db_message.content) if db_message.content else None
+    if not caption_text and quoted_message:
+        caption_text = clean_text(quoted_message.content) if quoted_message.content else None
+
+    image_base64 = None
+    using_profile_picture = False
+    current_image_id = context.get("image_message") if context else None
+    quoted_image_id = context.get("image_quote") if context else None
+    current_has_media = bool(db_message.media_id or current_image_id)
+    quoted_has_media = bool((quoted_message and quoted_message.media_id) or quoted_image_id)
+
+    if source_image_bytes is None:
+        if current_image_id:
+            image_base64 = await _download_media_base64(current_image_id)
+        if db_message.media_id and image_base64 is None:
+            image_base64 = await _download_media_base64(db_message.message_id)
+        if quoted_image_id and image_base64 is None:
+            image_base64 = await _download_media_base64(quoted_image_id)
+        if quoted_message and quoted_message.media_id and image_base64 is None:
+            image_base64 = await _download_media_base64(quoted_message.message_id)
+
+    if image_base64 is None and source_image_bytes is None and quoted_message:
+        user_repo = UserRepository(db)
+        user = await user_repo.find_by_id(quoted_message.user_id) if not gork_req else await user_repo.find_by_id(db_message.user_id)
+        if not current_has_media and not quoted_has_media:
+            caption_text = clean_text(quoted_message.content) if quoted_message.content else None
+        if caption_text:
+            pattern = r'@(\d+)'
+            mentions = re.findall(pattern, caption_text)
+            users_mentioned = [await user_repo.find_by_phone_or_id(mention) for mention in mentions]
+            users_mentions = zip(users_mentioned, mentions)
+            for user_m, mention in users_mentions:
+                caption_text = caption_text.replace(f"@{mention}", user_m.name)
+        if dead and caption_text and not current_has_media and not quoted_has_media:
+            caption_text = _dead_caption(caption_text)
+        if user.profile_pic_path:
+            s3_client = S3Client()
+            _ = await s3_client.connect()
+            image_base64 = await s3_client.get_image_base64("whatsapp", user.profile_pic_path)
+            using_profile_picture = True
+    if random_image or (image_base64 is None and source_image_bytes is None):
+        img = await _random_image()
+    else:
+        try:
+            image_bytes = (
+                source_image_bytes
+                if source_image_bytes is not None
+                else base64.b64decode(image_base64, validate=True)
+            )
+            img = _open_image(image_bytes)
+        except (TypeError, ValueError, UnidentifiedImageError, OSError):
+            if not using_profile_picture:
+                raise
+            # A stale/corrupted profile object must behave like a missing photo.
+            img = await _random_image()
+
+    if resize:
+        from agents.execution.resize_image import resize_image_agent
+        from log import logger as sticker_logger
+        await sticker_logger.info(
+            'Sticker', 'Resize', f'Resize requested. Image size: {img.size}'
+        )
+        buffer_tmp = BytesIO()
+        img.save(buffer_tmp, format='PNG')
+        b64_to_resize = base64.b64encode(buffer_tmp.getvalue()).decode('utf-8')
+        resized_b64 = await resize_image_agent(
+            db,
+            db_message.user_id,
+            db_message,
+            b64_to_resize,
+            (512, 512),
+        )
+        try:
+            img = _open_image(base64.b64decode(resized_b64, validate=True))
+        except Exception as error:
+            await sticker_logger.error(
+                'Sticker',
+                'Resize',
+                f'Failed to open resized image: {type(error).__name__}: {error}',
+            )
+            raise
+        await sticker_logger.info(
+            'Sticker', 'Resize', f'Resize successful. New size: {img.size}'
+        )
+
+    if remove_background:
+        # rembg/onnxruntime are intentionally loaded only for this feature.
+        from rembg import new_session, remove
+
+        img_bytes = BytesIO()
+        img.save(img_bytes, format='PNG')
+        img_bytes.seek(0)
+        output = remove(img_bytes.read(), session=new_session("u2net"))
+        img = Image.open(BytesIO(output))
+
+    if img.mode != 'RGBA':
+        img = img.convert('RGBA')
+
+    if fill:
+        img = _resize_cover(img, (512, 512), direction)
+    else:
+        img = _resize_contain_transparent(img, (512, 512))
+
+    if blur > 0:
+        blur_level = max(0, min(100, blur))
+        radius = (blur_level / 100.0) * 30.0
+        if radius > 0:
+            img = img.filter(ImageFilter.GaussianBlur(radius))
+
+    if no_color:
+        img = remove_color(img)
+
+    if caption_text:
+        img = add_caption_to_image(
+            img,
+            caption_text,
+            font_size_param,
+            top_font_size_param="s" if dead else None,
+        )
+
+    buffer = BytesIO()
+    img.save(buffer, format='WEBP', quality=95)
+    buffer.seek(0)
+    webp_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return webp_base64

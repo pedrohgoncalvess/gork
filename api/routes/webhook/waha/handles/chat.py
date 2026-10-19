@@ -1,0 +1,1039 @@
+import json
+from datetime import datetime
+from types import SimpleNamespace
+from typing import Any, Optional
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from agents.execution.conversation import conversation_agent
+from agents.parser.conversation import parse_gork_response
+from api.routes.webhook.waha.handles.audio import handle_transcribe_command
+from api.routes.webhook.waha.handles.image import (
+    handle_describe_image_command,
+    handle_generate_sticker_command,
+    handle_image_command,
+    handle_picture_command,
+    handle_sticker_command,
+)
+from api.routes.webhook.waha.handles.reminder import handle_remember_command
+from api.routes.webhook.waha.handles.video import handle_video_command
+from api.routes.webhook.waha.handles.social import handle_instagram_command, handle_twitter_command
+from api.routes.webhook.waha.handles.utility import (
+    handle_help_command,
+    handle_model_command,
+    handle_resume_command,
+    handle_consumption_command
+)
+from api.routes.webhook.waha.handles.favorite import handle_favorite_message
+from api.routes.webhook.waha.handles.image import handle_list_images_command
+from database.models.base import User
+from database.models.content import Message
+from database.models.manager import Interaction
+from database.operations.base import UserRepository
+from database.operations.content import MessageRepository
+from database.operations.manager import (
+    AgentRepository,
+    InteractionRepository,
+    ModelConversationRepository,
+    ModelRepository,
+)
+from external import completions
+from external.waha import send_audio, send_message
+from llm_access import (
+    save_observation,
+    search_observations,
+    get_conversation_messages,
+    get_group_messages,
+    get_group_users,
+    get_user_images,
+    get_user_messages,
+    search_messages,
+)
+from log import logger
+from services import (
+    BLACK_LIST_MESSAGE,
+    get_disabled_command_message,
+    is_feature_blocked,
+    log_blocked_request,
+)
+from services.action_rate_limiter import reserve_audio_action
+from services.outgoing_mentions import resolve_outgoing_mentions
+from tts import text_to_speech
+from utils import INSTANCE_NUMBER
+
+
+MAX_WEB_SEARCH_DEPTH = 10
+MAX_DATABASE_QUERY_ITERATIONS = 10
+DATABASE_QUERY_STOP_ITERATION = 7
+MAX_RESPONSE_PARSE_RETRIES = 1
+
+
+def _sent_message_id(send_response: Any) -> str | None:
+    """Extract the stable stanza ID from the normalized transport response."""
+    if not isinstance(send_response, dict):
+        return None
+
+    candidates = [send_response]
+    data = send_response.get("data")
+    if isinstance(data, dict):
+        candidates.append(data)
+
+    for candidate in candidates:
+        key = candidate.get("key")
+        if isinstance(key, dict) and key.get("id"):
+            return str(key["id"])
+        if candidate.get("messageId"):
+            return str(candidate["messageId"])
+        if candidate.get("message_id"):
+            return str(candidate["message_id"])
+    return None
+
+
+def _sent_message_created_at(send_response: Any) -> datetime:
+    candidates = [send_response] if isinstance(send_response, dict) else []
+    if candidates and isinstance(send_response.get("data"), dict):
+        candidates.append(send_response["data"])
+
+    for candidate in candidates:
+        timestamp = candidate.get("messageTimestamp") or candidate.get("message_timestamp")
+        if timestamp is None:
+            continue
+        try:
+            return datetime.fromtimestamp(float(timestamp))
+        except (TypeError, ValueError, OSError):
+            continue
+    return datetime.now()
+
+
+async def _persist_sent_text_response(
+        db: AsyncSession,
+        send_response: Any,
+        content: str,
+        quoted_message: Message,
+        is_first_message: bool,
+        group_id: Optional[int],
+) -> None:
+    if isinstance(send_response, dict) and send_response.get("error"):
+        await logger.error(
+            "ConversationHandle",
+            "PersistDirectMessage",
+            f"WAHA reported a send error: {send_response.get('error')}",
+        )
+        return
+
+    message_id = _sent_message_id(send_response)
+    if not message_id:
+        await logger.info(
+            "ConversationHandle",
+            "MessageReconciliationDeferred",
+            "Send response had no message ID; waiting for the message.any webhook.",
+        )
+        return
+
+    user_repo = UserRepository(db)
+    gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
+    if not gork_user:
+        await logger.error("ConversationHandle", "PersistDirectMessage", "Gork user not found.")
+        return
+
+    message_repo = MessageRepository(db)
+    await message_repo.find_or_create(
+        message_id=message_id,
+        sender_id=gork_user.id,
+        group_id=group_id,
+        content=content,
+        created_at=_sent_message_created_at(send_response),
+        quoted_message_id=quoted_message.id if is_first_message else None,
+    )
+
+async def handle_conversation_agent(
+        remote_id: str,
+        user: User,
+        db_message: Message,
+        db: AsyncSession,
+        scheduler: AsyncIOScheduler,
+        context: dict
+):
+    """
+    Main handle for the conversation agent (refactored from generic_conversation).
+
+    Calls conversation_agent to get a structured JSON response from the LLM,
+    then dispatches each action to the appropriate existing handle/service.
+    """
+    if (
+        db_message.group_id is not None
+        and await is_feature_blocked(db, user.id, "interaction")
+    ):
+        await log_blocked_request(
+            user_id=user.id,
+            group_id=db_message.group_id,
+            feature="interaction",
+            message_id=db_message.message_id,
+            source="conversation",
+        )
+        await send_message(
+            remote_id,
+            BLACK_LIST_MESSAGE,
+            db_message.message_id,
+        )
+        return
+
+    raw_response = await conversation_agent(
+        db=db,
+        user_id=user.id,
+        last_message_id=db_message.id,
+        group_id=db_message.group_id,
+    )
+
+    await _dispatch_gork_response(
+        raw_response=raw_response,
+        remote_id=remote_id,
+        message_id=db_message.message_id,
+        user=user,
+        db=db,
+        db_message=db_message,
+        scheduler=scheduler,
+        context=context,
+        group_id=db_message.group_id,
+    )
+
+
+async def _dispatch_gork_response(
+        raw_response: str,
+        remote_id: str,
+        message_id: str,
+        user: User,
+        db: AsyncSession,
+        db_message: Message,
+        scheduler: AsyncIOScheduler,
+        context: dict,
+        group_id: Optional[int],
+        web_search_depth: int = 0,
+        database_query_iteration: int = 0,
+        database_context: str = "",
+        parse_retry_count: int = 0,
+):
+    try:
+        parsed = await parse_gork_response(raw_response)
+    except ValueError as e:
+        await logger.error("ConversationHandle", "ParseError", f"Failed to parse raw_response: '{raw_response}'. Error: {str(e)}")
+
+        if parse_retry_count < MAX_RESPONSE_PARSE_RETRIES:
+            retry_instruction = (
+                "[RESPONSE FORMAT RETRY]\n"
+                "The previous model response did not follow the required JSON output contract. "
+                "Answer the user's latest message again. Return exactly one JSON object with "
+                "reasoning, queries, and actions; do not return a bare array, message ID, or text "
+                "outside the JSON object."
+            )
+            additional_context = "\n\n".join(
+                part for part in (database_context.strip(), retry_instruction) if part
+            )
+            try:
+                retry_response = await conversation_agent(
+                    db=db,
+                    user_id=user.id,
+                    last_message_id=db_message.id,
+                    group_id=group_id,
+                    additional_context=additional_context,
+                )
+            except Exception as retry_error:
+                await logger.error(
+                    "ConversationHandle",
+                    "ParseRetryError",
+                    f"Failed to retry malformed model response: {retry_error}",
+                )
+                await send_message(
+                    remote_id,
+                    "Desculpa, tive um problema interno. Tenta de novo",
+                    message_id,
+                )
+                return
+
+            await _dispatch_gork_response(
+                raw_response=retry_response,
+                remote_id=remote_id,
+                message_id=message_id,
+                user=user,
+                db=db,
+                db_message=db_message,
+                scheduler=scheduler,
+                context=context,
+                group_id=group_id,
+                web_search_depth=web_search_depth,
+                database_query_iteration=database_query_iteration,
+                database_context=database_context,
+                parse_retry_count=parse_retry_count + 1,
+            )
+            return
+
+        await send_message(remote_id, "Desculpa, tive um problema interno. Tenta de novo", message_id)
+        return
+
+    queries = parsed.get("queries", [])
+    if queries:
+        await _continue_with_database_queries(
+            parsed=parsed,
+            remote_id=remote_id,
+            message_id=message_id,
+            user=user,
+            db=db,
+            db_message=db_message,
+            scheduler=scheduler,
+            context=context,
+            group_id=group_id,
+            web_search_depth=web_search_depth,
+            database_query_iteration=database_query_iteration,
+            database_context=database_context,
+        )
+        return
+
+    message_type = 0
+    actions = parsed.get("actions", [])
+    if group_id is not None:
+        for action in actions:
+            if await is_feature_blocked(db, user.id, action.get("action", "")):
+                await log_blocked_request(
+                    user_id=user.id,
+                    group_id=group_id,
+                    feature=action.get("action", "interaction"),
+                    message_id=message_id,
+                    source="conversation-action",
+                )
+                await send_message(remote_id, BLACK_LIST_MESSAGE, message_id)
+                return
+
+    for action in actions:
+        action_type = action.get("action")
+
+        try:
+            should_continue = await _dispatch_action(
+                action_type=action_type,
+                action=action,
+                remote_id=remote_id,
+                user=user,
+                db=db,
+                db_message=db_message,
+                scheduler=scheduler,
+                context=context,
+                group_id=group_id,
+                web_search_depth=web_search_depth,
+                database_query_iteration=database_query_iteration,
+                database_context=database_context,
+                is_first_message=message_type == 0
+            )
+
+            if action_type == "message":
+                message_type += 1
+
+            if not should_continue:
+                return
+        except Exception as e:
+            await logger.error("ConversationHandle", f"ActionError:{action_type}", str(e))
+
+
+async def _continue_with_database_queries(
+        parsed: dict,
+        remote_id: str,
+        message_id: str,
+        user: User,
+        db: AsyncSession,
+        db_message: Message,
+        scheduler: AsyncIOScheduler,
+        context: dict,
+        group_id: Optional[int],
+        web_search_depth: int,
+        database_query_iteration: int,
+        database_context: str,
+) -> None:
+    next_iteration = database_query_iteration + 1
+    if next_iteration >= DATABASE_QUERY_STOP_ITERATION:
+        await logger.error(
+            "ConversationHandle",
+            "DatabaseQueryLimit",
+            f"Stopped database query recursion at iteration {next_iteration}."
+        )
+        await send_message(
+            remote_id,
+            "Nao consegui concluir essa consulta com seguranca. Tenta pedir de um jeito mais especifico?",
+            message_id,
+        )
+        return
+
+    if next_iteration > MAX_DATABASE_QUERY_ITERATIONS:
+        await logger.error(
+            "ConversationHandle",
+            "DatabaseQueryLimit",
+            f"Exceeded max database query iterations: {MAX_DATABASE_QUERY_ITERATIONS}."
+        )
+        return
+
+    query_results = []
+    for query in parsed.get("queries", []):
+        query_results.append(
+            await _execute_database_query(
+                db=db,
+                group_id=group_id,
+                user_id=user.id,
+                query=query,
+                source_message_id=db_message.id,
+            )
+        )
+
+    context_chunk = _format_database_query_context(
+        iteration=next_iteration,
+        reasoning=parsed.get("reasoning", ""),
+        next_call_instruction=parsed.get("next_call_instruction", ""),
+        query_results=query_results,
+    )
+    additional_context = "\n\n".join(
+        part for part in [database_context, context_chunk] if part
+    )
+
+    raw_response = await conversation_agent(
+        db=db,
+        user_id=user.id,
+        last_message_id=db_message.id,
+        group_id=group_id,
+        additional_context=additional_context,
+    )
+
+    await _dispatch_gork_response(
+        raw_response=raw_response,
+        remote_id=remote_id,
+        message_id=message_id,
+        user=user,
+        db=db,
+        db_message=db_message,
+        scheduler=scheduler,
+        context=context,
+        group_id=group_id,
+        web_search_depth=web_search_depth,
+        database_query_iteration=next_iteration,
+        database_context=additional_context,
+    )
+
+
+async def _execute_database_query(
+        db: AsyncSession,
+        group_id: Optional[int],
+        user_id: int,
+        query: dict,
+        source_message_id: int | None = None,
+) -> dict[str, Any]:
+    query_type = query.get("query_type")
+    params = _query_parameters(query)
+
+    try:
+        if query_type == "save_observation":
+            result = await save_observation(
+                db=db, group_id=group_id, user_id=user_id,
+                content=params.get("content"), source_message_id=source_message_id,
+            )
+        elif query_type == "search_observations":
+            result = await search_observations(
+                db=db, group_id=group_id, user_id=user_id,
+                query=params.get("query"), mode=params.get("mode", "hybrid"),
+                limit=params.get("limit"),
+            )
+        elif query_type == "get_conversation_messages":
+            if group_id is not None:
+                raise ValueError(
+                    "get_conversation_messages is only available in a private conversation."
+                )
+            gork_user = await UserRepository(db).find_by_phone_or_id(INSTANCE_NUMBER)
+            if not gork_user:
+                raise ValueError("Instance user not found")
+            result = await get_conversation_messages(
+                db=db,
+                user_id=user_id,
+                gork_user_id=gork_user.id,
+                query=params.get("query") or params.get("search") or params.get("text"),
+                limit=params.get("limit"),
+            )
+        elif group_id is None:
+            raise ValueError(
+                "Only get_conversation_messages, save_observation, and search_observations "
+                "are available in a private conversation."
+            )
+        elif query_type == "get_group_users":
+            result = await get_group_users(
+                db=db,
+                group_id=group_id,
+                query=params.get("query") or params.get("search") or params.get("name"),
+                limit=params.get("limit"),
+            )
+        elif query_type in {"get_group_messages", "get_messages"}:
+            result = await get_group_messages(
+                db=db,
+                group_id=group_id,
+                query=params.get("query") or params.get("search") or params.get("text"),
+                limit=params.get("limit"),
+                user_id=_optional_int_param(params, "user_id"),
+                media_type=params.get("media_type"),
+                include_deleted=bool(params.get("include_deleted", False)),
+            )
+        elif query_type == "get_user_messages":
+            user_id = _required_user_id(params)
+            result = await get_user_messages(
+                db=db,
+                group_id=group_id,
+                user_id=user_id,
+                query=params.get("query") or params.get("search") or params.get("text"),
+                limit=params.get("limit"),
+                include_deleted=bool(params.get("include_deleted", False)),
+            )
+        elif query_type == "search_messages":
+            search_query = params.get("query") or params.get("search") or params.get("text")
+            if not search_query:
+                raise ValueError("Missing required parameter: query")
+            result = await search_messages(
+                db=db,
+                group_id=group_id,
+                query=search_query,
+                limit=params.get("limit"),
+                user_id=_optional_int_param(params, "user_id"),
+                media_type=params.get("media_type"),
+                include_deleted=bool(params.get("include_deleted", False)),
+            )
+        elif query_type == "get_user_images":
+            user_id = _required_user_id(params)
+            result = await get_user_images(
+                db=db,
+                group_id=group_id,
+                user_id=user_id,
+                limit=params.get("limit"),
+            )
+        else:
+            raise ValueError(f"Unknown query_type: {query_type}")
+
+        return {
+            "query_type": query_type,
+            "parameters": params,
+            "result": result,
+        }
+    except Exception as error:
+        await logger.error("ConversationHandle", "DatabaseQueryError", str(error))
+        return {
+            "query_type": query_type,
+            "parameters": params,
+            "error": str(error),
+        }
+
+
+def _query_parameters(query: dict) -> dict[str, Any]:
+    params = dict(query.get("parameters", {}) or {})
+    params.pop("group_id", None)
+    return params
+
+
+def _optional_int_param(params: dict[str, Any], key: str) -> int | None:
+    value = params.get(key)
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _required_user_id(params: dict[str, Any]) -> int:
+    user_id = _optional_int_param(params, "user_id")
+    if user_id is None:
+        raise ValueError("Missing required parameter: user_id")
+    return user_id
+
+
+def _format_database_query_context(
+        iteration: int,
+        reasoning: str,
+        next_call_instruction: str,
+        query_results: list[dict[str, Any]],
+) -> str:
+    return (
+        f"## Database Query Iteration {iteration}\n"
+        f"Model reasoning before query:\n{reasoning or '[EMPTY]'}\n\n"
+        f"Next call instruction from model:\n{next_call_instruction or '[EMPTY]'}\n\n"
+        "[DATABASE QUERY RESULTS]\n"
+        f"{json.dumps(query_results, ensure_ascii=False, default=str)}"
+    )
+
+
+async def _run_web_search(
+        db: AsyncSession,
+        user: User,
+        query: str,
+        group_id: Optional[int],
+) -> str:
+    model_repo = ModelRepository(db)
+    agent_repo = AgentRepository(db)
+    model_conv_repo = ModelConversationRepository(db)
+    web_agent = await agent_repo.find_by_name("web-search")
+
+    model = None
+    if web_agent:
+        model = await model_conv_repo.resolve_agent_model(
+            web_agent,
+            user_id=user.id,
+            group_id=group_id
+        )
+
+    if not model:
+        model = await model_repo.get_default_model()
+
+    if web_agent and web_agent.prompt:
+        system_prompt = web_agent.prompt
+    else:
+        system_prompt = (
+            "Use web search to answer the query with current, source-backed information. "
+            "Return a concise summary in the query language. Include source names and URLs when available."
+        )
+
+    payload = {
+        "model": model.openrouter_id,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt,
+            },
+            {
+                "role": "user",
+                "content": query,
+            }
+        ]
+    }
+
+    if web_agent and web_agent.response_format:
+        try:
+            payload["response_format"] = json.loads(web_agent.response_format)
+        except Exception:
+            pass
+
+    req = await completions(payload, is_online=True)
+    result = req["choices"][0]["message"]["content"]
+
+    if web_agent and web_agent.response_format:
+        try:
+            parsed_json = json.loads(result)
+            if isinstance(parsed_json, dict) and "summary" in parsed_json:
+                result = parsed_json["summary"]
+        except Exception:
+            pass
+
+    interaction_repo = InteractionRepository(Interaction, db)
+    _ = await interaction_repo.create_interaction(
+        model_id=model.id,
+        user_id=user.id,
+        group_id=group_id,
+        user_prompt=query,
+        response=result,
+        input_tokens=req["usage"]["prompt_tokens"],
+        output_tokens=req["usage"]["completion_tokens"],
+        system_behavior=system_prompt
+    )
+
+    return result
+
+
+async def _dispatch_action(
+        action_type: str,
+        action: dict,
+        remote_id: str,
+        user: User,
+        db: AsyncSession,
+        db_message: Message,
+        scheduler: AsyncIOScheduler,
+        context: dict,
+        group_id: Optional[int],
+        web_search_depth: int = 0,
+        database_query_iteration: int = 0,
+        database_context: str = "",
+        is_first_message: bool = True
+) -> bool:
+    params = action.get("parameters", {}) or {}
+    message_repo = MessageRepository(db)
+
+    disabled_message = await get_disabled_command_message(
+        db=db,
+        command=action_type,
+        user_id=user.id,
+        group_id=group_id,
+    )
+    if disabled_message:
+        await send_message(remote_id, disabled_message, db_message.message_id)
+        return False
+
+    if (
+        group_id is not None
+        and await is_feature_blocked(db, user.id, action_type)
+    ):
+        await log_blocked_request(
+            user_id=user.id,
+            group_id=group_id,
+            feature=action_type or "interaction",
+            message_id=db_message.message_id,
+            source="action-dispatch",
+        )
+        await send_message(
+            remote_id,
+            BLACK_LIST_MESSAGE,
+            db_message.message_id,
+        )
+        return False
+
+    if action_type in ("audio", "send_audio"):
+        scope = f"group:{group_id}" if group_id is not None else f"user:{user.id}"
+        if not await reserve_audio_action(scope):
+            await logger.info(
+                "ConversationHandle",
+                "AudioCooldown",
+                f"Skipped '{action_type}' in {scope}: audio sent in the last 3 minutes.",
+            )
+            return True
+
+    if action_type == "message":
+        content = action.get("content", "")
+        send_options = {}
+        if group_id is not None and "@" in content:
+            group_users = await UserRepository(db).find_users_by_group_id(group_id)
+            content, mentioned = resolve_outgoing_mentions(content, group_users)
+            if mentioned:
+                send_options["mentioned"] = mentioned
+        send_response = await send_message(
+            remote_id,
+            content,
+            db_message.message_id,
+            is_first_message,
+            **send_options,
+        )
+        await _persist_sent_text_response(
+            db=db,
+            send_response=send_response,
+            content=content,
+            quoted_message=db_message,
+            is_first_message=is_first_message,
+            group_id=group_id,
+        )
+        return True
+
+    elif action_type == "audio":
+        text = params.get("text", "")
+        language = params.get("language", "pt")
+        speech_options = {}
+        if params.get("tone") is not None:
+            speech_options["tone"] = params["tone"]
+        try:
+            audio_b64 = await text_to_speech(
+                text, language=language, user_id=user.id, group_id=group_id,
+                **speech_options,
+            )
+        except Exception as error:
+            await logger.error("ConversationHandle", "SpeechGenerationError", str(error))
+            await send_message(
+                remote_id, text or "Não consegui gerar o áudio. Tente novamente.",
+                db_message.message_id,
+            )
+            return True
+        await send_audio(remote_id, audio_b64, db_message.message_id)
+        return True
+
+    elif action_type in ("send_audio", "send_video", "send_image"):
+        media_id = params.get("media_id")
+        if media_id is not None:
+            from database.operations.content.sup_media import SupMediaRepository
+            from s3.connection import S3Client
+            from external.waha import send_video, send_image
+            
+            media_repo = SupMediaRepository(db)
+            try:
+                media_id_val = int(media_id)
+            except (ValueError, TypeError):
+                media_id_val = media_id
+
+            media = await media_repo.find_by_id(media_id_val)
+            if media:
+                s3_client = S3Client()
+                await s3_client.connect()
+                # get_image_base64 gets any object as base64
+                media_b64 = await s3_client.get_image_base64(media.bucket, media.path)
+                
+                if action_type == "send_audio":
+                    await send_audio(remote_id, media_b64, db_message.message_id)
+                elif action_type == "send_video":
+                    await send_video(remote_id, media_b64)
+                elif action_type == "send_image":
+                    await send_image(remote_id, media_b64)
+        return True
+
+    elif action_type == "sticker":
+        message_id = params.get("message_id")
+        referred_message = db_message
+        if message_id is not None:
+            try:
+                referred_message = await message_repo.find_by_id(int(message_id))
+            except (ValueError, TypeError):
+                referred_message = await message_repo.find_by_message_id(str(message_id))
+        elif db_message.quoted_message_id:
+            referred_message = await message_repo.find_by_id(db_message.quoted_message_id)
+
+        if (
+            referred_message is None
+            or referred_message.group_id != group_id
+            or (group_id is None and referred_message.user_id != user.id)
+        ):
+            await send_message(
+                remote_id,
+                "Não encontrei essa mensagem nesta conversa para criar a figurinha.",
+                db_message.message_id,
+            )
+            return True
+
+        # Model selection is a virtual !sticker quoting the selected message,
+        # not a command stored in that participant's message. The existing
+        # quoted-message pipeline chooses their caption, media/profile photo.
+        sticker_request = SimpleNamespace(
+            id=db_message.id,
+            message_id=db_message.message_id,
+            user_id=user.id,
+            group_id=group_id,
+            content="!sticker",
+            media_id=None,
+            quoted_message_id=referred_message.id,
+        )
+
+        await handle_sticker_command(
+            remote_id=remote_id,
+            db_message=sticker_request,
+            db=db,
+            context={},
+            action_params=params,
+        )
+        return True
+
+    elif action_type == "generate_sticker":
+        await handle_generate_sticker_command(
+            remote_id=remote_id,
+            user_id=user.id,
+            db_message=db_message,
+            db=db,
+            action_params=params,
+            context=context,
+        )
+        return True
+
+    elif action_type == "picture":
+        users_requested = params.get("users", [])
+        user_repo = UserRepository(db)
+
+        resolved_mentions = []
+        for user_id in users_requested:
+            user_obj = None
+            if isinstance(user_id, int):
+                user_obj = await user_repo.find_by_id(user_id)
+            else:
+                try:
+                    user_obj = await user_repo.find_by_id(int(user_id))
+                except (ValueError, TypeError):
+                    user_obj = await user_repo.find_by_phone_or_id(str(user_id))
+            if user_obj:
+                resolved_mentions.append(user_obj)
+
+        await handle_picture_command(remote_id=remote_id, mentions=resolved_mentions)
+        return True
+
+    elif action_type == "image":
+        image_options = {}
+        if params.get("spontaneous") is True:
+            image_options["action_params"] = params
+        await handle_image_command(
+            remote_id=remote_id,
+            user_id=user.id,
+            db_message=db_message,
+            context=context,
+            **image_options,
+        )
+        return True
+
+    elif action_type == "video":
+        await handle_video_command(
+            remote_id=remote_id,
+            user_id=user.id,
+            db_message=db_message,
+            db=db,
+            action_params=params,
+        )
+        return True
+
+    elif action_type == "describe":
+        message_id = params.get("message_id")
+        referred_message = None
+        if message_id is not None:
+            try:
+                referred_message = await message_repo.find_by_id(int(message_id))
+            except (ValueError, TypeError):
+                referred_message = await message_repo.find_by_message_id(str(message_id))
+
+        if not referred_message:
+            referred_message = db_message
+
+        await handle_describe_image_command(
+            remote_id=remote_id,
+            db_message=referred_message,
+            user_id=user.id,
+            db=db,
+            group_id=group_id,
+        )
+        return True
+
+    elif action_type == "transcribe":
+        message_id = params.get("message_id")
+        target_msg_id = db_message.message_id
+        if message_id is not None:
+            try:
+                ref_msg = await message_repo.find_by_id(int(message_id))
+                if ref_msg:
+                    target_msg_id = ref_msg.message_id
+            except (ValueError, TypeError):
+                target_msg_id = str(message_id)
+
+        await handle_transcribe_command(remote_id, target_msg_id, {"data": {}}, user.id, group_id)
+        return True
+
+    elif action_type == "remember":
+        dt = params.get("datetime", "")
+        topic = params.get("topic", "")
+        remember_text = f"{dt} {topic}".strip()
+        await handle_remember_command(
+            scheduler=scheduler,
+            remote_id=remote_id,
+            message_id=db_message.message_id,
+            user_id=user.id,
+            treated_text=remember_text,
+            group_id=group_id,
+        )
+        return True
+
+    elif action_type == "web_search":
+        query = params.get("query") or params.get("term") or params.get("search")
+        if not query:
+            await logger.error("ConversationHandle", "WebSearchError", "Missing web_search query parameter.")
+            return False
+
+        if web_search_depth >= MAX_WEB_SEARCH_DEPTH:
+            force_context = (
+                f"{database_context}\n\n"
+                "[SYSTEM NOTE: Limite de buscas na web atingido. "
+                "Responda ao usuário com uma ação 'message' utilizando as informações já obtidas acima.]"
+            )
+            raw_response = await conversation_agent(
+                db=db,
+                user_id=user.id,
+                last_message_id=db_message.id,
+                group_id=group_id,
+                additional_context=force_context,
+            )
+            await _dispatch_gork_response(
+                raw_response=raw_response,
+                remote_id=remote_id,
+                message_id=db_message.message_id,
+                user=user,
+                db=db,
+                db_message=db_message,
+                scheduler=scheduler,
+                context=context,
+                group_id=group_id,
+                web_search_depth=MAX_WEB_SEARCH_DEPTH + 1,
+                database_query_iteration=database_query_iteration,
+                database_context=database_context,
+            )
+            return False
+
+        search_result = await _run_web_search(db, user, query, group_id)
+        web_search_context = (
+            "## Web Search Result\n"
+            f"Query: {query}\n\n"
+            f"{search_result}"
+        )
+        additional_context = "\n\n".join(
+            part for part in [database_context, web_search_context] if part
+        )
+        raw_response = await conversation_agent(
+            db=db,
+            user_id=user.id,
+            last_message_id=db_message.id,
+            group_id=group_id,
+            additional_context=additional_context,
+        )
+        await _dispatch_gork_response(
+            raw_response=raw_response,
+            remote_id=remote_id,
+            message_id=db_message.message_id,
+            user=user,
+            db=db,
+            db_message=db_message,
+            scheduler=scheduler,
+            context=context,
+            group_id=group_id,
+            web_search_depth=web_search_depth + 1,
+            database_query_iteration=database_query_iteration,
+            database_context=database_context,
+        )
+        return False
+
+    elif action_type == "twitter":
+        url = params.get("url", "")
+        await handle_twitter_command(remote_id, url, db_message.message_id)
+        return True
+
+    elif action_type == "instagram":
+        url = params.get("url", "")
+        await handle_instagram_command(remote_id, url, db_message.message_id)
+        return True
+
+    elif action_type == "resume":
+        await handle_resume_command(remote_id, db_message.message_id, user.id, group_id)
+        return True
+
+    elif action_type == "help":
+        await handle_help_command(remote_id, db_message.message_id)
+        return True
+
+    elif action_type == "model":
+        await handle_model_command(remote_id, db_message.message_id, db)
+        return True
+
+    elif action_type in ("usage", "consumption"):
+        if group_id:
+            await handle_consumption_command(
+                remote_id,
+                group_id=group_id,
+                user_name=params.get("user"),
+                when=params.get("when"),
+                granularity=params.get("granularity"),
+            )
+        else:
+            await handle_consumption_command(
+                remote_id,
+                user_id=user.id,
+                when=params.get("when"),
+                granularity=params.get("granularity"),
+            )
+        return True
+
+    elif action_type == "favorite":
+        fav_context = dict(context)
+        quoted_id = params.get("message_id")
+        if quoted_id:
+            fav_context["quoted_message"] = str(quoted_id)
+        await handle_favorite_message(remote_id=remote_id, context=fav_context, db=db)
+        return True
+
+    elif action_type == "gallery":
+        filter_term = params.get("filter")
+        if group_id:
+            await handle_list_images_command(remote_id, filter_term, db, group_id=group_id)
+        else:
+            await handle_list_images_command(remote_id, filter_term, db, user_id=user.id)
+        return True
+
+    else:
+        await logger.error("ConversationHandle", "UnknownAction", f"Unknown action type: {action_type}")
+        return True

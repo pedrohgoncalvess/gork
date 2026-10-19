@@ -2,8 +2,6 @@ PYTHON_PATH ?=
 VENV = .venv
 UV_INSTALLER = uv-installer-latest.exe
 UV_DOWNLOAD_URL = https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.exe
-EVOLUTION_ZIP = external-services/evolution-api-2.3.6.zip
-EVOLUTION_DIR = external-services/evolution-api-2.3.6/
 
 ifeq ($(OS),Windows_NT)
     RM = rmdir /s /q
@@ -15,8 +13,6 @@ ifeq ($(OS),Windows_NT)
     WHICH = where
     UNZIP_CMD = tar -xf
     DOCKER_COMPOSE = docker compose
-    EVOLUTION_ZIP_WIN = external-services\evolution-api-2.3.6.zip
-    EVOLUTION_DIR_WIN = external-services\evolution-api-2.3.6
 else
     RM = rm -rf
     PYTHON_DEFAULT = python3
@@ -27,8 +23,6 @@ else
     WHICH = which
     UNZIP_CMD = unzip -q
     DOCKER_COMPOSE = docker compose
-    EVOLUTION_ZIP_WIN = $(EVOLUTION_ZIP)
-    EVOLUTION_DIR_WIN = $(EVOLUTION_DIR)
 endif
 
 .PHONY: setup run clean check-uv install-uv check-python create-venv install-deps
@@ -144,64 +138,18 @@ endif
 	@echo Virtual environment removed!
 
 
-evolution-setup:
-	@echo "Setting up Evolution API..."
-ifeq ($(OS),Windows_NT)
-	@if not exist "$(EVOLUTION_ZIP_WIN)" ( \
-		echo ERROR: $(EVOLUTION_ZIP) not found! && exit /b 1 \
-	)
-	@if exist "$(EVOLUTION_DIR_WIN)" $(RM) "$(EVOLUTION_DIR_WIN)"
-	@echo Extracting $(EVOLUTION_ZIP)...
-	@powershell -Command "Expand-Archive -Path '$(EVOLUTION_ZIP)' -DestinationPath 'external-services' -Force"
-else
-	@if [ ! -f $(EVOLUTION_ZIP) ]; then \
-		echo "ERROR: $(EVOLUTION_ZIP) not found!"; \
-		exit 1; \
-	fi
-	@if [ -d $(EVOLUTION_DIR) ]; then $(RM) $(EVOLUTION_DIR); fi
-	@echo "Extracting $(EVOLUTION_ZIP)..."
-	@$(UNZIP_CMD) $(EVOLUTION_ZIP) -d external-services
-endif
-	@echo "Evolution API extracted successfully!"
+COMPOSE_FILE ?= docker-compose.dev.yaml
+GORK_SERVICE ?= webhook-fastapi
 
-evolution-start: evolution-setup
-	@echo "Starting Evolution API with Docker Compose..."
-ifeq ($(OS),Windows_NT)
-	@cd $(EVOLUTION_DIR) && $(DOCKER_COMPOSE) up -d
-else
-	@cd $(EVOLUTION_DIR) && $(DOCKER_COMPOSE) up -d
-endif
-	@echo "Evolution API started successfully!"
+.PHONY: waha-start waha-stop waha-logs waha-configure
+waha-start:
+	$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) up -d --build waha
 
-evolution-stop:
-	@echo "Stopping Evolution API..."
-ifeq ($(OS),Windows_NT)
-	@if exist $(EVOLUTION_DIR) ( \
-		cd $(EVOLUTION_DIR) && $(DOCKER_COMPOSE) down \
-	) else ( \
-		echo ERROR: $(EVOLUTION_DIR) not found! && exit /b 1 \
-	)
-else
-	@if [ -d $(EVOLUTION_DIR) ]; then \
-		cd $(EVOLUTION_DIR) && $(DOCKER_COMPOSE) down; \
-	else \
-		echo "ERROR: $(EVOLUTION_DIR) not found!"; \
-		exit 1; \
-	fi
-endif
-	@echo "Evolution API stopped successfully!"
+waha-stop:
+	$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) stop waha
 
-evolution-clean:
-	@echo "Cleaning Evolution API..."
-ifeq ($(OS),Windows_NT)
-	@if exist $(EVOLUTION_DIR) ( \
-		cd $(EVOLUTION_DIR) && $(DOCKER_COMPOSE) down -v \
-	)
-	@if exist $(EVOLUTION_DIR) $(RM) $(EVOLUTION_DIR)
-else
-	@if [ -d $(EVOLUTION_DIR) ]; then \
-		cd $(EVOLUTION_DIR) && $(DOCKER_COMPOSE) down -v; \
-		$(RM) $(EVOLUTION_DIR); \
-	fi
-endif
-	@echo "Evolution API cleaned successfully!"
+waha-logs:
+	$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) logs -f waha
+
+waha-configure:
+	$(DOCKER_COMPOSE) -f $(COMPOSE_FILE) exec $(GORK_SERVICE) python -m scripts.waha_session configure

@@ -3,7 +3,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import PgConnection
 from database.models.manager import Remember
 from database.operations.manager import RememberRepository
-from external.evolution import send_message
+from external.waha import send_message
 
 
 async def set_remembers(scheduler: AsyncIOScheduler):

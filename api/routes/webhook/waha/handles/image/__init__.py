@@ -1,0 +1,658 @@
+import asyncio
+import base64
+from io import BytesIO
+from typing import Optional, List
+
+from PIL import Image
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from agents.execution.describe_image import describe_image_agent
+from api.routes.webhook.waha.handles.core import clean_text
+from api.routes.webhook.waha.handles.image.gallery import list_images, search_images
+from api.routes.webhook.waha.handles.image.generate import generate_image
+from api.routes.webhook.waha.handles.image.picture import get_pictures
+from api.routes.webhook.waha.handles.social import (
+    download_twitter_card,
+    download_twitter_media,
+    extract_twitter_url,
+    remove_twitter_urls,
+)
+from database.models.base import User
+from database.models.content import Message
+from database.operations.content import MessageRepository, MediaRepository
+from external.waha import download_media, send_animated_sticker, send_image, send_message, send_sticker
+from log import logger
+from s3 import S3Client
+from services import parse_params
+
+
+def _param_enabled(value) -> bool:
+    return str(value).lower() in ["true", "t", "1", "yes", "y"]
+
+
+def _fill_enabled(params: dict) -> bool:
+    direction = params.get("direction")
+    has_direction = (
+        direction is not None
+        and str(direction).strip().lower() not in {"", "false", "f", "0", "no", "n"}
+    )
+    return _param_enabled(params.get("fill", "false")) or has_direction
+
+
+def _remove_background_enabled(params: dict) -> bool:
+    return any(
+        _param_enabled(params.get(key, "false"))
+        for key in (
+            "no-background",
+            "no_background",
+            "no-backgorund",
+            "no_backgorund",
+        )
+    )
+
+
+def _parse_blur(params: dict) -> int:
+    val = params.get("blur", 0)
+    try:
+        blur = int(val)
+    except (ValueError, TypeError):
+        blur = 0
+    return max(0, min(100, blur))
+
+
+def _media_type_is_video(media_type: str | None) -> bool:
+    return media_type in ("mp4", "video")
+
+
+def _media_type_is_sticker(media_type: str | None) -> bool:
+    return media_type in ("webp", "sticker")
+
+
+def _sticker_is_animated(media_bytes: bytes) -> bool:
+    try:
+        with Image.open(BytesIO(media_bytes)) as image:
+            return bool(getattr(image, "is_animated", False) or getattr(image, "n_frames", 1) > 1)
+    except Exception:
+        return False
+
+
+def _context_media_kind(context: dict | None, source: str) -> str | None:
+    if not context:
+        return None
+
+    if source == "message":
+        if context.get("video_message"):
+            return "video"
+        if context.get("sticker_message"):
+            return "sticker"
+        if context.get("image_message"):
+            return "image"
+    elif source == "quoted":
+        if context.get("video_quote"):
+            return "video"
+        if context.get("sticker_quote"):
+            return "sticker"
+        if context.get("image_quote"):
+            return "image"
+
+    return None
+
+
+async def _download_media_bytes_from_message_id(message_id: str | None) -> bytes | None:
+    if not message_id:
+        return None
+
+    try:
+        media_base64, _ = await download_media(message_id)
+    except Exception:
+        return None
+
+    if not media_base64:
+        return None
+
+    return base64.b64decode(media_base64)
+
+
+async def _load_source_media_bytes(
+        source_message: Message,
+        media=None,
+        source_message_id: str | None = None,
+) -> bytes | None:
+    source_bytes = await _download_media_bytes_from_message_id(
+        source_message_id or source_message.message_id
+    )
+    if source_bytes or media is None:
+        return source_bytes
+
+    try:
+        s3_client = S3Client()
+        await s3_client.connect()
+        media_base64 = await s3_client.get_image_base64(media.bucket, media.path)
+        return base64.b64decode(media_base64)
+    except Exception:
+        return None
+
+
+def _context_media_id(context: dict | None, source: str, media_kind: str) -> str | None:
+    if not context:
+        return None
+
+    key = f"{media_kind}_{'message' if source == 'message' else 'quote'}"
+    return context.get(key)
+
+
+async def handle_image_command(
+        remote_id: str,
+        user_id: int,
+        db_message: Message,
+        action_params: Optional[dict] = None,
+        context: dict | None = None,
+):
+    try:
+        # Only spontaneous creations accept a model-written scene. Explicit
+        # requests keep the user's words; never forward model-selected people.
+        spontaneous_prompt = None
+        if action_params and action_params.get("spontaneous") is True:
+            prompt = action_params.get("prompt")
+            if isinstance(prompt, str) and prompt.strip():
+                spontaneous_prompt = {"prompt": prompt.strip()}
+        result = await generate_image(
+            user_id,
+            db_message,
+            action_params=spontaneous_prompt,
+            context=context,
+            feedback_remote_id=remote_id,
+        )
+    except Exception as error:
+        await _log_image_command_error(
+            "unhandled_generation_error", f"{type(error).__name__}: {error}"
+        )
+        await _send_image_error(
+            remote_id,
+            "Tive um problema inesperado ao gerar a imagem. Tente novamente.",
+            db_message,
+        )
+        return
+
+    if not result.success or not result.image_base64:
+        await _send_image_error(
+            remote_id,
+            result.user_message or "Não foi possível gerar a imagem. Tente novamente.",
+            db_message,
+        )
+        return
+
+    try:
+        await send_image(
+            remote_id,
+            result.image_base64,
+            filename="gork.png",
+            mimetype="image/png",
+        )
+    except Exception as error:
+        await _log_image_command_error(
+            "image_send_failed", f"{type(error).__name__}: {error}"
+        )
+        await _send_image_error(
+            remote_id,
+            "A imagem foi gerada, mas não consegui enviá-la. Tente novamente.",
+            db_message,
+        )
+
+
+async def handle_generate_sticker_command(
+        remote_id: str,
+        user_id: int,
+        db_message: Message,
+        db: AsyncSession,
+        action_params: dict | None = None,
+        context: dict | None = None,
+) -> None:
+    """Generate an image and feed it directly into the static sticker pipeline."""
+    params = action_params or {}
+    result = await generate_image(
+        user_id,
+        db_message,
+        action_params=params,
+        context=context,
+        feedback_remote_id=remote_id,
+    )
+    if not result.success or not result.image_base64:
+        await _send_image_error(
+            remote_id,
+            result.user_message or "Não foi possível gerar a imagem da figurinha. Tente novamente.",
+            db_message,
+        )
+        return
+
+    try:
+        image_bytes = base64.b64decode(result.image_base64, validate=True)
+        from api.routes.webhook.waha.handles.image.sticker_static import static_sticker
+
+        sticker_base64 = await static_sticker(
+            db_message=db_message,
+            db=db,
+            remove_background=_remove_background_enabled(params),
+            fill=_fill_enabled(params),
+            blur=_parse_blur(params),
+            font_size_param=str(params.get("font_size", params.get("font-size", "l"))),
+            source_image_bytes=image_bytes,
+            caption_text=str(params.get("caption") or params.get("text") or "").strip(),
+            no_color=_param_enabled(params.get("no_color", params.get("no-color", "false"))),
+            direction=params.get("direction"),
+        )
+        await send_sticker(remote_id, sticker_base64)
+    except Exception as error:
+        await logger.error(
+            "GeneratedSticker",
+            "StickerGenerationFailed",
+            f"message_id={db_message.message_id} error={type(error).__name__}: {error}",
+        )
+        await send_message(
+            remote_id,
+            "A imagem foi gerada, mas não consegui transformá-la em figurinha. Tente novamente.",
+            db_message.message_id,
+        )
+
+
+async def _log_image_command_error(code: str, detail: str) -> None:
+    try:
+        await logger.error("ImageGeneration", code, detail)
+    except Exception:
+        pass
+
+
+async def _send_image_error(
+        remote_id: str,
+        message: str,
+        db_message: Message | None,
+) -> None:
+    try:
+        await send_message(
+            remote_id,
+            message,
+            db_message.message_id if db_message else None,
+        )
+    except Exception as error:
+        await _log_image_command_error(
+            "error_response_send_failed", f"{type(error).__name__}: {error}"
+        )
+
+
+async def handle_sticker_command(
+        remote_id: str,
+        db_message: Message,
+        db: AsyncSession,
+        context: dict | None = None,
+        action_params: dict | None = None,
+):
+    message_repo = MessageRepository(db)
+    params = parse_params(db_message.content if db_message and db_message.content else "")
+    if action_params:
+        for k, v in action_params.items():
+            norm_key = k.replace("_", "-")
+            if norm_key not in params and k not in params:
+                params[norm_key] = str(v).lower() if isinstance(v, bool) else str(v)
+    quoted_message = (
+        await message_repo.find_by_id(db_message.quoted_message_id)
+        if db_message.quoted_message_id
+        else None
+    )
+    current_content = db_message.content if db_message and db_message.content else ""
+    quoted_content = quoted_message.content if quoted_message and quoted_message.content else ""
+    context_quote = context.get("text_quote") if context else None
+    if isinstance(context_quote, (tuple, list)):
+        context_quote_content = str(context_quote[0]) if context_quote else ""
+    elif isinstance(context_quote, str):
+        context_quote_content = context_quote
+    else:
+        context_quote_content = ""
+
+    tweet_param = params.get("tweet", "false")
+    tweet_url = extract_twitter_url(str(tweet_param))
+    twitter_url = (
+        tweet_url
+        or params.get("url")
+        or extract_twitter_url(current_content)
+        or extract_twitter_url(quoted_content)
+        or extract_twitter_url(context_quote_content)
+    )
+    if tweet_url or _param_enabled(tweet_param):
+        if not twitter_url:
+            await send_message(remote_id, "Use !sticker :tweet <link do Twitter/X> ou responda a uma mensagem com o link.")
+            return
+        from api.routes.webhook.waha.handles.image.sticker_tweet import render_tweet_sticker
+
+        await logger.info("TweetSticker", "DownloadStarted", f"message_id={db_message.message_id} url={twitter_url}")
+        result = await download_twitter_card(twitter_url)
+        if result.error:
+            await logger.error("TweetSticker", "DownloadFailed", f"message_id={db_message.message_id} error={result.error}")
+            await send_message(remote_id, result.error)
+            return
+        await logger.info("TweetSticker", "DownloadCompleted", f"message_id={db_message.message_id} photo={bool(result.photo_bytes)} avatar={bool(result.avatar_bytes)}")
+        try:
+            webp_base64 = await asyncio.to_thread(render_tweet_sticker, result)
+        except Exception as error:
+            await _log_image_command_error("tweet_sticker_failed", f"{type(error).__name__}: {error}")
+            await send_message(remote_id, "Não foi possível montar a figurinha do tweet. Tente novamente.")
+            return
+        try:
+            await send_sticker(remote_id, webp_base64)
+        except Exception as error:
+            await _log_image_command_error("tweet_sticker_send_failed", f"message_id={db_message.message_id} {type(error).__name__}: {error}")
+            await send_message(remote_id, "A figurinha do tweet foi criada, mas não consegui enviá-la. Tente novamente.")
+            return
+        await logger.info("TweetSticker", "Sent", f"message_id={db_message.message_id}")
+        return
+
+    if twitter_url:
+        result = await download_twitter_media(twitter_url)
+        if not result.is_success:
+            await send_message(remote_id, f"Erro ao baixar midia do Twitter/X: {result.error}")
+            return
+
+        effect = params.get("effect")
+        fill = _fill_enabled(params)
+        font_size = params.get("font-size", "l")
+        remove_background = _remove_background_enabled(params)
+        speed = float(params.get("speed", 1.0))
+        cut_spec = params.get("cut")
+        blur = _parse_blur(params)
+        no_color = _param_enabled(params.get("no-color", "false"))
+        use_tweet_text = _param_enabled(params.get("text", "false"))
+        caption_text = result.text if use_tweet_text else None
+        if not caption_text:
+            caption_text = clean_text(remove_twitter_urls(current_content))
+        if not caption_text:
+            caption_text = clean_text(remove_twitter_urls(quoted_content))
+        if not caption_text:
+            caption_text = clean_text(remove_twitter_urls(context_quote_content))
+        if result.media_type == "video" or effect:
+            from api.routes.webhook.waha.handles.image.sticker_animated import animated_sticker_from_bytes
+
+            sticker_url = await animated_sticker_from_bytes(
+                result.media_bytes,
+                caption_text,
+                effect,
+                fill,
+                font_size,
+                remove_background=remove_background,
+                speed=speed,
+                cut_spec=cut_spec,
+                blur=blur,
+                no_color=no_color,
+                direction=params.get("direction"),
+                effect_size=params.get("size", 1.0),
+                duration=params.get("duration"),
+            )
+            await send_animated_sticker(remote_id, sticker_url)
+        else:
+            from api.routes.webhook.waha.handles.image.sticker_static import static_sticker
+
+            is_random = _param_enabled(params.get("random", "false"))
+            blur = _parse_blur(params)
+            resize = _param_enabled(params.get("resize", "false"))
+            webp_base64 = await static_sticker(
+                db_message,
+                db,
+                is_random,
+                remove_background,
+                fill,
+                blur=blur,
+                font_size_param=font_size,
+                source_image_bytes=result.media_bytes,
+                caption_text=caption_text,
+                no_color=no_color,
+                direction=params.get("direction"),
+                resize=resize,
+            )
+            await send_sticker(remote_id, webp_base64)
+        return
+
+    source_message = db_message
+    source_kind = _context_media_kind(context, "message")
+    source_media = None
+    source_message_id = _context_media_id(context, "message", source_kind) or db_message.message_id
+    if db_message.media_id:
+        media_repo = MediaRepository(db)
+        media = await media_repo.find_by_id(db_message.media_id)
+        if media:
+            source_media = media
+            if _media_type_is_video(media.type):
+                source_kind = "video"
+            elif _media_type_is_sticker(media.type):
+                source_kind = "sticker"
+            else:
+                source_kind = "image"
+            source_message_id = db_message.message_id
+
+    if not source_kind and quoted_message:
+        source_message = quoted_message
+        source_kind = _context_media_kind(context, "quoted")
+        source_message_id = (
+            _context_media_id(context, "quoted", source_kind)
+            or quoted_message.message_id
+        )
+        if quoted_message.media_id:
+            media_repo = MediaRepository(db)
+            media = await media_repo.find_by_id(quoted_message.media_id)
+            if media:
+                source_media = media
+                if _media_type_is_video(media.type):
+                    source_kind = "video"
+                elif _media_type_is_sticker(media.type):
+                    source_kind = "sticker"
+                else:
+                    source_kind = "image"
+                source_message_id = quoted_message.message_id
+
+    # O webhook traz os dados da mídia citada mesmo que a mensagem original não
+    # esteja armazenada localmente. Nesse caso, use o id da citação diretamente.
+    if not source_kind:
+        quoted_source_kind = _context_media_kind(context, "quoted")
+        quoted_source_id = _context_media_id(context, "quoted", quoted_source_kind)
+        if quoted_source_kind and quoted_source_id:
+            source_message = quoted_message or db_message
+            source_kind = quoted_source_kind
+            source_message_id = quoted_source_id
+
+    effect = params.get("effect")
+    source_bytes = None
+    if source_message and (
+            source_kind in ("video", "sticker")
+            or (effect and source_kind == "image")
+    ):
+        source_bytes = await _load_source_media_bytes(
+            source_message,
+            source_media,
+            source_message_id,
+        )
+        if source_kind == "sticker" and source_bytes and _sticker_is_animated(source_bytes):
+            source_kind = "animated_sticker"
+
+    if source_message and (
+            source_kind in ("video", "animated_sticker")
+            or (effect and source_kind in ("image", "sticker"))
+    ):
+        from api.routes.webhook.waha.handles.image.sticker_animated import animated_sticker_from_bytes
+
+        fill = _fill_enabled(params)
+        font_size = params.get("font-size", "l")
+        remove_background = _remove_background_enabled(params)
+        speed = float(params.get("speed", 1.0))
+        cut_spec = params.get("cut")
+        blur = _parse_blur(params)
+        no_color = _param_enabled(params.get("no-color", "false"))
+
+        caption_text = clean_text(db_message.content) if db_message.content else None
+        if not caption_text and source_message.content:
+            caption_text = clean_text(source_message.content) if source_message.content else None
+
+        if not source_bytes:
+            await logger.error(
+                "Sticker",
+                "AnimatedSourceDownloadFailed",
+                f"message_id={source_message_id} source_kind={source_kind}",
+            )
+            await send_message(
+                remote_id,
+                "Não consegui baixar a mídia para criar a figurinha animada. Tente novamente.",
+                db_message.message_id,
+            )
+            return
+
+        try:
+            gif_url = await animated_sticker_from_bytes(
+                source_bytes,
+                caption_text,
+                effect,
+                fill,
+                font_size,
+                remove_background=remove_background,
+                speed=speed,
+                cut_spec=cut_spec,
+                blur=blur,
+                no_color=no_color,
+                direction=params.get("direction"),
+                effect_size=params.get("size", 1.0),
+                duration=params.get("duration"),
+            )
+        except Exception as error:
+            await logger.error(
+                "Sticker",
+                "AnimatedGenerationFailed",
+                f"message_id={source_message_id} error={type(error).__name__}: {error}",
+            )
+            await send_message(
+                remote_id,
+                "Não consegui criar a figurinha animada. Tente novamente.",
+                db_message.message_id,
+            )
+            return
+        await send_animated_sticker(remote_id, gif_url)
+        return
+
+    is_random = _param_enabled(params.get("random", "false"))
+    remove_background = _remove_background_enabled(params)
+    fill = _fill_enabled(params)
+    font_size = params.get("font-size", "l")
+    blur = _parse_blur(params)
+    resize = _param_enabled(params.get("resize", "false"))
+    dead = _param_enabled(params.get("dead", "false"))
+    no_color = (
+        _param_enabled(params["no-color"])
+        if "no-color" in params
+        else dead
+    )
+    from api.routes.webhook.waha.handles.image.sticker_static import static_sticker
+
+    try:
+        webp_base64 = await static_sticker(
+            db_message,
+            db,
+            is_random,
+            remove_background,
+            fill,
+            blur=blur,
+            font_size_param=font_size,
+            source_image_bytes=source_bytes,
+            context=context,
+            dead=dead,
+            no_color=no_color,
+            direction=params.get("direction"),
+            resize=resize,
+        )
+    except Exception as error:
+        await logger.error(
+            "Sticker",
+            "StaticGenerationFailed",
+            f"message_id={db_message.message_id} error={type(error).__name__}: {error}",
+        )
+        await send_message(
+            remote_id,
+            "Não consegui criar a figurinha com essa imagem. Tente novamente.",
+            db_message.message_id,
+        )
+        return
+    await send_sticker(remote_id, webp_base64)
+
+
+async def handle_describe_image_command(
+        remote_id: str,
+        db_message: Message,
+        user_id: int,
+        db: AsyncSession,
+        group_id: Optional[int] = None
+):
+    error_message = "Não encontrei uma imagem para descrever."
+    if db_message.media_id:
+        message = db_message
+    else:
+        if not db_message.quoted_message_id:
+            await send_message(remote_id, error_message)
+            return
+
+        message_repo = MessageRepository(db)
+        quoted_message = await message_repo.find_by_id(db_message.quoted_message_id)
+
+        if not quoted_message or not quoted_message.media_id:
+            await send_message(remote_id, error_message)
+            return
+
+        message = quoted_message
+
+    resume = await describe_image_agent(db, user_id, message)
+    await send_message(remote_id, resume)
+    return
+
+
+async def handle_list_images_command(
+        remote_id: str,
+        db_message: Message | str | None,
+        db: AsyncSession,
+        user_id: Optional[int] = None,
+        group_id: Optional[int] = None
+):
+    if isinstance(db_message, Message):
+        raw_text = db_message.content or ""
+    elif isinstance(db_message, str):
+        raw_text = db_message
+    else:
+        raw_text = ""
+
+    treated_text = clean_text(raw_text)
+    if treated_text:
+        message = await search_images(
+            treated_text, user_id=user_id, group_id=group_id, db=db
+        )
+    else:
+        params = parse_params(raw_text)
+
+        total_param = _param_enabled(params.get("total", "false"))
+
+        message = await list_images(
+            user_id=user_id if not group_id else None,
+            group_id=group_id,
+            db=db, total=total_param
+        )
+    await send_message(remote_id, message)
+    return
+
+
+async def handle_picture_command(
+    remote_id: str,
+    mentions: List[User],
+):
+
+    if len(mentions) == 0:
+        await send_message(remote_id, "Ninguém foi mencionado.")
+
+    pictures_for_send = await get_pictures(mentions)
+
+    for type_, picture in pictures_for_send:
+        if type_:
+            await send_image(remote_id, picture)
+        else:
+            await send_message(remote_id, picture)
+
+    return

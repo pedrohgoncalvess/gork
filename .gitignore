@@ -142,6 +142,9 @@ celerybeat.pid
 
 # Environments
 .env
+waha-qr.png
+test-results.txt
+waha-test-results.txt
 .venv
 # env/
 # venv/

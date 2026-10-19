@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from PIL import Image, UnidentifiedImageError
 
-from api.routes.webhook.evolution.handles.image.sticker_static import (
+from api.routes.webhook.waha.handles.image.sticker_static import (
     _open_image,
     _resize_cover,
     static_sticker,
@@ -71,7 +71,7 @@ class StaticStickerFallbackTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.MessageRepository"
+                "api.routes.webhook.waha.handles.image.sticker_static.MessageRepository"
             ) as message_repo,
             patch(
                 "agents.execution.resize_image.resize_image_agent",
@@ -108,7 +108,7 @@ class StaticStickerFallbackTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.MessageRepository"
+                "api.routes.webhook.waha.handles.image.sticker_static.MessageRepository"
             ) as message_repo,
             patch(
                 "agents.execution.resize_image.resize_image_agent",
@@ -143,16 +143,16 @@ class StaticStickerFallbackTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.MessageRepository"
+                "api.routes.webhook.waha.handles.image.sticker_static.MessageRepository"
             ) as message_repo,
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.UserRepository"
+                "api.routes.webhook.waha.handles.image.sticker_static.UserRepository"
             ) as user_repo,
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.S3Client"
+                "api.routes.webhook.waha.handles.image.sticker_static.S3Client"
             ) as s3_client,
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static._random_image",
+                "api.routes.webhook.waha.handles.image.sticker_static._random_image",
                 new=AsyncMock(return_value=random_image),
             ) as fallback,
         ):

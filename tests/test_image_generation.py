@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import yaml
 from PIL import Image
 
-from api.routes.webhook.evolution.handles.image.generate import (
+from api.routes.webhook.waha.handles.image.generate import (
     ImageGenerationResult,
     ImageGenerationError,
     _build_image_prompt,
@@ -23,7 +23,7 @@ from api.routes.webhook.evolution.handles.image.generate import (
     _model_reference_limit,
     _select_image_model,
 )
-from api.routes.webhook.evolution.handles.image import (
+from api.routes.webhook.waha.handles.image import (
     handle_generate_sticker_command,
     handle_image_command,
 )
@@ -265,7 +265,7 @@ class ImageModelFallbackTests(unittest.IsolatedAsyncioTestCase):
 
 class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.module = "api.routes.webhook.evolution.handles.image.generate"
+        self.module = "api.routes.webhook.waha.handles.image.generate"
         self.current_image = _encoded_image("PNG")
         self.quoted_image = _encoded_image("WEBP")
         self.profile_image = _encoded_image("JPEG")
@@ -369,10 +369,10 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
     async def test_image_handler_discards_agent_rewrites_even_without_literal_command(self):
         self.message.content = "troque a camiseta para azul"
         with (
-            patch("api.routes.webhook.evolution.handles.image.generate_image", new=AsyncMock(
+            patch("api.routes.webhook.waha.handles.image.generate_image", new=AsyncMock(
                 return_value=ImageGenerationResult(success=True, image_base64=self.current_image),
             )) as generate,
-            patch("api.routes.webhook.evolution.handles.image.send_image", new=AsyncMock()),
+            patch("api.routes.webhook.waha.handles.image.send_image", new=AsyncMock()),
         ):
             await handle_image_command("chat", 1, self.message, action_params={
                 "prompt": "HISTORICO", "mentioned_users": [88],
@@ -382,9 +382,9 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_image_action_cannot_select_an_old_message(self):
-        from api.routes.webhook.evolution.handles.chat import _dispatch_action
+        from api.routes.webhook.waha.handles.chat import _dispatch_action
 
-        module = "api.routes.webhook.evolution.handles.chat"
+        module = "api.routes.webhook.waha.handles.chat"
         context = {"image_message": "current"}
         with (
             patch(f"{module}.get_disabled_command_message", new=AsyncMock(return_value=None)),
@@ -406,10 +406,10 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
     async def test_spontaneous_image_uses_scene_without_model_selected_people(self):
         self.message.content = "meu PC vai decolar"
         with (
-            patch("api.routes.webhook.evolution.handles.image.generate_image", new=AsyncMock(
+            patch("api.routes.webhook.waha.handles.image.generate_image", new=AsyncMock(
                 return_value=ImageGenerationResult(success=True, image_base64=self.current_image),
             )) as generate,
-            patch("api.routes.webhook.evolution.handles.image.send_image", new=AsyncMock()),
+            patch("api.routes.webhook.waha.handles.image.send_image", new=AsyncMock()),
         ):
             await handle_image_command("chat", 1, self.message, action_params={
                 "spontaneous": True, "prompt": "  Um computador com turbinas  ",
@@ -421,9 +421,9 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_spontaneous_image_action_reaches_handler(self):
-        from api.routes.webhook.evolution.handles.chat import _dispatch_action
+        from api.routes.webhook.waha.handles.chat import _dispatch_action
 
-        module = "api.routes.webhook.evolution.handles.chat"
+        module = "api.routes.webhook.waha.handles.chat"
         params = {"spontaneous": True, "prompt": "Um computador com turbinas"}
         with (
             patch(f"{module}.get_disabled_command_message", new=AsyncMock(return_value=None)),
@@ -481,7 +481,7 @@ class GeneratedStickerPipelineTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.generate_image",
+                "api.routes.webhook.waha.handles.image.generate_image",
                 new=AsyncMock(
                     return_value=ImageGenerationResult(
                         success=True,
@@ -490,15 +490,15 @@ class GeneratedStickerPipelineTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ) as generate,
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.static_sticker",
+                "api.routes.webhook.waha.handles.image.sticker_static.static_sticker",
                 new=AsyncMock(return_value="sticker-base64"),
             ) as make_sticker,
             patch(
-                "api.routes.webhook.evolution.handles.image.send_sticker",
+                "api.routes.webhook.waha.handles.image.send_sticker",
                 new=AsyncMock(),
             ) as send_sticker,
             patch(
-                "api.routes.webhook.evolution.handles.image.send_image",
+                "api.routes.webhook.waha.handles.image.send_image",
                 new=AsyncMock(),
             ) as send_image,
         ):
@@ -533,7 +533,7 @@ class GeneratedStickerPipelineTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.generate_image",
+                "api.routes.webhook.waha.handles.image.generate_image",
                 new=AsyncMock(
                     return_value=ImageGenerationResult(
                         success=False,
@@ -542,11 +542,11 @@ class GeneratedStickerPipelineTests(unittest.IsolatedAsyncioTestCase):
                 ),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.static_sticker",
+                "api.routes.webhook.waha.handles.image.sticker_static.static_sticker",
                 new=AsyncMock(),
             ) as make_sticker,
             patch(
-                "api.routes.webhook.evolution.handles.image.send_message",
+                "api.routes.webhook.waha.handles.image.send_message",
                 new=AsyncMock(),
             ) as send_message,
         ):

@@ -1,1 +1,1 @@
-from api.routes.webhook.evolution.router import router as webhook_evolution_router
+from api.routes.webhook.waha.router import router as webhook_waha_router

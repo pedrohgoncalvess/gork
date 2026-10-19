@@ -4,10 +4,10 @@ from tempfile import TemporaryDirectory
 
 from PIL import Image
 
-from api.routes.webhook.evolution.handles.image.sticker_animated import (
+from api.routes.webhook.waha.handles.image.sticker_animated import (
     _remove_color_from_animation,
 )
-from api.routes.webhook.evolution.handles.image.sticker_filters import remove_color
+from api.routes.webhook.waha.handles.image.sticker_filters import remove_color
 
 
 class StickerFilterTests(unittest.TestCase):

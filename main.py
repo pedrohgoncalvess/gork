@@ -2,7 +2,7 @@ import asyncio
 
 from fastapi import FastAPI
 
-from api import webhook_evolution_router
+from api import webhook_waha_router
 from agents.init import init_agents
 from assets.init import init_assets
 from database import dispose_database_engine
@@ -13,7 +13,7 @@ from services import set_model_price_refresh, set_remembers
 
 
 app = FastAPI()
-app.include_router(webhook_evolution_router)
+app.include_router(webhook_waha_router)
 
 @app.on_event("startup")
 async def startup_event():

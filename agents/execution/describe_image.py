@@ -10,7 +10,7 @@ from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
-from external.evolution import download_media
+from external.waha import download_media
 from log import logger
 from utils import INSTANCE_NUMBER
 

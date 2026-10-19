@@ -2,14 +2,14 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from api.routes.webhook.evolution.handles.image import (
+from api.routes.webhook.waha.handles.image import (
     _fill_enabled,
     handle_sticker_command,
 )
-from api.routes.webhook.evolution.handles.image.sticker_animated import (
+from api.routes.webhook.waha.handles.image.sticker_animated import (
     _square_video_filter,
 )
-from api.routes.webhook.evolution.handles.image.sticker_crop import (
+from api.routes.webhook.waha.handles.image.sticker_crop import (
     normalize_fill_direction,
 )
 
@@ -54,18 +54,18 @@ class StickerDirectionVideoTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.MessageRepository"
+                "api.routes.webhook.waha.handles.image.MessageRepository"
             ) as message_repo,
             patch(
-                "api.routes.webhook.evolution.handles.image._load_source_media_bytes",
+                "api.routes.webhook.waha.handles.image._load_source_media_bytes",
                 new=AsyncMock(return_value=b"video-bytes"),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_animated.animated_sticker_from_bytes",
+                "api.routes.webhook.waha.handles.image.sticker_animated.animated_sticker_from_bytes",
                 new=AsyncMock(return_value="sticker-url"),
             ) as animated_sticker,
             patch(
-                "api.routes.webhook.evolution.handles.image.send_animated_sticker",
+                "api.routes.webhook.waha.handles.image.send_animated_sticker",
                 new=AsyncMock(),
             ) as send_sticker,
         ):

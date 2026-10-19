@@ -12,7 +12,7 @@ inglês ou espanhol. A ação recebe `text`, `language` e, opcionalmente, `tone`
 parâmetros de voz
 enviados pelo agente de conversa não alteram o locutor. A saída PCM16 de 24 kHz
 é empacotada em WAV pela biblioteca padrão do Python e enviada como nota de voz
-pela Evolution API. O cooldown existente de três minutos segue
+pelo WAHA / GOWS. O cooldown existente de três minutos segue
 valendo para `audio` e `send_audio`. Os áudios prontos da biblioteca continuam
 sendo enviados sem síntese.
 

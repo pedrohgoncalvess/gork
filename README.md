@@ -1,6 +1,6 @@
 # 🤖 Gork - WhatsApp Bot
 
-> Intelligent WhatsApp bot powered by LLMs, Evolution API, and modern Python stack.
+> Intelligent WhatsApp bot powered by LLMs, WAHA (GOWS), and modern Python stack.
 
 ---
 
@@ -22,14 +22,14 @@
 
 ## 🎯 Overview
 
-**Gork** is a sophisticated WhatsApp bot that uses Large Language Models (LLMs) to provide intelligent responses. It's built with Python 3.13, FastAPI, and integrates with Evolution API for WhatsApp connectivity.
+**Gork** is a sophisticated WhatsApp bot that uses Large Language Models (LLMs) to provide intelligent responses. It's built with Python 3.13, FastAPI, and integrates with WAHA (GOWS) for WhatsApp connectivity.
 
 ### Key Components
 
 - **Core Application**: FastAPI server handling webhook events
 - **Database**: PostgreSQL with pgvector extension for embeddings
 - **Storage**: MinIO S3-compatible object storage
-- **WhatsApp Integration**: Evolution API for message handling
+- **WhatsApp Integration**: WAHA (GOWS) for message handling
 - **LLM Integration**: OpenRouter, Firecrawl, Brave Search, and more
 
 ---
@@ -37,9 +37,10 @@
 ## ✨ Features
 
 - **🧠 Intelligent Conversations**: LLM-powered responses with context awareness
-- **📡 Webhook-based**: Real-time message processing via Evolution API
+- **📡 Webhook-based**: Real-time message processing via WAHA (GOWS)
 - **🔌 Multi-service Integration**: Search, translation, transcription, image generation
 - **🎨 Sticker Creation**: Convert images to stickers with effects
+- **🐦 Tweet Stickers**: `!sticker :tweet https://x.com/user/status/12345` creates a 512 × 512 tweet card with author, avatar, original text and the first photo (or video preview). Also works with text-only tweets and links in quoted messages. Long text is shortened with an ellipsis to keep it readable.
 - **📹 Media Handling**: Support for images, videos, audio transcription
 - **📝 Post Management**: Create, read, and list blog posts
 - **🖼️ Gallery & Projects**: Dynamic content display
@@ -106,15 +107,15 @@ make setup
 
 ```bash
 # Start all services (PostgreSQL, MinIO, Gork app)
-docker compose up -d
+docker compose -f docker-compose.dev.yaml up -d
 
-# Start Evolution API
-make evolution-start
+# Start WAHA (GOWS)
+make waha-start
 ```
 
-### 5. Configure Evolution API
+### 5. Configure WAHA (GOWS)
 
-See [Evolution API Setup](#evolution-api-setup) section below.
+See [WAHA migration](docs/waha-migration.md) section below.
 
 ---
 
@@ -154,16 +155,18 @@ MINIO_SECRET_KEY=minioadmin         # Secret key
 MINIO_USE_SSL=false                  # SSL (usually false for local dev)
 ```
 
-#### Evolution API Configuration
+#### WAHA (GOWS) Configuration
 
-```bash
-# WhatsApp integration
-EVOLUTION_INSTANCE_KEY=your_api_key      # Get from Evolution API
-EVOLUTION_INSTANCE_NAME=Gork              # Instance name (must match creation)
-EVOLUTION_API_KEY=your_api_key           # Get from Evolution API
-EVOLUTION_API=http://evolution_api:8080  # Evolution API URL
-EVOLUTION_INSTANCE_NUMBER=553192793203     # Your WhatsApp number (without + or extra 9)
+```dotenv
+WAHA_BASE_URL=http://waha:3000
+WAHA_API_KEY=your-long-random-api-key
+WAHA_SESSION=default
+WAHA_WEBHOOK_TOKEN=your-separate-webhook-secret
+WHATSAPP_INSTANCE_NUMBER=your-existing-bot-number
+WAHA_PORT=3002
 ```
+
+See [WAHA migration](docs/waha-migration.md) for pairing and existing-data compatibility.
 
 #### LLM & Service APIs
 
@@ -262,54 +265,12 @@ s3-minio:
 2. Login with: `minioadmin` / `minioadmin`
 3. Create buckets as needed
 
-### Step 5: Evolution API Setup
+### Step 5: WAHA / GOWS Setup
 
-The Evolution API handles WhatsApp connectivity. Here's how to set it up:
-
-#### 5.1 Download and Extract Evolution API
-
-```bash
-make evolution-setup
-```
-
-This downloads `evolution-api-2.3.6.zip` and extracts it to `external-services/evolution-api-2.3.6/`.
-
-#### 5.2 Start Evolution API
-
-```bash
-make evolution-start
-```
-
-This starts Evolution API with Docker Compose. The API will be available at `http://localhost:8080`.
-
-#### 5.3 Create Instance
-
-1. Open browser: `http://localhost:8080`
-2. Click **"Create Instance"**
-3. Set instance name to: **`Gork`** (must match `EVOLUTION_INSTANCE_NAME` in `.env`)
-4. Click **"Create"** or **"Save"**
-
-#### 5.4 Configure Webhook
-
-After creating the instance:
-
-1. Go to instance settings
-2. Navigate to **Events** tab
-3. Find **Webhook** section
-4. **Enable webhook toggle**
-5. Set webhook URL to: `http://webhook_fastapi:9001/webhook/evolution`
-   - **Important**: Use `webhook_fastapi` (not `localhost`) because it's the Docker service name
-6. **Save** the configuration
-
-#### 5.5 Connect Your Phone
-
-1. A QR code will appear in the Evolution API dashboard
-2. Open WhatsApp on your phone:
-   - Go to **Settings** > **Linked Devices**
-   - Tap **"Link a Device"**
-   - Scan the QR code
-3. Wait for connection to establish
-4. Verify by sending a test message to your number
+Both compose files include WAHA using the same pinned GOWS image as Orbia.
+Run the session helper inside the Gork service to configure the authenticated
+webhook, start the session and obtain a QR code. Follow the complete
+[WAHA migration and pairing guide](docs/waha-migration.md).
 
 ### Step 6: Start Gork Application
 
@@ -317,7 +278,7 @@ Now everything is ready to start the bot:
 
 ```bash
 # Using Docker Compose (recommended)
-docker compose up -d
+docker compose -f docker-compose.dev.yaml up -d
 
 # The bot will be available at http://localhost:9001
 # Check logs: docker compose logs -f webhook-fastapi
@@ -335,12 +296,12 @@ You can create multiple environment files for different scenarios:
 # Development
 cp .env.example .env.dev
 # Edit .env.dev
-docker compose --env-file .env.dev up -d
+docker compose -f docker-compose.dev.yaml --env-file .env.dev up -d
 
 # Production
 cp .env.example .env.prod
 # Edit .env.prod
-docker compose --env-file .env.prod up -d
+docker compose -f docker-compose.dev.yaml --env-file .env.prod up -d
 ```
 
 ### Docker Compose Services
@@ -405,29 +366,29 @@ make install-deps        # Install dependencies
 
 # Run Commands
 make run                 # Run with Python directly (local dev)
-docker compose up -d   # Run with Docker (recommended)
+docker compose -f docker-compose.dev.yaml up -d   # Run with Docker (recommended)
 
-# Evolution API Commands
-make evolution-setup     # Download and extract Evolution API
-make evolution-start      # Start Evolution API
-make evolution-stop       # Stop Evolution API
-make evolution-clean      # Stop and remove all Evolution API data
+# WAHA Commands
+make waha-start          # Build/start the GOWS container
+make waha-stop           # Stop WAHA, preserving its volumes
+make waha-logs           # View WAHA logs
+make waha-configure      # Configure/start the session (Gork must be running)
 ```
 
 ### Starting All Services
 
 ```bash
 # 1. Start Docker services (PostgreSQL, MinIO, Gork)
-docker compose up -d
+docker compose -f docker-compose.dev.yaml up -d
 
-# 2. Start Evolution API
-make evolution-start
+# 2. Start WAHA (GOWS)
+make waha-start
 
 # 3. Check logs
-docker compose logs -f webhook-fastapi
+docker compose -f docker-compose.dev.yaml logs -f webhook-fastapi
 
-# 4. Verify Evolution API
-curl http://localhost:8080
+# 4. Verify WAHA (GOWS)
+curl http://localhost:3002
 
 # 5. Verify Gork API
 curl http://localhost:9001
@@ -437,7 +398,7 @@ curl http://localhost:9001
 
 1. **Send a message to your WhatsApp number**
 2. **Check logs**: `docker compose logs -f webhook-fastapi`
-3. **Verify webhook**: Check Evolution API dashboard → Events → Webhook
+3. **Verify webhook**: Use `scripts.waha_session status` and the [pairing guide](docs/waha-migration.md).
 4. **Test commands**:
    - `!help` - Shows available commands
    - `!model` - Shows current model
@@ -447,10 +408,10 @@ curl http://localhost:9001
 
 ```bash
 # 1. Stop Gork and Docker services
-docker compose down
+docker compose -f docker-compose.dev.yaml down
 
-# 2. Stop Evolution API
-make evolution-stop
+# 2. Stop WAHA (GOWS)
+make waha-stop
 ```
 
 ---
@@ -464,11 +425,11 @@ make evolution-stop
 make setup
 
 # Start services (PostgreSQL and MinIO)
-docker compose up -d postgres s3-minio
+docker compose -f docker-compose.dev.yaml up -d postgres s3-minio
 
 # Run Gork locally
 make run
-# Or: source .venv/bin/activate && python main.py
+# Or: source .venv/bin/activate && uvicorn main:app --host 0.0.0.0 --port 9001
 ```
 
 ### Project Structure
@@ -478,12 +439,12 @@ gork/
 ├── api/                    # API routes and handlers
 │   └── routes/
 │       └── webhook/
-│           ├── evolution/    # Evolution API webhook handlers
+│           ├── waha/    # WAHA (GOWS) webhook handlers
 │           └── ...
 ├── agents/                 # AI agents configuration
 ├── database/               # Database models and operations
 ├── external/               # External service integrations
-│   ├── evolution/          # Evolution API client
+│   ├── waha/          # WAHA (GOWS) client
 │   ├── firecrawl.py        # Web scraping
 │   └── ...
 ├── services/               # Business logic services
@@ -503,7 +464,7 @@ gork/
 
 To add a new command to Gork:
 
-1. **Create handler function** in `api/routes/webhook/evolution/handles.py`
+1. **Create handler function** in `api/routes/webhook/waha/handles.py`
 
 ```python
 # Example: New command handler
@@ -560,103 +521,26 @@ ENV=debug
 
 ```bash
 # Gork logs
-docker compose logs -f webhook-fastapi
+docker compose -f docker-compose.dev.yaml logs -f webhook-fastapi
 
 # PostgreSQL logs
-docker compose logs -f gork_postgres
+docker compose -f docker-compose.dev.yaml logs -f gork_postgres
 
 # All logs
-docker compose logs
+docker compose -f docker-compose.dev.yaml logs
 ```
 
 ---
 
 ## 🔍 Troubleshooting
 
-### Evolution API Won't Start
+### WAHA connectivity, QR code or webhook errors
 
-**Check if Docker is running:**
-
-```bash
-docker ps
-# Look for evolution_api container
-```
-
-**Check Docker Compose logs:**
-
-```bash
-cd external-services/evolution-api-2.3.6
-docker compose logs
-```
-
-**Common issues:**
-
-```bash
-# Port 8080 already in use
-lsof -i :8080  # macOS/Linux
-netstat -ano | findstr :8080  # Windows
-# Kill process or change port
-
-# Evolution API extraction failed
-make evolution-clean
-make evolution-setup
-make evolution-start
-```
-
-### QR Code Not Appearing
-
-**Possible causes:**
-1. Evolution API not fully started
-2. Port conflict on 8080
-3. Webhook not configured
-
-**Solution:**
-
-```bash
-# 1. Restart Evolution API
-make evolution-stop
-make evolution-start
-
-# 2. Check logs
-cd external-services/evolution-api-2.3.6
-docker compose logs -f
-
-# 3. Clear Docker cache and rebuild
-docker compose down --volumes --remove-orphans
-docker compose build --no-cache
-docker compose up -d
-```
-
-### Bot Not Responding to Messages
-
-**Check Gork logs:**
-
-```bash
-docker compose logs -f webhook-fastapi
-```
-
-**Verify webhook is configured:**
-
-1. Go to Evolution API dashboard: `http://localhost:8080`
-2. Check instance: **Gork**
-3. Verify webhook URL: `http://webhook_fastapi:9001/webhook/evolution`
-4. Ensure webhook is **enabled**
-
-**Test webhook manually:**
-
-```bash
-# Send a test webhook payload
-curl -X POST http://localhost:9001/webhook/evolution \
-  -H "Content-Type: application/json" \
-  -H "apikey: YOUR_EVOLUTION_INSTANCE_KEY" \
-  -d '{
-    "event": "messages.upsert",
-    "data": {
-      "key": {"remoteJid": "553192793203@s.whatsapp.net"},
-      "message": {"conversation": "test message"}
-    }
-  }'
-```
+Use `make waha-logs` and the `scripts.waha_session status` command described in
+[the migration guide](docs/waha-migration.md). The session must be `WORKING`,
+`WAHA_API_KEY` must match the container, and `X-Webhook-Token` must match
+`WAHA_WEBHOOK_TOKEN`. Subscribe only to `message.any`. Keep the existing bot
+number and whitelist entries. The API listens on localhost port 3002 by default.
 
 ### Database Connection Errors
 
@@ -676,8 +560,8 @@ psql -h localhost -p 5435 -U admin -d postgres
 
 ```bash
 # Reset database volume (WARNING: deletes all data)
-docker compose down -v
-docker compose up -d
+docker compose -f docker-compose.dev.yaml down -v
+docker compose -f docker-compose.dev.yaml up -d
 
 # Check port conflicts
 lsof -i :5435  # macOS/Linux
@@ -756,8 +640,8 @@ MINIO_USE_SSL=false
 
 ```bash
 # From within container
-docker compose exec s3-minio mc alias set local http://localhost:19000 minioadmin minioadmin
-docker compose exec s3-minio mc ls local
+docker compose -f docker-compose.dev.yaml exec s3-minio mc alias set local http://localhost:19000 minioadmin minioadmin
+docker compose -f docker-compose.dev.yaml exec s3-minio mc ls local
 ```
 
 ### Port Conflicts
@@ -768,14 +652,14 @@ docker compose exec s3-minio mc ls local
 # macOS/Linux
 lsof -i :5435  # PostgreSQL
 lsof -i :9001  # Gork API
-lsof -i :8080  # Evolution API
+lsof -i :3002  # WAHA (GOWS)
 lsof -i :19000  # MinIO API
 lsof -i :19001  # MinIO Console
 
 # Windows
 netstat -ano | findstr :5435
 netstat -ano | findstr :9001
-netstat -ano | findstr :8080
+netstat -ano | findstr :3002
 netstat -ano | findstr :19000
 netstat -ano | findstr :19001
 ```
@@ -812,7 +696,7 @@ services:
 ┌──────────────────────────────────────────────────┐
 │                    User Messages                     │
 │                      ↓                             │
-│              Evolution API (8080)                 │
+│              WAHA / GOWS (3000)                 │
 │                      ↓                             │
 │              Webhook Endpoint                    │
 │                      ↓                             │
@@ -831,16 +715,16 @@ services:
 
 ### Data Flow
 
-1. **User sends WhatsApp message** → Evolution API receives it
-2. **Evolution API sends webhook** → Gork FastAPI server
+1. **User sends WhatsApp message** → WAHA (GOWS) receives it
+2. **WAHA (GOWS) sends webhook** → Gork FastAPI server
 3. **Gork processes message** → Classifies intent, calls appropriate service
 4. **LLM generates response** → OpenRouter or configured LLM
-5. **Gork sends response** → Evolution API → WhatsApp
+5. **Gork sends response** → WAHA (GOWS) → WhatsApp
 
 ### Key Components
 
 - **FastAPI Server**: Handles incoming webhooks and exposes API endpoints
-- **Webhook Handler**: Processes Evolution API events (messages, status, etc.)
+- **Webhook Handler**: Processes WAHA (GOWS) events (messages, status, etc.)
 - **Intent Classifier**: Determines user intent (search, image, help, etc.)
 - **LLM Integration**: Communicates with OpenRouter, Firecrawl, etc.
 - **Database Layer**: Stores conversation history, user data, embeddings
@@ -868,7 +752,7 @@ git checkout -b feature/your-feature-name
 
 # 4. Test your changes
 make setup
-docker compose up -d
+docker compose -f docker-compose.dev.yaml up -d
 # Test thoroughly
 
 # 5. Commit changes
@@ -892,7 +776,7 @@ git push origin feature/your-feature-name
 
 ### Adding New Features
 
-1. **Create handler function** in `api/routes/webhook/evolution/handles.py`
+1. **Create handler function** in `api/routes/webhook/waha/handles.py`
 2. **Add command to list** in `COMMANDS` array
 3. **Register processor call** in `processors.py` → `process_explicit_commands()`
 4. **Update documentation** in this README
@@ -934,7 +818,7 @@ This project is licensed under the [Apache License](LICENSE).
 
 ## 🙏 Acknowledgments
 
-- [Evolution API](https://doc.evolution-api.com/) - WhatsApp API integration
+- [WAHA](https://waha.devlike.pro/docs/) - WhatsApp API integration
 - [OpenRouter](https://openrouter.ai/) - LLM API provider
 - [FastAPI](https://fastapi.tiangolo.com/) - Web framework
 - [UV](https://github.com/astral-sh/uv) - Fast Python package manager

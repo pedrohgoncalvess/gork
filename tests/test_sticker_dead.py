@@ -4,9 +4,9 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from api.routes.webhook.evolution.handles.core import clean_text
-from api.routes.webhook.evolution.handles.image.sticker_caption import add_caption_to_image
-from api.routes.webhook.evolution.handles.image.sticker_static import _dead_caption
+from api.routes.webhook.waha.handles.core import clean_text
+from api.routes.webhook.waha.handles.image.sticker_caption import add_caption_to_image
+from api.routes.webhook.waha.handles.image.sticker_static import _dead_caption
 
 
 class DeadStickerTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class DeadStickerTests(unittest.TestCase):
         image = Image.new("RGBA", (512, 512), (0, 0, 0, 0))
 
         with patch(
-            "api.routes.webhook.evolution.handles.image.sticker_caption._draw_meme_text"
+            "api.routes.webhook.waha.handles.image.sticker_caption._draw_meme_text"
         ) as draw_text:
             add_caption_to_image(
                 image,

@@ -6,13 +6,13 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-from api.routes.webhook.evolution.handles.image import sticker_animated as animated
+from api.routes.webhook.waha.handles.image import sticker_animated as animated
 from services.params import parse_params
 
 
 class StickerEffectControlTests(unittest.TestCase):
     def test_parameters_are_parsed_and_removed_from_caption(self):
-        from api.routes.webhook.evolution.handles.core import clean_text
+        from api.routes.webhook.waha.handles.core import clean_text
 
         command = "!sticker :effect=explosion :size=0.5 :duration=2 legenda"
         self.assertEqual(parse_params(command), {

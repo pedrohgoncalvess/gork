@@ -6,11 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 from PIL import Image, ImageDraw
 
-from api.routes.webhook.evolution.handles.image import handle_sticker_command
-from api.routes.webhook.evolution.handles.image.sticker_tweet import (
+from api.routes.webhook.waha.handles.image import handle_sticker_command
+from api.routes.webhook.waha.handles.image.sticker_tweet import (
     _fit_text, _width, render_tweet_sticker,
 )
-from api.routes.webhook.evolution.handles.social import (
+from api.routes.webhook.waha.handles.social import (
     TwitterCardDownloadResult, download_twitter_card,
 )
 from services import parse_params
@@ -75,7 +75,7 @@ class TweetRenderingTests(unittest.TestCase):
 
 class TweetCardDownloadTests(unittest.IsolatedAsyncioTestCase):
     async def test_text_only_tweet_keeps_author_and_paragraphs(self):
-        with patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status",
+        with patch("api.routes.webhook.waha.handles.social._fetch_twitter_status",
                    new=AsyncMock(return_value={"text": "Olá\nMundo", "user": {"name": "Maria", "screen_name": "maria"}})):
             result = await download_twitter_card(URL)
         self.assertIsNone(result.error)
@@ -87,9 +87,9 @@ class TweetCardDownloadTests(unittest.IsolatedAsyncioTestCase):
         status = {"text": "texto", "user": {"profile_image_url_https": "https://pbs.twimg.com/avatar.jpg"},
                   "extended_entities": {"media": [{"type": "video", "media_url_https": "https://pbs.twimg.com/preview.jpg"}]}}
         with (
-            patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status", new=AsyncMock(return_value=status)),
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_photo", new=AsyncMock(return_value=(b"image", None))) as download,
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_video", new=AsyncMock()) as video,
+            patch("api.routes.webhook.waha.handles.social._fetch_twitter_status", new=AsyncMock(return_value=status)),
+            patch("api.routes.webhook.waha.handles.social._download_twitter_photo", new=AsyncMock(return_value=(b"image", None))) as download,
+            patch("api.routes.webhook.waha.handles.social._download_twitter_video", new=AsyncMock()) as video,
         ):
             result = await download_twitter_card(URL)
         self.assertEqual(download.await_count, 2)
@@ -99,9 +99,9 @@ class TweetCardDownloadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_optional_image_failure_keeps_text(self):
         with (
-            patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status", new=AsyncMock(return_value={
+            patch("api.routes.webhook.waha.handles.social._fetch_twitter_status", new=AsyncMock(return_value={
                 "text": "texto", "user": {"profile_image_url_https": "https://pbs.twimg.com/avatar.jpg"}})),
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_photo", new=AsyncMock(return_value=(None, "failed"))),
+            patch("api.routes.webhook.waha.handles.social._download_twitter_photo", new=AsyncMock(return_value=(None, "failed"))),
         ):
             result = await download_twitter_card(URL)
         self.assertIsNone(result.error)
@@ -109,9 +109,9 @@ class TweetCardDownloadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_photo_only_tweet_succeeds(self):
         with (
-            patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status", new=AsyncMock(return_value={
+            patch("api.routes.webhook.waha.handles.social._fetch_twitter_status", new=AsyncMock(return_value={
                 "mediaDetails": [{"type": "photo", "media_url_https": "https://pbs.twimg.com/photo.jpg"}]})),
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_photo", new=AsyncMock(return_value=(b"photo", None))),
+            patch("api.routes.webhook.waha.handles.social._download_twitter_photo", new=AsyncMock(return_value=(b"photo", None))),
         ):
             result = await download_twitter_card(URL)
         self.assertIsNone(result.error)
@@ -120,10 +120,10 @@ class TweetCardDownloadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_does_not_attach_quoted_tweet_photo_to_parent_author(self):
         with (
-            patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status", new=AsyncMock(return_value={
+            patch("api.routes.webhook.waha.handles.social._fetch_twitter_status", new=AsyncMock(return_value={
                 "text": "Comentário", "mediaDetails": [],
                 "extended_entities": {"media": [{"type": "photo", "media_url_https": "https://pbs.twimg.com/quoted.jpg"}]}})),
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_photo", new=AsyncMock()) as download,
+            patch("api.routes.webhook.waha.handles.social._download_twitter_photo", new=AsyncMock()) as download,
         ):
             result = await download_twitter_card(URL)
         self.assertIsNone(result.photo_bytes)
@@ -131,14 +131,14 @@ class TweetCardDownloadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_invalid_private_or_empty_tweet_returns_error(self):
         for status in (None, {}, {"user": {"name": "Nome"}}):
-            with patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status", new=AsyncMock(return_value=status)):
+            with patch("api.routes.webhook.waha.handles.social._fetch_twitter_status", new=AsyncMock(return_value=status)):
                 self.assertTrue((await download_twitter_card(URL)).error)
         self.assertTrue((await download_twitter_card("https://example.com/status/12345")).error)
 
 
 class TweetStickerCommandTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        logger_patch = patch("api.routes.webhook.evolution.handles.image.logger", new=AsyncMock())
+        logger_patch = patch("api.routes.webhook.waha.handles.image.logger", new=AsyncMock())
         logger_patch.start()
         self.addCleanup(logger_patch.stop)
 
@@ -153,10 +153,10 @@ class TweetStickerCommandTests(unittest.IsolatedAsyncioTestCase):
         ):
             command = SimpleNamespace(content=content, quoted_message_id=None, message_id="id")
             with (
-                patch("api.routes.webhook.evolution.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))) as download,
-                patch("api.routes.webhook.evolution.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
-                patch("api.routes.webhook.evolution.handles.image.send_sticker", new=AsyncMock()) as send,
-                patch("api.routes.webhook.evolution.handles.image.download_twitter_media", new=AsyncMock()) as media,
+                patch("api.routes.webhook.waha.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))) as download,
+                patch("api.routes.webhook.waha.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
+                patch("api.routes.webhook.waha.handles.image.send_sticker", new=AsyncMock()) as send,
+                patch("api.routes.webhook.waha.handles.image.download_twitter_media", new=AsyncMock()) as media,
             ):
                 await handle_sticker_command("group", command, AsyncMock(), context, params)
             download.assert_awaited_once_with(URL)
@@ -169,10 +169,10 @@ class TweetStickerCommandTests(unittest.IsolatedAsyncioTestCase):
             quoted_message_id=None, message_id="id",
         )
         with (
-            patch("api.routes.webhook.evolution.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))) as download,
-            patch("api.routes.webhook.evolution.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
-            patch("api.routes.webhook.evolution.handles.image.send_sticker", new=AsyncMock()) as send,
-            patch("api.routes.webhook.evolution.handles.image.download_twitter_media", new=AsyncMock()) as media,
+            patch("api.routes.webhook.waha.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))) as download,
+            patch("api.routes.webhook.waha.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
+            patch("api.routes.webhook.waha.handles.image.send_sticker", new=AsyncMock()) as send,
+            patch("api.routes.webhook.waha.handles.image.download_twitter_media", new=AsyncMock()) as media,
         ):
             await handle_sticker_command("group", command, AsyncMock())
         download.assert_awaited_once_with("https://x.com/gdois__/status/2095335085763371454")
@@ -183,9 +183,9 @@ class TweetStickerCommandTests(unittest.IsolatedAsyncioTestCase):
         for content in ("!sticker :tweet", f"!sticker :tweet {URL}"):
             command = SimpleNamespace(content=content, quoted_message_id=None, message_id="id")
             with (
-                patch("api.routes.webhook.evolution.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(error="Tweet indisponível"))),
-                patch("api.routes.webhook.evolution.handles.image.send_message", new=AsyncMock()) as send,
-                patch("api.routes.webhook.evolution.handles.image.send_sticker", new=AsyncMock()) as sticker,
+                patch("api.routes.webhook.waha.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(error="Tweet indisponível"))),
+                patch("api.routes.webhook.waha.handles.image.send_message", new=AsyncMock()) as send,
+                patch("api.routes.webhook.waha.handles.image.send_sticker", new=AsyncMock()) as sticker,
             ):
                 await handle_sticker_command("group", command, AsyncMock())
             send.assert_awaited_once()
@@ -194,10 +194,10 @@ class TweetStickerCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_database_quoted_message_supplies_link(self):
         command = SimpleNamespace(content="!sticker :tweet", quoted_message_id=42, message_id="id")
         with (
-            patch("api.routes.webhook.evolution.handles.image.MessageRepository") as repo,
-            patch("api.routes.webhook.evolution.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))) as download,
-            patch("api.routes.webhook.evolution.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
-            patch("api.routes.webhook.evolution.handles.image.send_sticker", new=AsyncMock()) as send,
+            patch("api.routes.webhook.waha.handles.image.MessageRepository") as repo,
+            patch("api.routes.webhook.waha.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))) as download,
+            patch("api.routes.webhook.waha.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
+            patch("api.routes.webhook.waha.handles.image.send_sticker", new=AsyncMock()) as send,
         ):
             repo.return_value.find_by_id = AsyncMock(return_value=SimpleNamespace(content=URL))
             await handle_sticker_command("group", command, AsyncMock())
@@ -207,11 +207,11 @@ class TweetStickerCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_rendering_failure_sends_error_without_sticker(self):
         command = SimpleNamespace(content=f"!sticker :tweet {URL}", quoted_message_id=None, message_id="id")
         with (
-            patch("api.routes.webhook.evolution.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))),
-            patch("api.routes.webhook.evolution.handles.image.sticker_tweet.render_tweet_sticker", side_effect=ValueError("compression")),
-            patch("api.routes.webhook.evolution.handles.image._log_image_command_error", new=AsyncMock()),
-            patch("api.routes.webhook.evolution.handles.image.send_message", new=AsyncMock()) as send,
-            patch("api.routes.webhook.evolution.handles.image.send_sticker", new=AsyncMock()) as sticker,
+            patch("api.routes.webhook.waha.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))),
+            patch("api.routes.webhook.waha.handles.image.sticker_tweet.render_tweet_sticker", side_effect=ValueError("compression")),
+            patch("api.routes.webhook.waha.handles.image._log_image_command_error", new=AsyncMock()),
+            patch("api.routes.webhook.waha.handles.image.send_message", new=AsyncMock()) as send,
+            patch("api.routes.webhook.waha.handles.image.send_sticker", new=AsyncMock()) as sticker,
         ):
             await handle_sticker_command("group", command, AsyncMock())
         send.assert_awaited_once()
@@ -220,11 +220,11 @@ class TweetStickerCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_send_failure_returns_useful_message(self):
         command = SimpleNamespace(content=f"!sticker :tweet {URL}", quoted_message_id=None, message_id="id")
         with (
-            patch("api.routes.webhook.evolution.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))),
-            patch("api.routes.webhook.evolution.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
-            patch("api.routes.webhook.evolution.handles.image._log_image_command_error", new=AsyncMock()) as log_error,
-            patch("api.routes.webhook.evolution.handles.image.send_message", new=AsyncMock()) as send,
-            patch("api.routes.webhook.evolution.handles.image.send_sticker", new=AsyncMock(side_effect=RuntimeError("send failed"))),
+            patch("api.routes.webhook.waha.handles.image.download_twitter_card", new=AsyncMock(return_value=TwitterCardDownloadResult(text="texto"))),
+            patch("api.routes.webhook.waha.handles.image.sticker_tweet.render_tweet_sticker", return_value="card-base64"),
+            patch("api.routes.webhook.waha.handles.image._log_image_command_error", new=AsyncMock()) as log_error,
+            patch("api.routes.webhook.waha.handles.image.send_message", new=AsyncMock()) as send,
+            patch("api.routes.webhook.waha.handles.image.send_sticker", new=AsyncMock(side_effect=RuntimeError("send failed"))),
         ):
             await handle_sticker_command("group", command, AsyncMock())
         self.assertEqual(log_error.await_args.args[0], "tweet_sticker_send_failed")

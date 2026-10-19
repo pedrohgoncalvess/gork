@@ -3,10 +3,10 @@ from contextlib import ExitStack, nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from api.routes.webhook.evolution.processors.group import process_group_message
+from api.routes.webhook.waha.processors.group import process_group_message
 
 
-MODULE = "api.routes.webhook.evolution.processors.group."
+MODULE = "api.routes.webhook.waha.processors.group."
 
 
 class GroupStickerLockTests(unittest.IsolatedAsyncioTestCase):

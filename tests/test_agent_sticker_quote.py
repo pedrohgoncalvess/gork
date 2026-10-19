@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from PIL import Image
 
-from api.routes.webhook.evolution.handles.chat import _dispatch_action
+from api.routes.webhook.waha.handles.chat import _dispatch_action
 
 
 class AgentStickerQuoteTests(unittest.IsolatedAsyncioTestCase):
@@ -37,16 +37,16 @@ class AgentStickerQuoteTests(unittest.IsolatedAsyncioTestCase):
         repo = Mock()
         repo.find_by_id = AsyncMock(return_value=self.selected)
         with (
-            patch("api.routes.webhook.evolution.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
-            patch("api.routes.webhook.evolution.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
-            patch("api.routes.webhook.evolution.handles.chat.MessageRepository", return_value=repo),
-            patch("api.routes.webhook.evolution.handles.image.MessageRepository", return_value=repo),
-            patch("api.routes.webhook.evolution.handles.image.sticker_static.MessageRepository", return_value=repo),
-            patch("api.routes.webhook.evolution.handles.image.sticker_static.UserRepository") as users,
-            patch("api.routes.webhook.evolution.handles.image.sticker_static.S3Client") as s3,
-            patch("api.routes.webhook.evolution.handles.image.sticker_static.add_caption_to_image", side_effect=lambda image, *args, **kwargs: image) as caption,
-            patch("api.routes.webhook.evolution.handles.image.sticker_static._random_image", new=AsyncMock()) as random_image,
-            patch("api.routes.webhook.evolution.handles.image.send_sticker", new=AsyncMock()) as send,
+            patch("api.routes.webhook.waha.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
+            patch("api.routes.webhook.waha.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
+            patch("api.routes.webhook.waha.handles.chat.MessageRepository", return_value=repo),
+            patch("api.routes.webhook.waha.handles.image.MessageRepository", return_value=repo),
+            patch("api.routes.webhook.waha.handles.image.sticker_static.MessageRepository", return_value=repo),
+            patch("api.routes.webhook.waha.handles.image.sticker_static.UserRepository") as users,
+            patch("api.routes.webhook.waha.handles.image.sticker_static.S3Client") as s3,
+            patch("api.routes.webhook.waha.handles.image.sticker_static.add_caption_to_image", side_effect=lambda image, *args, **kwargs: image) as caption,
+            patch("api.routes.webhook.waha.handles.image.sticker_static._random_image", new=AsyncMock()) as random_image,
+            patch("api.routes.webhook.waha.handles.image.send_sticker", new=AsyncMock()) as send,
         ):
             users.return_value.find_by_id = AsyncMock(return_value=SimpleNamespace(profile_pic_path="profile/selected.jpeg"))
             s3.return_value.connect = AsyncMock()
@@ -65,10 +65,10 @@ class AgentStickerQuoteTests(unittest.IsolatedAsyncioTestCase):
     async def test_selected_media_receives_virtual_quote_without_current_webhook_media(self):
         self.selected.media_id = 33
         with (
-            patch("api.routes.webhook.evolution.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
-            patch("api.routes.webhook.evolution.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
-            patch("api.routes.webhook.evolution.handles.chat.MessageRepository") as repo,
-            patch("api.routes.webhook.evolution.handles.chat.handle_sticker_command", new=AsyncMock()) as handler,
+            patch("api.routes.webhook.waha.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
+            patch("api.routes.webhook.waha.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
+            patch("api.routes.webhook.waha.handles.chat.MessageRepository") as repo,
+            patch("api.routes.webhook.waha.handles.chat.handle_sticker_command", new=AsyncMock()) as handler,
         ):
             repo.return_value.find_by_id = AsyncMock(return_value=self.selected)
             await self.dispatch({"message_id": 100})
@@ -83,11 +83,11 @@ class AgentStickerQuoteTests(unittest.IsolatedAsyncioTestCase):
         self.selected.group_id = 2
         for selected in (None, self.selected):
             with (
-                patch("api.routes.webhook.evolution.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
-                patch("api.routes.webhook.evolution.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
-                patch("api.routes.webhook.evolution.handles.chat.MessageRepository") as repo,
-                patch("api.routes.webhook.evolution.handles.chat.handle_sticker_command", new=AsyncMock()) as handler,
-                patch("api.routes.webhook.evolution.handles.chat.send_message", new=AsyncMock()) as send,
+                patch("api.routes.webhook.waha.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
+                patch("api.routes.webhook.waha.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
+                patch("api.routes.webhook.waha.handles.chat.MessageRepository") as repo,
+                patch("api.routes.webhook.waha.handles.chat.handle_sticker_command", new=AsyncMock()) as handler,
+                patch("api.routes.webhook.waha.handles.chat.send_message", new=AsyncMock()) as send,
             ):
                 repo.return_value.find_by_id = AsyncMock(return_value=selected)
                 await self.dispatch({"message_id": 100})

@@ -183,10 +183,10 @@ class ObservationTests(unittest.IsolatedAsyncioTestCase):
 
 class ObservationToolScopeTests(unittest.IsolatedAsyncioTestCase):
     async def test_tool_calls_ignore_model_supplied_scope_and_source(self):
-        from api.routes.webhook.evolution.handles.chat import _execute_database_query
+        from api.routes.webhook.waha.handles.chat import _execute_database_query
         for group_id in (None, 30):
             with self.subTest(group_id=group_id):
-                with patch("api.routes.webhook.evolution.handles.chat.save_observation", new=AsyncMock(return_value={"id": 1})) as save:
+                with patch("api.routes.webhook.waha.handles.chat.save_observation", new=AsyncMock(return_value={"id": 1})) as save:
                     result = await _execute_database_query(
                         db="session", group_id=group_id, user_id=10,
                         query={"query_type": "save_observation", "parameters": {
@@ -199,7 +199,7 @@ class ObservationToolScopeTests(unittest.IsolatedAsyncioTestCase):
                     content="piada interna", source_message_id=99,
                 )
                 self.assertEqual(result["result"], {"id": 1})
-                with patch("api.routes.webhook.evolution.handles.chat.search_observations", new=AsyncMock(return_value={"observations": []})) as search:
+                with patch("api.routes.webhook.waha.handles.chat.search_observations", new=AsyncMock(return_value={"observations": []})) as search:
                     await _execute_database_query(
                         db="session", group_id=group_id, user_id=10,
                         query={"query_type": "search_observations", "parameters": {

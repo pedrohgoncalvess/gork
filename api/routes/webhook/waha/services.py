@@ -1,0 +1,106 @@
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import httpx
+
+from api.routes.webhook.waha.processors import (
+    process_group_message,
+    process_private_message,
+    process_sent_message,
+)
+from database import PgConnection
+from external.waha import send_message
+from external.waha.base import request, segment, waha_session
+from external.waha.identifiers import get_reference, save_reference
+from external.waha.base import chat_id
+from api.routes.webhook.waha.normalize import normalize_webhook, remote_address
+from log import logger
+from services.conversation_lock import serialize_direct_message
+from utils import get_env_var
+
+
+maintenance = get_env_var("MAINTENANCE")
+maintenance_number = get_env_var("MAINTENANCE_NUMBER")
+
+
+async def process_waha_webhook(body: dict, scheduler: AsyncIOScheduler):
+    normalized = normalize_webhook(body)
+    if normalized is None:
+        return
+    payload = body["payload"]
+    remote = remote_address(payload)
+    key = normalized["data"]["key"]
+    # Resolve missing phone/LID aliases before matching existing users and whitelist.
+    if not key["fromMe"]:
+        is_group = remote.endswith("@g.us")
+        original = key["participant"] if is_group else key["remoteJid"]
+        alternate_key = "participantAlt" if is_group else "remoteJidAlt"
+        if original.endswith("@lid") and not key.get(alternate_key):
+            try:
+                result = await request("GET", f"/api/{segment(waha_session)}/lids/{segment(original)}")
+                key[alternate_key] = (result.get("pn") or "").replace("@c.us", "@s.whatsapp.net")
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code != 404:
+                    raise
+    await save_reference(payload, remote)
+    reply = payload.get("replyTo") or {}
+    if reply.get("id"):
+        # Keep a complete reference captured from its original message event.
+        if not await get_reference(reply["id"]):
+            await save_reference(reply, remote)
+    else:
+        context = normalized["data"]["contextInfo"]
+        quote_id = context.get("stanzaId")
+        if quote_id and not await get_reference(quote_id):
+            participant = context.get("participant") or reply.get("participant") or ""
+            me = body.get("me") or {}
+            own_ids = [me.get("id"), me.get("lid")]
+            from_me = any(value and chat_id(value) == chat_id(participant)
+                          for value in own_ids if participant)
+            await save_reference({"id": f"{str(from_me).lower()}_{chat_id(remote)}_{quote_id}",
+                                  "media": reply.get("media")}, remote)
+    await process_webhook(normalized, scheduler)
+
+async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
+    async with PgConnection() as db:
+        event_type = body.get("event")
+        event_data = body.get("data")
+
+        valid_events = ["messages.upsert", "send.message"]
+        if event_type not in valid_events:
+            return
+
+        await logger.info("Request", body.get("instance"), body)
+
+        remote_id = event_data.get("key", {}).get("remoteJid", "")
+        alt_id = event_data.get("key", {}).get("remoteJidAlt", "")
+
+        is_private = not remote_id.endswith("@g.us")
+        phone_number = next((value.removesuffix("@s.whatsapp.net")
+                             for value in (remote_id, alt_id)
+                             if value.endswith("@s.whatsapp.net")), None)
+        if is_private:
+            identity = next((value for value in (remote_id, alt_id) if value.endswith("@lid")), remote_id)
+            remote_id = identity.split("@")[0]
+        else:
+            remote_id = remote_id.removesuffix("@g.us")
+
+        if maintenance:
+            if phone_number != maintenance_number:
+                destination = phone_number or (f"{remote_id}@lid" if is_private else f"{remote_id}@g.us")
+                await send_message(destination, "O robo do mito não está pronto :/")
+                return
+            else:
+                return
+
+        if event_type == "send.message":
+            await process_sent_message(body, remote_id, db, not is_private)
+            return
+
+        if not is_private:
+            await process_group_message(
+                body, f"{remote_id}@g.us", db, scheduler
+            )
+        elif is_private:
+            async with serialize_direct_message(phone_number or remote_id):
+                await process_private_message(
+                    body, event_data, remote_id, phone_number, db, scheduler
+                )
