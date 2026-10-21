@@ -32,7 +32,7 @@ api = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
 async def panel():
     return FileResponse(STATIC_DIR / "index.html", headers={
         "Cache-Control": "no-store", "X-Frame-Options": "DENY",
-        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     })
 
 
@@ -276,4 +276,7 @@ async def remove_command(identifier: int, db=Depends(get_db)):
     return {"ok": True}
 
 
+from api.admin.data import router as data_router
+
+api.include_router(data_router)
 router.include_router(api)

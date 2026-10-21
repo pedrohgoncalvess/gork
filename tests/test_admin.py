@@ -50,7 +50,7 @@ class AdminAuthTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.client.get("/admin/assets/" + path)).status_code, 200)
 
     async def test_all_management_endpoints_require_authentication(self):
-        for path in ("connection", "overview", "directory/user", "directory/group", "blacklist", "agents", "models", "commands", "overrides", "settings", "sync"):
+        for path in ("connection", "overview", "directory/user", "directory/group", "blacklist", "agents", "models", "commands", "overrides", "settings", "sync", "data/attachments", "data/messages", "media/1"):
             with self.subTest(path=path):
                 self.assertEqual((await self.client.get("/admin/api/" + path)).status_code, 401)
 

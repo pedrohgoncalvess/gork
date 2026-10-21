@@ -1,5 +1,6 @@
 from sqlalchemy import BOOLEAN, Column, ForeignKey, func, Integer, String, text, Text, TIMESTAMP, UUID
 from sqlalchemy.orm import relationship
+from pgvector.sqlalchemy import Vector
 
 from database.models import Base
 
@@ -19,6 +20,7 @@ class Message(Base):
     media_id = Column(Integer, ForeignKey("content.media.id"))
     group_id = Column(Integer, ForeignKey("base.group.id"))
     content = Column(Text)
+    content_embedding = Column(Vector(2560))
     created_at = Column(TIMESTAMP, nullable=False)
     is_favorite = Column(BOOLEAN, default=False)
 

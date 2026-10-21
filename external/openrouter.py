@@ -324,7 +324,7 @@ async def generate_images(payload: dict) -> dict:
             raise
 
 
-async def embeddings(text: str, model: str) -> dict:
+async def embeddings(text: str | list[str], model: str) -> dict:
     start = datetime.now()
     headers = {
         "Content-Type": "application/json",

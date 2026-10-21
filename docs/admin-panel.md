@@ -96,3 +96,28 @@ Somente esse contato pode conversar em privado, mesmo sem whitelist; grupos e
 outros contatos são ignorados. Blacklist e restrições de comando permanecem
 válidas. Desative para voltar às regras normais de acesso. Tudo é salvo no banco
 e passa a valer entre todos os workers sem reiniciar.
+
+## Galerias de dados
+
+O dropdown **Data** contém **Anexos** e **Mensagens**. Ambas as telas combinam
+filtros por grupo, contato (remetente ou participante da conversa privada),
+período e busca semântica. Use os campos de busca dos seletores para encontrar
+contatos e grupos fora dos primeiros 30 cadastros. Datas usam o fuso do navegador;
+o início é inclusivo e o fim é exclusivo. Sem busca, os registros aparecem do
+mais recente para o mais antigo; com busca, pela similaridade dos embeddings.
+
+Anexos mostram imagem/figurinha, vídeo ou áudio, nome, descrição, contexto e
+download autenticado. Cada cartão representa um envio, portanto o mesmo arquivo
+pode aparecer em várias conversas. Arquivos sem mensagem ativa não são expostos.
+A busca de anexos considera somente descrições com embedding já salvo.
+
+A busca de mensagens usa o modelo de embeddings padrão e indexa até 100 textos
+pendentes do período a cada aplicação dos filtros. O painel informa quando os
+resultados são parciais; **Continuar indexação** processa o próximo lote. Vetores
+ficam salvos para próximas buscas. Paginar não inicia novos lotes. A indexação
+envia os textos ao provedor configurado e pode gerar custos de embeddings.
+Mensagens sem texto aparecem na listagem cronológica, mas não na busca semântica.
+
+Antes de executar esta versão, aplique a migração
+`20261020_02_MessageSearch.sql` pelo fluxo normal do projeto para adicionar
+`content.message.content_embedding` (a inicialização aplica migrações pendentes).
