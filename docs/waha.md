@@ -1,9 +1,8 @@
-# Migração para WAHA / GOWS
+# WhatsApp com WAHA / GOWS
 
-O Gork usa a mesma imagem base do Orbia:
+O Gork usa a imagem base:
 `devlikeapro/waha:gows-2026.9.1@sha256:d2056b8dec41b218b54f431b8b4eb7d148346d530bb3658295ecb882944e9a18`.
-O Dockerfile mantém a preparação de permissões dos volumes do Orbia. Os projetos
-têm sessões, mídias e containers separados; o Orbia foi consultado apenas para leitura.
+O Dockerfile em `docker/waha` prepara as permissões dos volumes de sessão e mídia.
 
 ## Configuração
 
@@ -20,11 +19,8 @@ WAHA_WEBHOOK_TOKEN=segredo-do-webhook
 WAHA_PORT=3002
 ```
 
-A conta principal e seu LID são identificados automaticamente pelo WAHA e associados ao cadastro existente por telefone/LID. As variáveis `EVOLUTION_*` não são usadas. A sessão `default` funciona com
+A conta principal e seu LID são identificados automaticamente pelo WAHA e associados ao cadastro existente por telefone/LID. A sessão `default` funciona com
 a imagem Core; use outra sessão somente se a sua edição WAHA permitir.
-
-Desative a instância Evolution antes de conectar o mesmo número no WAHA. Preserve
-os volumes antigos para poder voltar. Não apague ou recrie o PostgreSQL ou o MinIO.
 
 ```sh
 # Desenvolvimento (Postgres, MinIO e Redis já estão no compose)
@@ -40,21 +36,21 @@ docker compose -f docker-compose.dev.yaml cp webhook-fastapi:/tmp/waha-qr.png ./
 ```
 
 Leia o QR com **WhatsApp → Aparelhos conectados** e confirme o estado `WORKING`.
-Em produção, use `docker-compose.prod.yaml` e o serviço `api` nos comandos acima;
+Em produção, use `compose.yaml` e o serviço `api` nos comandos acima;
 Postgres e MinIO continuam sendo os serviços externos configurados no `.env`.
 O endereço interno do webhook é o mesmo nos dois composes:
 `http://api:9001/webhook/waha`.
 
 Para rodar o script fora do container, use `WAHA_BASE_URL=http://localhost:3002`
 no ambiente desse processo. O argumento `--webhook-url` deve continuar apontando
-para um endereço acessível pelo container WAHA. A porta local 3002 evita a porta
-3001 usada pelo Orbia. `WAHA_IMAGE` e `WAHA_PORT` permitem sobrescrever a imagem
+para um endereço acessível pelo container WAHA. `WAHA_IMAGE` e `WAHA_PORT` permitem sobrescrever a imagem
 e a porta; hosts ARM precisam de uma imagem GOWS compatível.
 
 ## Compatibilidade
 
-- Os eventos `message.any` incluem recebidas e enviadas. Assine apenas esse evento:
-  assinar também `message` duplica as mensagens recebidas.
+- Os eventos `message.any` incluem recebidas e enviadas. Para mensagens, assine
+  apenas esse evento: assinar também `message` duplica as mensagens recebidas.
+  O comando `!ban` também usa `poll.vote` e `poll.vote.failed`.
 - O webhook verifica `X-Webhook-Token` e a sessão antes de iniciar o processamento.
 - O adaptador converte `@c.us`, `@lid`, `Info.SenderAlt`, mensagens temporárias,
   menções, legendas e `replyTo`/`contextInfo` para o contrato dos handlers existentes.
@@ -69,7 +65,7 @@ e a porta; hosts ARM precisam de uma imagem GOWS compatível.
   mesmos handlers e repositórios. Imagens e mídias arquivadas continuam no MinIO;
   o volume de mídia WAHA é o cache do provedor, não substitui o armazenamento Gork.
 - A sessão WAHA é nova: mídias antigas disponíveis apenas no Evolution, que não
-  chegaram ao MinIO, não são migradas por esta alteração. Mantenha os volumes
+  chegaram ao MinIO, não são migradas automaticamente. Mantenha os volumes
   Evolution enquanto valida o acervo.
 
 ## Validação depois do pareamento
