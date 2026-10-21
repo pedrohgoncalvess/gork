@@ -29,6 +29,8 @@
 The administration panel runs in the existing FastAPI service at `/admin`.
 See [panel setup and features](docs/admin-panel.md) for WhatsApp pairing, whitelist,
 blacklist, agents, models and command permissions.
+Remote MCP servers can be configured in the same panel, with fixed headers,
+parameters and native tool calls. See [MCP setup](docs/mcp.md).
 
 - **Core Application**: FastAPI server handling webhook events
 - **Database**: PostgreSQL with pgvector extension for embeddings

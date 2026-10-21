@@ -146,6 +146,7 @@ waha-qr.png
 test-results.txt
 waha-test-results.txt
 admin-test-results.txt
+mcp-test-results.txt
 artifacts/admin/
 .venv
 # env/

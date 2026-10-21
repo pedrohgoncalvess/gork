@@ -15,6 +15,7 @@ def commands_catalog() -> list[dict]:
     commands = {normalize_command(item[0]): item[1].split(" _[")[0]
                 for item in COMMANDS if item[0].startswith("!") and item[2] != "hidden"}
     commands["interaction"] = "Conversas e respostas do Gork"
+    commands["mcp"] = "Consultas a servidores MCP configurados"
     return [{"id": name, "description": description} for name, description in sorted(commands.items())]
 
 

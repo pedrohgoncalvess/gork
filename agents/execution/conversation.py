@@ -404,22 +404,21 @@ async def conversation_agent(
         f"Calling completions API with model {model.openrouter_id}. Prompt chars: {len(system_prompt)}. User msg: '{current_message}'"
     )
 
-    req = await completions(payload_term_formatter)
-    resp = req["choices"][0]["message"]["content"]
+    from services.mcp_runtime import complete_with_mcp
 
-    interaction_repo = InteractionRepository(Interaction, db)
-    await _record_conversation_interaction(
-        interaction_repo,
-        model_id=model.id,
-        user_id=user_id,
-        group_id=group_id,
-        agent_id=agent.id,
-        user_prompt=current_message,
-        response=resp,
-        input_tokens=req["usage"]["prompt_tokens"],
-        output_tokens=req["usage"]["completion_tokens"],
-        system_behavior=system_prompt,
-        actual_cost=req["usage"].get("cost"),
+    async def record_response(req):
+        message = req["choices"][0]["message"]
+        response_content = message.get("content") or json.dumps(message.get("tool_calls", []), ensure_ascii=False)
+        await _record_conversation_interaction(
+            InteractionRepository(Interaction, db),
+            model_id=model.id, user_id=user_id, group_id=group_id, agent_id=agent.id,
+            user_prompt=current_message, response=response_content,
+            input_tokens=req["usage"]["prompt_tokens"], output_tokens=req["usage"]["completion_tokens"],
+            system_behavior=system_prompt, actual_cost=req["usage"].get("cost"),
+        )
+
+    req = await complete_with_mcp(
+        payload_term_formatter, db, user_id=user_id, group_id=group_id,
+        message_id=last_message_id, completion=completions, record_response=record_response,
     )
-
-    return resp
+    return req["choices"][0]["message"]["content"]

@@ -3,6 +3,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from api.admin.router import router as admin_router, STATIC_DIR
+from api.admin.mcp_routes import router as mcp_admin_router
 
 from api import webhook_waha_router
 from agents.init import init_agents
@@ -17,6 +18,7 @@ from services import set_model_price_refresh, set_remembers
 app = FastAPI()
 app.include_router(webhook_waha_router)
 app.include_router(admin_router)
+app.include_router(mcp_admin_router)
 app.mount("/admin/assets", StaticFiles(directory=STATIC_DIR), name="admin-assets")
 
 @app.on_event("startup")

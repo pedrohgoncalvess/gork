@@ -42,6 +42,8 @@ Para acesso pela internet, mantenha o HTTPS no proxy usado pelo Gork.
   Remover a exceção restaura o modelo padrão sem reativar registros antigos.
 - **Configuração → Modelos:** cadastrar um nome e o ID OpenRouter para uso
   pelos agentes. O cadastro não verifica disponibilidade ou modalidade no provedor.
+- **Configuração → Servidores MCP:** cadastrar endpoints, descrição, headers,
+  parâmetros fixos e ferramentas permitidas. Veja [configuração MCP](mcp.md).
 - **Configuração → Permissões de comandos:** criar, editar e remover restrições
   globais, por usuário, grupo ou usuário em um grupo, com mensagem e prazo opcionais.
 
