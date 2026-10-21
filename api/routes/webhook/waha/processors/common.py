@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.routes.webhook.waha.handles import (
     clean_text,
     handle_consumption_command,
+    handle_deactivate_command,
     handle_conversation_agent,
     handle_describe_image_command,
     handle_favorite_message,
@@ -124,6 +125,10 @@ async def process_explicit_commands(
 
     if "!describe" in lw_conversation:
         await handle_describe_image_command(remote_id, db_message, db_message.user_id, db, group_id)
+        return
+
+    if re.search(r"(?<!\S)!deactivate(?=\s|$)", lw_conversation):
+        await handle_deactivate_command(remote_id, db_message, db, context)
         return
 
     if "!sticker" in lw_conversation:

@@ -60,10 +60,8 @@ class UserRepository(BaseRepository[User]):
             user = await self.find_by_lid(lid)
 
         if not user and phone_number:
-            # Evolution sometimes sends the phone JID in both remoteJid and
-            # remoteJidAlt for direct messages. In that case ``lid`` is the
-            # phone number, so looking up only by src_id would create a second
-            # user without the original user's whitelist entry.
+            # WAHA may expose a phone address before its LID is resolved.
+            # Reuse the phone match to preserve ownership and whitelist access.
             user = await self.find_by_phone(phone_number)
 
         if user:

@@ -6,22 +6,18 @@ UV_DOWNLOAD_URL = https://github.com/astral-sh/uv/releases/latest/download/uv-x8
 ifeq ($(OS),Windows_NT)
     RM = rmdir /s /q
     PYTHON_DEFAULT = python
-    PIP = $(VENV)\Scripts\pip
     PYTHON_VENV = $(VENV)\Scripts\python
     UV = uv.exe
     NULL_OUTPUT = >nul 2>&1
     WHICH = where
-    UNZIP_CMD = tar -xf
     DOCKER_COMPOSE = docker compose
 else
     RM = rm -rf
     PYTHON_DEFAULT = python3
-    PIP = $(VENV)/bin/pip
     PYTHON_VENV = $(VENV)/bin/python
     UV ?= $(HOME)/.local/bin/uv
     NULL_OUTPUT = >/dev/null 2>&1
     WHICH = which
-    UNZIP_CMD = unzip -q
     DOCKER_COMPOSE = docker compose
 endif
 

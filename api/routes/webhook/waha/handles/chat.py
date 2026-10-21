@@ -74,35 +74,19 @@ def _sent_message_id(send_response: Any) -> str | None:
     if not isinstance(send_response, dict):
         return None
 
-    candidates = [send_response]
-    data = send_response.get("data")
-    if isinstance(data, dict):
-        candidates.append(data)
-
-    for candidate in candidates:
-        key = candidate.get("key")
-        if isinstance(key, dict) and key.get("id"):
-            return str(key["id"])
-        if candidate.get("messageId"):
-            return str(candidate["messageId"])
-        if candidate.get("message_id"):
-            return str(candidate["message_id"])
+    key = send_response.get("key")
+    if isinstance(key, dict) and key.get("id"):
+        return str(key["id"])
     return None
 
 
 def _sent_message_created_at(send_response: Any) -> datetime:
-    candidates = [send_response] if isinstance(send_response, dict) else []
-    if candidates and isinstance(send_response.get("data"), dict):
-        candidates.append(send_response["data"])
-
-    for candidate in candidates:
-        timestamp = candidate.get("messageTimestamp") or candidate.get("message_timestamp")
-        if timestamp is None:
-            continue
+    if isinstance(send_response, dict):
+        timestamp = send_response.get("messageTimestamp")
         try:
             return datetime.fromtimestamp(float(timestamp))
         except (TypeError, ValueError, OSError):
-            continue
+            pass
     return datetime.now()
 
 

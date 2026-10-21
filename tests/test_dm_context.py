@@ -2,7 +2,7 @@ import json
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.dialects import postgresql
 
@@ -12,7 +12,8 @@ from agents.execution.conversation import (
     _format_direct_message_content,
     _format_group_message_content,
 )
-from api.routes.webhook.waha.handles.chat import _sent_message_id
+from api.routes.webhook.waha.handles.chat import _sent_message_created_at, _sent_message_id
+from external.waha.identifiers import sent_response
 from database.operations.content.message import MessageRepository
 
 
@@ -135,10 +136,17 @@ class DirectMessageContextTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("message_id=42", formatted)
         self.assertIn("continua a explicação", formatted)
 
-    def test_sent_message_id_supports_evolution_response_shapes(self):
-        self.assertEqual("abc", _sent_message_id({"key": {"id": "abc"}}))
-        self.assertEqual("def", _sent_message_id({"data": {"key": {"id": "def"}}}))
+    async def test_sent_message_metadata_uses_normalized_waha_response(self):
+        with patch("external.waha.identifiers.save_reference", new=AsyncMock()):
+            response = await sent_response(
+                {"id": "true_111@c.us_SENT", "timestamp": 1791577704}, "111"
+            )
+        self.assertEqual("SENT", _sent_message_id(response))
+        self.assertEqual(datetime.fromtimestamp(1791577704), _sent_message_created_at(response))
+
+    def test_failed_send_has_no_message_id(self):
         self.assertIsNone(_sent_message_id({"error": "send failed"}))
+        self.assertIsNone(_sent_message_id(None))
 
     def test_group_turn_preserves_sender_reply_and_media_description(self):
         quoted = SimpleNamespace(

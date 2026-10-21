@@ -11,7 +11,6 @@ LICENSE
 .idea
 .cache
 .uv-cache*
-external-services
 artifacts/admin
 admin-test-results.txt
 mcp-test-results.txt
