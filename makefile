@@ -124,6 +124,7 @@ endif
 	@echo Dependencies installed successfully!
 
 setup: install-deps
+	@$(PYTHON_VENV) -m scripts.setup
 	@echo Setup completed!
 
 run:

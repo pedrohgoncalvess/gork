@@ -53,14 +53,14 @@ async def reply_id(message_id: str, destination: str) -> str:
     if reference:
         return reference["provider_id"]
     # Historical messages have no WAHA reference; recover their direction.
-    from utils import INSTANCE_NUMBER
+    from utils import get_instance_number
     async with PgConnection() as db:
         result = await db.execute(text("""
             SELECT u.phone_number FROM content.message m
             JOIN base."user" u ON u.id = m.user_id WHERE m.message_id = :id
         """), {"id": message_id})
         sender = result.scalar_one_or_none()
-    from_me = bool(sender and sender == INSTANCE_NUMBER)
+    from_me = bool(sender and sender == (await get_instance_number()))
     return f"{str(from_me).lower()}_{chat_id(destination)}_{message_id}"
 
 

@@ -37,6 +37,9 @@ async def process_private_message(
         sender_type="user",
         sender_id=user.id
     )
+    from services.setup import settings
+    config = await settings(db)
+    is_whitelisted = is_whitelisted or (config["test_mode"] and number == config["test_number"])
 
     conversation = context.get("text_message", "")
 

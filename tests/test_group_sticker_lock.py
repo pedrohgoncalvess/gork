@@ -33,6 +33,7 @@ class GroupStickerLockTests(unittest.IsolatedAsyncioTestCase):
             mock("WhiteListRepository", return_value=whitelist)
             mock("MessageRepository", return_value=AsyncMock())
             mock("save_profile_pic", new=AsyncMock())
+            mock("get_instance_number", new=AsyncMock(return_value="5511000000000"))
             mock("is_feature_blocked", new=AsyncMock(return_value=blocked))
             mock("log_blocked_request", new=AsyncMock())
             send = mock("send_message", new=AsyncMock())

@@ -27,7 +27,7 @@ from services import (
 )
 from services.message_buffer import buffer_group_message, clear_group_message_buffer
 from services.conversation_lock import serialize_group_conversation
-from utils import INSTANCE_NUMBER
+from utils import get_instance_number
 
 
 def _explicit_command_feature(text: str | None) -> str | None:
@@ -87,7 +87,7 @@ async def process_group_message(
     group_repo = GroupRepository(db)
     message_repo = MessageRepository(db)
     whitelist_repo = WhiteListRepository(db)
-    user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
+    user_gork = await user_repo.find_by_phone((await get_instance_number()))
 
     user = await user_repo.find_or_create(name=contact_name, lid=contact_id, phone_number=phone_number)
     _ = await save_profile_pic(user.id)
@@ -182,7 +182,7 @@ async def process_group_message(
                           .replace("s.whatsapp.net", "")
                           .replace("@", "")
                           ).strip()
-            if tt_mention == INSTANCE_NUMBER or (user_gork and tt_mention == user_gork.src_id):
+            if tt_mention == (await get_instance_number()) or (user_gork and tt_mention == user_gork.src_id):
                 is_mention = True
 
     is_quoted_image = bool(context_message.get("image_quote"))

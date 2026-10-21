@@ -12,7 +12,7 @@ from database.operations.manager import AgentRepository, InteractionRepository, 
 from external import completions
 from external.waha import download_media
 from log import logger
-from utils import INSTANCE_NUMBER
+from utils import get_instance_number
 
 
 def _message_sender_name(message, gork_user_id: Optional[int]) -> str:
@@ -67,7 +67,7 @@ async def describe_image_agent(
         await logger.error("Agent", "DescribeImage", f"Model not found for agent {agent.name}.")
         return ""
 
-    user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
+    user_gork = await user_repo.find_by_phone((await get_instance_number()))
     user_sender = await user_repo.find_by_id(user_id)
 
     if db_message.group_id:

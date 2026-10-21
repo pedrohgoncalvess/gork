@@ -7,6 +7,9 @@ têm sessões, mídias e containers separados; o Orbia foi consultado apenas par
 
 ## Configuração
 
+Execute `uv run python -m scripts.setup` para gerar as chaves e a senha inicial.
+A aplicação configura a sessão e o webhook automaticamente, com novas tentativas a cada 30 segundos. Abra `/admin` para ler o QR code. Os comandos de gerenciamento abaixo são opcionais.
+
 Adicione ao `.env` (use duas chaves aleatórias distintas):
 
 ```dotenv
@@ -14,13 +17,10 @@ WAHA_BASE_URL=http://waha:3000
 WAHA_API_KEY=chave-da-api
 WAHA_SESSION=default
 WAHA_WEBHOOK_TOKEN=segredo-do-webhook
-WHATSAPP_INSTANCE_NUMBER=numero-atual-do-bot
 WAHA_PORT=3002
 ```
 
-Mantenha o mesmo número de WhatsApp cadastrado para o bot no banco.
-`EVOLUTION_INSTANCE_NUMBER` ainda é aceito como fallback de identidade na transição.
-As demais variáveis `EVOLUTION_*` não são usadas. A sessão `default` funciona com
+A conta principal e seu LID são identificados automaticamente pelo WAHA e associados ao cadastro existente por telefone/LID. As variáveis `EVOLUTION_*` não são usadas. A sessão `default` funciona com
 a imagem Core; use outra sessão somente se a sua edição WAHA permitir.
 
 Desative a instância Evolution antes de conectar o mesmo número no WAHA. Preserve

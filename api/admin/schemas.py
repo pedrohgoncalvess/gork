@@ -16,6 +16,38 @@ class PairingCode(Input):
     phone_number: str = Field(pattern=r"^\+?[1-9]\d{6,14}$")
 
 
+class TestSettings(Input):
+    test_mode: bool = False
+    test_number: str | None = Field(default=None, pattern=r"^\+?[1-9]\d{6,14}$")
+
+    @model_validator(mode="after")
+    def number_required(self):
+        if self.test_mode and not self.test_number:
+            raise ValueError("Informe um número para ativar o modo de teste.")
+        return self
+
+
+class SyncInput(Input):
+    contacts: bool = True
+    history: bool = False
+    period: str = Field(default="3d", pattern=r"^(3d|5d|1w|2w|1m|3m|custom|all)$")
+    start: datetime | None = None
+    end: datetime | None = None
+
+    @model_validator(mode="after")
+    def valid_window(self):
+        if not self.contacts and not self.history:
+            raise ValueError("Selecione contatos ou histórico.")
+        if self.period == "custom":
+            if not self.start or not self.end or not self.start.tzinfo or not self.end.tzinfo:
+                raise ValueError("Informe início e fim com fuso horário.")
+            if self.start >= self.end or self.end > datetime.now(timezone.utc):
+                raise ValueError("Use início anterior ao fim e datas até agora.")
+        elif self.start or self.end:
+            raise ValueError("Datas são aceitas apenas no período personalizado.")
+        return self
+
+
 class UserInput(Input):
     name: str = Field(min_length=1, max_length=255)
     phone_number: str | None = Field(default=None, pattern=r"^\+?[1-9]\d{6,14}$")

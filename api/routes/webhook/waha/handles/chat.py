@@ -60,7 +60,7 @@ from services import (
 from services.action_rate_limiter import reserve_audio_action
 from services.outgoing_mentions import resolve_outgoing_mentions
 from tts import text_to_speech
-from utils import INSTANCE_NUMBER
+from utils import get_instance_number
 
 
 MAX_WEB_SEARCH_DEPTH = 10
@@ -132,7 +132,7 @@ async def _persist_sent_text_response(
         return
 
     user_repo = UserRepository(db)
-    gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
+    gork_user = await user_repo.find_by_phone_or_id((await get_instance_number()))
     if not gork_user:
         await logger.error("ConversationHandle", "PersistDirectMessage", "Gork user not found.")
         return
@@ -442,7 +442,7 @@ async def _execute_database_query(
                 raise ValueError(
                     "get_conversation_messages is only available in a private conversation."
                 )
-            gork_user = await UserRepository(db).find_by_phone_or_id(INSTANCE_NUMBER)
+            gork_user = await UserRepository(db).find_by_phone_or_id((await get_instance_number()))
             if not gork_user:
                 raise ValueError("Instance user not found")
             result = await get_conversation_messages(

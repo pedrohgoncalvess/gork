@@ -6,7 +6,7 @@ from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MessageRepository
 from log import logger
 from services import save_image_if_new, save_media_if_new, save_video_if_new, verifiy_media
-from utils import INSTANCE_NUMBER
+from utils import get_instance_number
 
 
 async def process_sent_message(
@@ -31,7 +31,7 @@ async def process_sent_message(
         else None
     )
 
-    user_gork = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
+    user_gork = await user_repo.find_by_phone_or_id((await get_instance_number()))
     if not user_gork:
         await logger.error("Receive message", "Gork user not found.", f"{user_gork}.")
         return

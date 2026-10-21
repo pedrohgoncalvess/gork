@@ -34,8 +34,14 @@ async def connection_status() -> dict:
                 raise
             return {"session": waha_session, "status": "NOT_CREATED", "me": None}
     me = result.get("me") or {}
+    principal = None
+    if result.get("status") == "WORKING" and me:
+        from services.setup import map_principal
+        async with provider_errors():
+            principal = await map_principal(me)
     return {"session": waha_session, "status": result.get("status", "UNKNOWN"),
-            "me": {"id": me.get("id"), "name": me.get("pushName")} if me else None}
+            "me": {"id": me.get("id"), "name": me.get("pushName")} if me else None,
+            "principal": principal}
 
 
 async def start_connection() -> dict:

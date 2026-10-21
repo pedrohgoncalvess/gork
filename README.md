@@ -129,14 +129,11 @@ See [WAHA migration](docs/waha-migration.md) section below.
 
 ### Step 1: Environment Configuration
 
-The `.env` file contains all configuration for the application. Here's a breakdown:
+The `.env` file holds infrastructure credentials and service keys. WhatsApp identity, test mode and synchronization are managed automatically or through `/admin`. Run `uv run python -m scripts.setup` to create missing secrets and the initial admin password.
 
 #### Application Settings
 
 ```bash
-# Maintenance mode (optional)
-MAINTENANCE=false                  # Set to true to block bot access
-MAINTENANCE_NUMBER=5511999999999  # Phone number that bypasses maintenance
 ENV=dev                            # Environment (dev/prod)
 ```
 
@@ -168,7 +165,6 @@ WAHA_BASE_URL=http://waha:3000
 WAHA_API_KEY=your-long-random-api-key
 WAHA_SESSION=default
 WAHA_WEBHOOK_TOKEN=your-separate-webhook-secret
-WHATSAPP_INSTANCE_NUMBER=your-existing-bot-number
 WAHA_PORT=3002
 ```
 

@@ -13,7 +13,7 @@ from database.operations.manager import AgentRepository, InteractionRepository, 
 from database.operations.manager.interaction import MissingModelPriceError
 from external import completions
 from log import logger
-from utils import INSTANCE_NUMBER, project_root
+from utils import get_instance_number, project_root
 from database.operations.content.sup_media import SupMediaRepository
 import yaml
 from pathlib import Path
@@ -208,7 +208,7 @@ async def conversation_agent(
         await logger.error("Agent", "Conversation", f"Message {last_message_id} not found.")
         return ""
 
-    user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
+    user_gork = await user_repo.find_by_phone((await get_instance_number()))
     user_sender = await user_repo.find_by_id(user_id)
 
     if not user_gork:

@@ -29,7 +29,7 @@ from log import logger
 from s3 import S3Client
 from services import get_mentions_from_content
 from services.message_context import _has_me_mention
-from utils import INSTANCE_NUMBER
+from utils import get_instance_number
 
 
 MAX_GENERATED_IMAGE_BYTES = 20 * 1024 * 1024
@@ -585,7 +585,7 @@ async def _generate_image(
 
         image_system_prompt = modify_image_agent.prompt
 
-        gork_user = await user_repo.find_by_phone_or_id(INSTANCE_NUMBER)
+        gork_user = await user_repo.find_by_phone_or_id((await get_instance_number()))
 
         # A literal command must never be rewritten using conversation history.
         if db_message and re.search(r"!image\b", db_message.content or "", re.IGNORECASE):

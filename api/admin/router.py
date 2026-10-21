@@ -8,10 +8,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select
 
 from api.admin import connection, store
+from api.admin import synchronization
+from api.admin.dependencies import get_db
+from api.admin.schemas import SyncInput, TestSettings
+from services.setup import settings, save_test_settings
 from api.admin.auth import COOKIE_NAME, SESSION_SECONDS, create_session, csrf_token, password, require_admin
 from api.admin.schemas import (AgentInput, BlacklistInput, CommandInput, GroupInput, GroupSettings,
                                Login, ModelInput, OverrideInput, PairingCode, UserInput, WhitelistInput)
-from api.admin.dependencies import get_db
 from database.models.base import BlackList, Group, User, WhiteList
 from database.models.manager import Agent, DisabledCommand, Model, ModelConversation
 from database.operations.base import GroupRepository, UserRepository
@@ -89,6 +92,26 @@ async def overview(db=Depends(get_db)):
     ):
         counts[key] = await db.scalar(select(func.count()).select_from(model).where(*filters))
     return counts
+
+
+@api.get("/settings")
+async def runtime_settings(db=Depends(get_db)):
+    return await settings(db)
+
+
+@api.put("/settings/test")
+async def test_settings(data: TestSettings, db=Depends(get_db)):
+    return await save_test_settings(data.test_mode, data.test_number, db)
+
+
+@api.get("/sync")
+async def sync_status():
+    return {"job": await synchronization.latest()}
+
+
+@api.post("/sync", status_code=202)
+async def start_sync(data: SyncInput):
+    return {"job": await synchronization.start(data)}
 
 
 @api.get("/directory/{kind}")

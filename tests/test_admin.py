@@ -50,7 +50,7 @@ class AdminAuthTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual((await self.client.get("/admin/assets/" + path)).status_code, 200)
 
     async def test_all_management_endpoints_require_authentication(self):
-        for path in ("connection", "overview", "directory/user", "directory/group", "blacklist", "agents", "models", "commands", "overrides"):
+        for path in ("connection", "overview", "directory/user", "directory/group", "blacklist", "agents", "models", "commands", "overrides", "settings", "sync"):
             with self.subTest(path=path):
                 self.assertEqual((await self.client.get("/admin/api/" + path)).status_code, 401)
 
@@ -119,8 +119,11 @@ class AdminAuthTests(unittest.IsolatedAsyncioTestCase):
 
 class AdminConnectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_status_excludes_waha_config_and_keys(self):
-        with patch("api.admin.connection.request", new=AsyncMock(return_value={"status": "WORKING", "config": {"secret": "hidden"}, "me": {"id": "5511@c.us", "pushName": "Gork"}})):
+        with (patch("api.admin.connection.request", new=AsyncMock(return_value={"status": "WORKING", "config": {"secret": "hidden"}, "me": {"id": "5511@c.us", "pushName": "Gork"}})),
+              patch("services.setup.map_principal", new=AsyncMock(return_value={"user_id": 1, "phone_number": "5511", "lid": "123"})) as mapping):
             result = await connection.connection_status()
+        mapping.assert_awaited_once_with({"id": "5511@c.us", "pushName": "Gork"})
+        self.assertEqual(result["principal"]["user_id"], 1)
         self.assertEqual(result["status"], "WORKING")
         self.assertNotIn("config", result)
         self.assertEqual(result["me"]["name"], "Gork")

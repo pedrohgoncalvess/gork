@@ -32,7 +32,7 @@ from external.waha import download_media, send_message, send_video
 from log import logger
 from s3 import S3Client
 from services import get_mentions_from_content, parse_params
-from utils import INSTANCE_NUMBER
+from utils import get_instance_number
 
 
 DEFAULT_DURATION = 5
@@ -352,7 +352,7 @@ async def handle_video_command(
         me_user = await UserRepository(db).find_by_id(user_id) if re.search(
             r"(?<!\w)@me\b", db_message.content or "", re.I
         ) else None
-        gork_user = await UserRepository(db).find_by_phone_or_id(INSTANCE_NUMBER)
+        gork_user = await UserRepository(db).find_by_phone_or_id((await get_instance_number()))
         if gork_user:
             mentions = [user for user in mentions if user.id != gork_user.id]
         references = await _reference_images(mentions)

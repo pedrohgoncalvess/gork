@@ -64,3 +64,35 @@ Os formatos estruturados das respostas continuam sendo definidos pelo código.
 `tokens.css` define apenas cores, fontes, espaçamento, raios e dimensões básicas.
 A interface usa fontes do sistema, SVGs locais, superfícies claras e verde escuro.
 Sidebar com submenus, formulários e tabelas se adaptam a telas menores.
+
+## Setup e sincronização
+
+`make setup` (ou `uv run python -m scripts.setup`) cria o `.env` e gera apenas
+as chaves ausentes, preservando credenciais existentes. A senha inicial gerada é
+exibida uma vez. A infraestrutura e as chaves dos provedores continuam no `.env`.
+
+O Gork configura a sessão/webhook automaticamente e tenta novamente a cada
+30 segundos se o WAHA estiver indisponível. Ao conectar, associa telefone e LID
+ao usuário principal no banco, reutilizando o cadastro existente. Não é necessário
+configurar número nem ID de WhatsApp no ambiente.
+
+Em **Conexão → Sincronização**, escolha contatos e/ou histórico. Os contatos
+são importados integralmente. Para mensagens, selecione 3 dias, 5 dias, 1 semana,
+2 semanas, 1 mês, 3 meses, uma janela com início/fim ou todo o histórico. Meses
+são meses de calendário. Datas personalizadas usam o fuso do navegador.
+
+A importação roda em segundo plano, tem progresso persistido e impede duas
+execuções simultâneas entre workers. Mensagens existentes não são duplicadas,
+comandos antigos não são executados e contatos importados não ganham whitelist.
+São importados texto/legendas e referências WAHA; arquivos de mídia antigos não
+são baixados nem transcritos nessa etapa. Somente dados disponíveis no WAHA
+podem ser importados ([contatos](https://waha.devlike.pro/docs/how-to/contacts/),
+[histórico](https://waha.devlike.pro/docs/how-to/chats/)).
+Após uma interrupção sem encerramento normal, o painel marca a execução como
+interrompida em até cinco minutos; uma nova importação ignora mensagens já salvas.
+
+Em **Conexão → Número de teste**, salve o telefone e ative o modo de teste.
+Somente esse contato pode conversar em privado, mesmo sem whitelist; grupos e
+outros contatos são ignorados. Blacklist e restrições de comando permanecem
+válidas. Desative para voltar às regras normais de acesso. Tudo é salvo no banco
+e passa a valer entre todos os workers sem reiniciar.

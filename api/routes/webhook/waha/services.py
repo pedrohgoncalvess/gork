@@ -14,11 +14,9 @@ from external.waha.base import chat_id
 from api.routes.webhook.waha.normalize import normalize_webhook, remote_address
 from log import logger
 from services.conversation_lock import serialize_direct_message
-from utils import get_env_var
+from services.setup import settings, map_principal
 
 
-maintenance = get_env_var("MAINTENANCE")
-maintenance_number = get_env_var("MAINTENANCE_NUMBER")
 
 
 async def process_waha_webhook(body: dict, scheduler: AsyncIOScheduler):
@@ -28,6 +26,8 @@ async def process_waha_webhook(body: dict, scheduler: AsyncIOScheduler):
     payload = body["payload"]
     remote = remote_address(payload)
     key = normalized["data"]["key"]
+    if body.get("me", {}).get("id"):
+        await map_principal(body["me"])
     # Resolve missing phone/LID aliases before matching existing users and whitelist.
     if not key["fromMe"]:
         is_group = remote.endswith("@g.us")
@@ -83,12 +83,10 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
         else:
             remote_id = remote_id.removesuffix("@g.us")
 
-        if maintenance:
-            if phone_number != maintenance_number:
-                destination = phone_number or (f"{remote_id}@lid" if is_private else f"{remote_id}@g.us")
-                await send_message(destination, "O robo do mito não está pronto :/")
-                return
-            else:
+        config = await settings(db)
+        if config["test_mode"]:
+            # Ignore other chats silently; groups must never bypass test isolation.
+            if not is_private or phone_number != config["test_number"]:
                 return
 
         if event_type == "send.message":

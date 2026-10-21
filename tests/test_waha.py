@@ -252,6 +252,11 @@ class WahaTransportTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WahaWebhookTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        principal = patch("api.routes.webhook.waha.services.map_principal", new=AsyncMock())
+        self.map_principal = principal.start()
+        self.addCleanup(principal.stop)
+
     async def asyncTearDown(self):
         import asyncio
         pending = list(background_tasks)
