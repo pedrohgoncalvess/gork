@@ -1,4 +1,5 @@
 from api.routes.webhook.waha.handles.audio import handle_transcribe_command, transcribe_audio
+from api.routes.webhook.waha.handles.image.deactivate import handle_deactivate_command
 from api.routes.webhook.waha.handles.chat import handle_conversation_agent
 from api.routes.webhook.waha.handles.core import (
     clean_text,

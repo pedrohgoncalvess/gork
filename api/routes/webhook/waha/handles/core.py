@@ -15,6 +15,7 @@ COMMANDS = [
     ("!search", "Faz uma pesquisa por termo na internet e retorna um resumo.", "search", []),
     ("!model", "Mostra o modelo sendo utilizado.", "search", []),
     ("!picture", "Envia a foto dos usuários mencionados", "image", []),
+    ("!deactivate", "Deixa a foto em preto e branco com o rodapé Deactivated account. Responda a uma foto ou use !deactivate @usuário. Sem foto ou menção, usa uma foto aleatória.", "image", []),
     (
         "!sticker",
         "Cria um sticker com base em uma imagem e texto fornecido. _[Use | como separador de top/bottom]_ \n_(Obs: Mensagens quotadas com !sticker será criado um sticker da mensagem com a foto de perfil de quem enviou)_",
