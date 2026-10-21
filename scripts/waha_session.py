@@ -12,9 +12,19 @@ from external.waha.base import request, segment, waha_api, waha_api_key, waha_se
 from utils import get_env_var
 
 
+DEFAULT_WEBHOOK_URL = "http://api:9001/webhook/waha"
+LEGACY_WEBHOOK_URL = "http://webhook_fastapi:9001/webhook/waha"
+
+
+def get_webhook_url():
+    value = get_env_var("WAHA_WEBHOOK_URL") or DEFAULT_WEBHOOK_URL
+    return DEFAULT_WEBHOOK_URL if value == LEGACY_WEBHOOK_URL else value
+
+
 def session_config(webhook_url: str, token: str) -> dict:
     if not token:
         raise ValueError("WAHA_WEBHOOK_TOKEN is required")
+    webhook_url = DEFAULT_WEBHOOK_URL if webhook_url == LEGACY_WEBHOOK_URL else webhook_url
     return {
         "gows": {"storage": {"messages": True, "groups": True, "chats": True, "contacts": True}},
         "webhooks": [{
@@ -35,8 +45,9 @@ async def configure_session(webhook_url: str) -> str:
         current = await request("POST", "/api/sessions", payload={"name": waha_session, "start": False})
     # Preserve unrelated session options while updating the integration contract.
     config = {**(current.get("config") or {}), **session_config(webhook_url, get_env_var("WAHA_WEBHOOK_TOKEN"))}
-    await request("PUT", path, payload={"config": config})
-    current = await request("GET", path)
+    if config != (current.get("config") or {}):
+        await request("PUT", path, payload={"name": waha_session, "config": config})
+        current = await request("GET", path)
     status = current.get("status")
     if status in ("STOPPED", "FAILED"):
         action = "start" if status == "STOPPED" else "restart"
@@ -47,7 +58,7 @@ async def configure_session(webhook_url: str) -> str:
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("configure", "status", "qr"))
-    parser.add_argument("--webhook-url", default="http://webhook_fastapi:9001/webhook/waha")
+    parser.add_argument("--webhook-url", default=get_webhook_url())
     parser.add_argument("--output", default="waha-qr.png")
     args = parser.parse_args()
     if args.action == "configure":

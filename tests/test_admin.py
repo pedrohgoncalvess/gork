@@ -133,7 +133,8 @@ class AdminConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.await_count, 1)
 
     async def test_pairing_strips_plus_and_passes_correct_waha_contract(self):
-        with patch("api.admin.connection.request", new=AsyncMock(return_value={"code": "ABCD-EFGH"})) as request:
+        with (patch("api.admin.connection.ensure_pairing_ready", new=AsyncMock()),
+              patch("api.admin.connection.request", new=AsyncMock(return_value={"code": "ABCD-EFGH"})) as request):
             result = await connection.pairing_code("+5511999999999")
         self.assertEqual(result, {"code": "ABCD-EFGH"})
         self.assertTrue(request.await_args.args[1].endswith("/auth/request-code"))
@@ -142,11 +143,19 @@ class AdminConnectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_upstream_failure_is_sanitized(self):
         from fastapi import HTTPException
         error = httpx.HTTPStatusError("secret upstream URL", request=httpx.Request("POST", "http://waha"), response=httpx.Response(500, text="private key"))
-        with patch("api.admin.connection.request", new=AsyncMock(side_effect=error)):
+        with (patch("api.admin.connection.ensure_pairing_ready", new=AsyncMock()),
+              patch("api.admin.connection.request", new=AsyncMock(side_effect=error))):
             with self.assertRaises(HTTPException) as failure:
                 await connection.pairing_code("5511999999999")
         self.assertEqual(failure.exception.status_code, 502)
         self.assertNotIn("private key", failure.exception.detail)
+
+    async def test_pairing_starts_stopped_session_and_waits_until_ready(self):
+        with (patch("api.admin.connection.connection_status", new=AsyncMock(side_effect=[{"status": "STOPPED"}, {"status": "SCAN_QR_CODE"}])),
+              patch("api.admin.connection.start_connection", new=AsyncMock(return_value={"status": "STARTING"})) as start,
+              patch("api.admin.connection.asyncio.sleep", new=AsyncMock())):
+            await connection.ensure_pairing_ready()
+        start.assert_awaited_once()
 
 
 class AdminStorageTests(unittest.IsolatedAsyncioTestCase):

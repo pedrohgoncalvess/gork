@@ -43,7 +43,7 @@ Leia o QR com **WhatsApp → Aparelhos conectados** e confirme o estado `WORKING
 Em produção, use `docker-compose.prod.yaml` e o serviço `api` nos comandos acima;
 Postgres e MinIO continuam sendo os serviços externos configurados no `.env`.
 O endereço interno do webhook é o mesmo nos dois composes:
-`http://webhook_fastapi:9001/webhook/waha`.
+`http://api:9001/webhook/waha`.
 
 Para rodar o script fora do container, use `WAHA_BASE_URL=http://localhost:3002`
 no ambiente desse processo. O argumento `--webhook-url` deve continuar apontando

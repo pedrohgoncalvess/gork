@@ -332,6 +332,17 @@ class WahaWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(config["webhooks"][0]["customHeaders"], [{"name": "X-Webhook-Token", "value": "token"}])
         self.assertTrue(config["gows"]["storage"]["messages"])
 
+    def test_legacy_webhook_hostname_is_migrated_to_valid_compose_service(self):
+        config = session_config("http://webhook_fastapi:9001/webhook/waha", "token")
+        self.assertEqual(config["webhooks"][0]["url"], "http://api:9001/webhook/waha")
+
+    async def test_unchanged_configuration_does_not_interrupt_authentication(self):
+        config = session_config("http://gork/webhook/waha", "token")
+        with (patch("scripts.waha_session.request", new=AsyncMock(return_value={"status": "SCAN_QR_CODE", "config": config})) as send,
+              patch("scripts.waha_session.get_env_var", return_value="token")):
+            self.assertEqual(await configure_session("http://gork/webhook/waha"), "SCAN_QR_CODE")
+        self.assertEqual([call.args[0] for call in send.await_args_list], ["GET"])
+
     async def test_reconfiguring_working_session_does_not_logout_or_restart(self):
         with (patch("scripts.waha_session.request", new=AsyncMock(return_value={"status": "WORKING", "config": {"debug": False}})) as send,
               patch("scripts.waha_session.get_env_var", return_value="token")):

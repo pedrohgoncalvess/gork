@@ -83,7 +83,9 @@ services:
       - ./database:/app/database:rw
       - ./log:/app/log:rw
     networks:
-      - dokploy-network
+      dokploy-network:
+        aliases:
+          - api
     restart: unless-stopped
     depends_on:
       waha:

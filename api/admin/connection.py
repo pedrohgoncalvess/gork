@@ -1,11 +1,12 @@
 """Server-side WAHA management; provider credentials never reach the browser."""
 from contextlib import asynccontextmanager
+import asyncio
 
 import httpx
 from fastapi import HTTPException
 
 from external.waha.base import request, segment, waha_api, waha_api_key, waha_session
-from scripts.waha_session import configure_session
+from scripts.waha_session import configure_session, get_webhook_url
 from utils import get_env_var
 
 
@@ -39,7 +40,7 @@ async def connection_status() -> dict:
 
 async def start_connection() -> dict:
     async with provider_errors():
-        await configure_session(get_env_var("WAHA_WEBHOOK_URL") or "http://webhook_fastapi:9001/webhook/waha")
+        await configure_session(get_webhook_url())
         return await connection_status()
 
 
@@ -57,7 +58,22 @@ async def qr_image() -> bytes:
         return response.content
 
 
+async def ensure_pairing_ready():
+    current = await connection_status()
+    if current["status"] in ("NOT_CREATED", "STOPPED", "FAILED"):
+        current = await start_connection()
+    for _ in range(20):
+        if current["status"] == "SCAN_QR_CODE":
+            return
+        if current["status"] == "WORKING":
+            raise HTTPException(409, "O WhatsApp já está conectado.")
+        await asyncio.sleep(1)
+        current = await connection_status()
+    raise HTTPException(409, "O WhatsApp ainda está iniciando. Aguarde alguns instantes e tente gerar o código novamente.")
+
+
 async def pairing_code(phone_number: str) -> dict:
+    await ensure_pairing_ready()
     async with provider_errors():
         result = await request("POST", f"/api/{segment(waha_session)}/auth/request-code",
                                payload={"phoneNumber": phone_number.removeprefix("+")})
