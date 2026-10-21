@@ -72,8 +72,8 @@ class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
             speech.assert_not_awaited()
 
     async def test_dispatch_passes_scope_and_ignores_action_voice(self):
-        from api.routes.webhook.evolution.handles.chat import _dispatch_action
-        module = "api.routes.webhook.evolution.handles.chat"
+        from api.routes.webhook.waha.handles.chat import _dispatch_action
+        module = "api.routes.webhook.waha.handles.chat"
         with (
             patch(f"{module}.get_disabled_command_message", new=AsyncMock(return_value=None)),
             patch(f"{module}.is_feature_blocked", new=AsyncMock(return_value=False)),
@@ -90,8 +90,8 @@ class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
         send.assert_awaited_once_with("group", "encoded", "request")
 
     async def test_speech_failure_delivers_text_instead_of_silence(self):
-        from api.routes.webhook.evolution.handles.chat import _dispatch_action
-        module = "api.routes.webhook.evolution.handles.chat"
+        from api.routes.webhook.waha.handles.chat import _dispatch_action
+        module = "api.routes.webhook.waha.handles.chat"
         with (
             patch(f"{module}.get_disabled_command_message", new=AsyncMock(return_value=None)),
             patch(f"{module}.reserve_audio_action", new=AsyncMock(return_value=True)),

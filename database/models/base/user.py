@@ -20,5 +20,5 @@ class User(Base):
     inserted_at = Column(TIMESTAMP, server_default=func.now())
     updated_at = Column(TIMESTAMP, server_default=func.now(), onupdate=func.now())
 
-    messages = relationship("Message", back_populates="sender")
+    messages = relationship("Message", back_populates="sender", foreign_keys="Message.user_id")
     remembers = relationship("Remember", back_populates="user")

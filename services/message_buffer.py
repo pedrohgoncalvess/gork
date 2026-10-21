@@ -7,7 +7,7 @@ from redis.exceptions import LockError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from agents.execution.filter import filter_agent
-from api.routes.webhook.evolution.handles.chat import handle_conversation_agent
+from api.routes.webhook.waha.handles.chat import handle_conversation_agent
 from database import PgConnection
 from database.operations.content import MessageRepository
 from log import logger

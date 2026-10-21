@@ -11,7 +11,7 @@ from database.operations.base import UserRepository
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 from log import logger
-from utils import INSTANCE_NUMBER
+from utils import get_instance_number
 
 
 def _sender_name(message: Message, gork_user_id: int | None) -> str:
@@ -78,7 +78,7 @@ async def filter_agent(
             "trigger_type": None,
         }
 
-    user_gork = await user_repo.find_by_phone(INSTANCE_NUMBER)
+    user_gork = await user_repo.find_by_phone((await get_instance_number()))
     gork_user_id = user_gork.id if user_gork else None
 
     messages = sorted(messages, key=lambda m: (m.created_at or datetime.min, m.id))

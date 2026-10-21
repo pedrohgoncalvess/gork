@@ -1,0 +1,30 @@
+/* Gork: a small shared vocabulary for the administration interface. */
+:root {
+  --color-canvas: #ffffff;
+  --color-surface: #ffffff;
+  --color-subtle: #fafbfc;
+  --color-text: #202020;
+  --color-muted: #626262;
+  --color-border: #bfbfbf;
+  --color-accent: #333333;
+  --color-accent-hover: #111111;
+  --color-accent-soft: #eeeeee;
+  --color-danger: #a8413e;
+  --color-danger-soft: #fbefed;
+  --color-warning: #976a20;
+  --color-warning-soft: #fbf5e9;
+  --font-body: Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --shadow-dialog: none;
+  --sidebar-width: 220px;
+}

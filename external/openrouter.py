@@ -181,6 +181,16 @@ def _payload_for_log(payload: dict) -> dict:
             continue
 
         sanitized_message = dict(message)
+        if message.get("role") == "tool":
+            sanitized_message["content"] = "[tool output omitted from logs]"
+            sanitized_messages.append(sanitized_message)
+            continue
+        if message.get("tool_calls"):
+            sanitized_message["tool_calls"] = [
+                {"id": call.get("id"), "type": call.get("type"),
+                 "function": {"name": (call.get("function") or {}).get("name"), "arguments": "[omitted]"}}
+                for call in message["tool_calls"]
+            ]
         content = message.get("content")
         if isinstance(content, list):
             sanitized_content = []
@@ -314,7 +324,7 @@ async def generate_images(payload: dict) -> dict:
             raise
 
 
-async def embeddings(text: str, model: str) -> dict:
+async def embeddings(text: str | list[str], model: str) -> dict:
     start = datetime.now()
     headers = {
         "Content-Type": "application/json",

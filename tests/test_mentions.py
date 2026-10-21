@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from services.message_context import get_mentions_from_content, verifiy_media
 from services.outgoing_mentions import resolve_outgoing_mentions
-from external.evolution.message import send_message
+from external.waha.message import send_message
 
 
 class MentionResolutionTests(unittest.IsolatedAsyncioTestCase):
@@ -37,34 +37,32 @@ class MentionResolutionTests(unittest.IsolatedAsyncioTestCase):
             ("@5511999999999!", ["5511999999999@s.whatsapp.net"]),
         )
 
-    async def test_evolution_send_contains_mentions_and_preserves_quote(self):
-        client = AsyncMock()
-        response = Mock()
-        response.json.return_value = {"key": {"id": "sent-id"}}
-        client.post.return_value = response
-        with patch("external.evolution.message.httpx.AsyncClient") as factory:
-            factory.return_value.__aenter__ = AsyncMock(return_value=client)
-            factory.return_value.__aexit__ = AsyncMock(return_value=False)
+    async def test_waha_send_contains_mentions_and_preserves_quote(self):
+        with (
+            patch("external.waha.message.request", new=AsyncMock(return_value={"id": "true_group@g.us_sent-id"})) as request,
+            patch("external.waha.identifiers.reply_id", new=AsyncMock(return_value="false_group@g.us_quote-id")),
+            patch("external.waha.identifiers.save_reference", new=AsyncMock()),
+        ):
             await send_message(
                 "group@g.us", "Olá @11111111111", "quote-id", simulate_typing=False,
                 mentioned=["11111111111@lid", "11111111111@lid"],
             )
-        payload = client.post.await_args.kwargs["json"]
+        payload = request.await_args.kwargs["payload"]
         self.assertEqual(payload["text"], "Olá @11111111111")
-        self.assertEqual(payload["mentioned"], ["11111111111@lid"])
-        self.assertEqual(payload["quoted"]["key"]["id"], "quote-id")
+        self.assertEqual(payload["mentions"], ["11111111111@lid"])
+        self.assertEqual(payload["reply_to"], "false_group@g.us_quote-id")
 
     async def test_agent_dispatch_resolves_group_mentions_before_sending_and_persisting(self):
-        from api.routes.webhook.evolution.handles.chat import _dispatch_action
+        from api.routes.webhook.waha.handles.chat import _dispatch_action
 
         andre = SimpleNamespace(name="andre", src_id="178709680111833", phone_number="554184538621")
         message = SimpleNamespace(id=99, message_id="request-id")
         with (
-            patch("api.routes.webhook.evolution.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
-            patch("api.routes.webhook.evolution.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
-            patch("api.routes.webhook.evolution.handles.chat.UserRepository") as users,
-            patch("api.routes.webhook.evolution.handles.chat.send_message", new=AsyncMock()) as send,
-            patch("api.routes.webhook.evolution.handles.chat._persist_sent_text_response", new=AsyncMock()) as persist,
+            patch("api.routes.webhook.waha.handles.chat.get_disabled_command_message", new=AsyncMock(return_value=None)),
+            patch("api.routes.webhook.waha.handles.chat.is_feature_blocked", new=AsyncMock(return_value=False)),
+            patch("api.routes.webhook.waha.handles.chat.UserRepository") as users,
+            patch("api.routes.webhook.waha.handles.chat.send_message", new=AsyncMock()) as send,
+            patch("api.routes.webhook.waha.handles.chat._persist_sent_text_response", new=AsyncMock()) as persist,
         ):
             users.return_value.find_users_by_group_id = AsyncMock(return_value=[andre])
             await _dispatch_action(

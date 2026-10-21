@@ -12,7 +12,7 @@ from agents.execution.conversation import (
     _format_direct_message_content,
     _format_group_message_content,
 )
-from api.routes.webhook.evolution.handles.chat import _sent_message_id
+from api.routes.webhook.waha.handles.chat import _sent_message_id
 from database.operations.content.message import MessageRepository
 
 

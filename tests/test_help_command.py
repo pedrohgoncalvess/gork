@@ -1,13 +1,13 @@
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from api.routes.webhook.evolution.handles.utility import handle_help_command
+from api.routes.webhook.waha.handles.utility import handle_help_command
 
 
 class HelpCommandTests(unittest.IsolatedAsyncioTestCase):
     async def test_help_includes_video_command_and_sends_response(self):
         with patch(
-            "api.routes.webhook.evolution.handles.utility.send_message",
+            "api.routes.webhook.waha.handles.utility.send_message",
             new=AsyncMock(),
         ) as send:
             await handle_help_command("remote", "message-id")

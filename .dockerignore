@@ -5,3 +5,15 @@ LICENSE
 .python-version
 **/__pycache__
 .venv
+.git
+.agents
+.codex
+.idea
+.cache
+.uv-cache*
+external-services
+artifacts/admin
+admin-test-results.txt
+mcp-test-results.txt
+waha-test-results.txt
+test-results.txt

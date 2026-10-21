@@ -68,7 +68,7 @@ class UserRepository(BaseRepository[User]):
 
         if user:
             update_data = {}
-            if name and user.name is not None:
+            if name:
                 update_data["name"] = name
             if phone_number and user.phone_number != phone_number:
                 update_data["phone_number"] = phone_number

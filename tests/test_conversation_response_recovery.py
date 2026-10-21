@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from api.routes.webhook.evolution.handles.chat import _dispatch_gork_response
+from api.routes.webhook.waha.handles.chat import _dispatch_gork_response
 
 
 class ConversationResponseRecoveryTests(unittest.IsolatedAsyncioTestCase):
@@ -32,23 +32,23 @@ class ConversationResponseRecoveryTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch(
-                "api.routes.webhook.evolution.handles.chat.conversation_agent",
+                "api.routes.webhook.waha.handles.chat.conversation_agent",
                 new=AsyncMock(return_value=json.dumps(recovered)),
             ) as retry,
             patch(
-                "api.routes.webhook.evolution.handles.chat._dispatch_action",
+                "api.routes.webhook.waha.handles.chat._dispatch_action",
                 new=AsyncMock(return_value=True),
             ) as dispatch_action,
             patch(
-                "api.routes.webhook.evolution.handles.chat.is_feature_blocked",
+                "api.routes.webhook.waha.handles.chat.is_feature_blocked",
                 new=AsyncMock(return_value=False),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.chat.send_message",
+                "api.routes.webhook.waha.handles.chat.send_message",
                 new=AsyncMock(),
             ) as send_message,
             patch(
-                "api.routes.webhook.evolution.handles.chat.logger.error",
+                "api.routes.webhook.waha.handles.chat.logger.error",
                 new=AsyncMock(),
             ),
         ):
@@ -64,15 +64,15 @@ class ConversationResponseRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_sends_fallback_after_retry_is_also_malformed(self):
         with (
             patch(
-                "api.routes.webhook.evolution.handles.chat.conversation_agent",
+                "api.routes.webhook.waha.handles.chat.conversation_agent",
                 new=AsyncMock(return_value="[168014]"),
             ) as retry,
             patch(
-                "api.routes.webhook.evolution.handles.chat.send_message",
+                "api.routes.webhook.waha.handles.chat.send_message",
                 new=AsyncMock(),
             ) as send_message,
             patch(
-                "api.routes.webhook.evolution.handles.chat.logger.error",
+                "api.routes.webhook.waha.handles.chat.logger.error",
                 new=AsyncMock(),
             ),
         ):
@@ -88,15 +88,15 @@ class ConversationResponseRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_sends_fallback_when_retry_request_fails(self):
         with (
             patch(
-                "api.routes.webhook.evolution.handles.chat.conversation_agent",
+                "api.routes.webhook.waha.handles.chat.conversation_agent",
                 new=AsyncMock(side_effect=RuntimeError("provider unavailable")),
             ) as retry,
             patch(
-                "api.routes.webhook.evolution.handles.chat.send_message",
+                "api.routes.webhook.waha.handles.chat.send_message",
                 new=AsyncMock(),
             ) as send_message,
             patch(
-                "api.routes.webhook.evolution.handles.chat.logger.error",
+                "api.routes.webhook.waha.handles.chat.logger.error",
                 new=AsyncMock(),
             ) as log_error,
         ):

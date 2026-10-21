@@ -1,0 +1,83 @@
+services:
+  waha:
+    image: gork-waha:gows-2026.9.1
+    build:
+      context: ./docker/waha
+      args:
+        WAHA_IMAGE: ${WAHA_IMAGE:-devlikeapro/waha:gows-2026.9.1@sha256:d2056b8dec41b218b54f431b8b4eb7d148346d530bb3658295ecb882944e9a18}
+    user: "1000:1000"
+    ports:
+      - "127.0.0.1:${WAHA_PORT:-3002}:3000"
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: GOWS
+      WAHA_API_KEY: ${WAHA_API_KEY:?set WAHA_API_KEY in .env}
+      WAHA_DASHBOARD_ENABLED: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      WAHA_PRINT_QR: "false"
+      WHATSAPP_RESTART_ALL_SESSIONS: "true"
+    volumes:
+      - waha_sessions:/app/.sessions
+      - waha_media:/app/.media
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: webhook_fastapi
+    ports:
+      - "9001:9001"
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - WAHA_BASE_URL=http://waha:3000
+      - PG_POOL_SIZE=3
+      - PG_MAX_OVERFLOW=5
+      - MALLOC_ARENA_MAX=2
+      - MALLOC_TRIM_THRESHOLD_=131072
+      - OMP_NUM_THREADS=1
+    volumes:
+      - ./log:/app/log:rw
+      - ./utils:/app/utils:rw
+    networks:
+      - dokploy-network
+    restart: unless-stopped
+    depends_on:
+      waha:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    command: >
+      gunicorn main:app
+      -k uvicorn.workers.UvicornWorker
+      -w 2
+      --preload
+      -b 0.0.0.0:9001
+      --timeout 120
+
+  redis:
+    container_name: gork_redis
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+  waha_sessions:
+  waha_media:
+  redis_data:

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7f8">
+  <title>Gork · Administração</title>
+  <link rel="icon" href="/admin/assets/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/admin/assets/tokens.css">
+  <link rel="stylesheet" href="/admin/assets/app.css">
+  <link rel="stylesheet" href="/admin/assets/basic.css">
+  <script src="/admin/assets/app.js" defer></script>
+</head>
+<body>
+  <div id="login-screen" class="login-screen" hidden>
+    <main class="login-card">
+      <a class="brand" href="/admin" aria-label="Gork"><span class="brand-mark">g.</span><span>gork<span class="brand-caption">ADMINISTRAÇÃO</span></span></a>
+      <div class="login-heading"><h1>Administração do Gork</h1><p>Digite a senha para acessar as configurações.</p></div>
+      <form id="login-form">
+        <label for="password">Senha de acesso</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Digite sua senha">
+        <p id="login-error" class="form-error" role="alert" hidden></p>
+        <button class="button primary login-submit" type="submit">Entrar no painel <span aria-hidden="true">→</span></button>
+      </form>
+      <p class="login-footnote">Acesso restrito à administração.</p>
+    </main>
+    <span class="login-signature">Gork <span>·</span> Tudo no seu lugar.</span>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <button id="sidebar-backdrop" class="sidebar-backdrop" aria-label="Fechar navegação" hidden></button>
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#connection"><span class="brand-mark">g.</span><span>gork<span class="brand-caption">ADMINISTRAÇÃO</span></span></a>
+      <div class="workspace-label"><span class="workspace-dot"></span> Painel de controle <span class="workspace-key">G</span></div>
+      <nav aria-label="Configurações">
+        <details class="nav-section" open><summary>CONEXÃO<span aria-hidden="true">⌃</span></summary><a href="#connection" data-page="connection"><span data-icon="phone"></span>WhatsApp</a><a href="#sync" data-page="sync"><span data-icon="refresh"></span>Sincronização</a><a href="#testing" data-page="testing"><span data-icon="settings"></span>Número de teste</a></details>
+        <details class="nav-section" open><summary>ACESSOS<span aria-hidden="true">⌃</span></summary><a href="#users" data-page="users"><span data-icon="users"></span>Usuários</a><a href="#groups" data-page="groups"><span data-icon="group"></span>Grupos</a><a href="#blacklist" data-page="blacklist"><span data-icon="shield"></span>Blacklist</a><a href="#bans" data-page="bans"><span data-icon="shield"></span>Banimentos</a></details>
+        <details class="nav-section" open><summary>CONFIGURAÇÃO<span aria-hidden="true">⌃</span></summary><a href="#agents" data-page="agents"><span data-icon="sliders"></span>Agentes</a><a href="#models" data-page="models"><span data-icon="layers"></span>Modelos</a><a href="#mcps" data-page="mcps"><span data-icon="terminal"></span>Servidores MCP</a><a href="#commands" data-page="commands"><span data-icon="terminal"></span>Permissões de comandos</a></details>
+        <details class="nav-section"><summary>Data<span aria-hidden="true">⌃</span></summary><a href="#attachments" data-page="attachments"><span data-icon="layers"></span>Anexos</a><a href="#messages" data-page="messages"><span data-icon="terminal"></span>Mensagens</a></details>
+      </nav>
+      <div class="sidebar-bottom"><div class="account-avatar">A</div><div><strong>Administrador</strong><span>Configurações do Gork</span></div><button id="logout" class="icon-button" title="Sair do painel" aria-label="Sair do painel"><span data-icon="logout"></span></button></div>
+    </aside>
+    <div class="main-wrap">
+      <header class="topbar"><div class="breadcrumb"><button id="menu-toggle" class="icon-button mobile-only" aria-label="Abrir navegação" aria-expanded="false"><span data-icon="menu"></span></button><span data-icon="settings"></span><span>Configurações</span><span class="breadcrumb-slash">/</span><span id="breadcrumb-current">WhatsApp</span></div><span class="topbar-label">PAINEL DO GORK</span></header>
+      <main id="main" tabindex="-1"><div id="page-heading"></div><div id="page-content" aria-live="polite"></div></main>
+      <footer class="page-footer"><span>Gork · Administração</span><span>Configurações aplicadas em tempo real</span></footer>
+    </div>
+  </div>
+  <div id="boot" class="boot" role="status"><span class="brand-mark">g.</span><span>Carregando painel…</span></div>
+  <dialog id="editor" aria-labelledby="dialog-title"><form id="editor-form"><header class="dialog-header"><div><span id="dialog-eyebrow" class="eyebrow">CONFIGURAÇÃO</span><h2 id="dialog-title"></h2></div><button type="button" class="icon-button" id="close-editor" aria-label="Fechar"><span data-icon="x"></span></button></header><div id="editor-fields" class="dialog-fields"></div><p id="editor-error" class="form-error" role="alert" hidden></p><footer class="dialog-footer"><button type="button" id="cancel-editor" class="button">Cancelar</button><button type="submit" class="button primary" id="save-editor">Salvar alterações</button></footer></form></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from PIL import Image
 
-from api.routes.webhook.evolution.handles.video import (
+from api.routes.webhook.waha.handles.video import (
     VideoRequestError,
     _quoted_media_reference,
     _reference_images,
@@ -105,9 +105,9 @@ class VideoReferenceUploadTests(unittest.IsolatedAsyncioTestCase):
         user = SimpleNamespace(name="Maria", profile_pic_path="profiles/maria.jpg")
 
         with (
-            patch("api.routes.webhook.evolution.handles.video.S3Client", return_value=client),
+            patch("api.routes.webhook.waha.handles.video.S3Client", return_value=client),
             patch(
-                "api.routes.webhook.evolution.handles.video.upload_temporary_file",
+                "api.routes.webhook.waha.handles.video.upload_temporary_file",
                 new=AsyncMock(return_value="https://d.tmpfile.link/reference.jpg"),
             ) as upload,
         ):
@@ -143,11 +143,11 @@ class VideoReferenceUploadTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with (
-            patch("api.routes.webhook.evolution.handles.video.MessageRepository", return_value=message_repo),
-            patch("api.routes.webhook.evolution.handles.video.MediaRepository", return_value=media_repo),
-            patch("api.routes.webhook.evolution.handles.video.S3Client", return_value=s3_client),
+            patch("api.routes.webhook.waha.handles.video.MessageRepository", return_value=message_repo),
+            patch("api.routes.webhook.waha.handles.video.MediaRepository", return_value=media_repo),
+            patch("api.routes.webhook.waha.handles.video.S3Client", return_value=s3_client),
             patch(
-                "api.routes.webhook.evolution.handles.video.upload_temporary_file",
+                "api.routes.webhook.waha.handles.video.upload_temporary_file",
                 new=AsyncMock(return_value="https://d.tmpfile.link/photo.png"),
             ),
         ):
@@ -179,10 +179,10 @@ class VideoReferenceUploadTests(unittest.IsolatedAsyncioTestCase):
         upload = AsyncMock(return_value="https://d.tmpfile.link/clip.mp4")
 
         with (
-            patch("api.routes.webhook.evolution.handles.video.MessageRepository", return_value=message_repo),
-            patch("api.routes.webhook.evolution.handles.video.MediaRepository", return_value=media_repo),
-            patch("api.routes.webhook.evolution.handles.video.S3Client", return_value=s3_client),
-            patch("api.routes.webhook.evolution.handles.video.upload_temporary_file", new=upload),
+            patch("api.routes.webhook.waha.handles.video.MessageRepository", return_value=message_repo),
+            patch("api.routes.webhook.waha.handles.video.MediaRepository", return_value=media_repo),
+            patch("api.routes.webhook.waha.handles.video.S3Client", return_value=s3_client),
+            patch("api.routes.webhook.waha.handles.video.upload_temporary_file", new=upload),
         ):
             reference = await _quoted_media_reference(db_message, Mock())
 

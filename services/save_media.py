@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database.models.content import Media
 from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MediaRepository, MessageRepository
-from external.evolution import download_media
+from external.waha import download_media
 from s3 import S3Client
 
 

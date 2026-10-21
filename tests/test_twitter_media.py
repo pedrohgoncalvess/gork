@@ -2,7 +2,7 @@ import unittest
 from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
-from api.routes.webhook.evolution.handles.social import (
+from api.routes.webhook.waha.handles.social import (
     TwitterMediaDownloadResult,
     _extract_twitter_text,
     _find_twitter_photo_url,
@@ -63,15 +63,15 @@ class TwitterDownloadTests(unittest.IsolatedAsyncioTestCase):
     async def test_prefers_video_when_available(self):
         with (
             patch(
-                "api.routes.webhook.evolution.handles.social._download_twitter_video",
+                "api.routes.webhook.waha.handles.social._download_twitter_video",
                 new=AsyncMock(return_value=(b"video", "texto", None)),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.social._fetch_twitter_status",
+                "api.routes.webhook.waha.handles.social._fetch_twitter_status",
                 new=AsyncMock(return_value=VIDEO_STATUS),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.social._download_twitter_photo",
+                "api.routes.webhook.waha.handles.social._download_twitter_photo",
                 new=AsyncMock(),
             ) as photo_download,
         ):
@@ -88,15 +88,15 @@ class TwitterDownloadTests(unittest.IsolatedAsyncioTestCase):
     async def test_falls_back_to_photo_when_no_video_exists(self):
         with (
             patch(
-                "api.routes.webhook.evolution.handles.social._download_twitter_video",
+                "api.routes.webhook.waha.handles.social._download_twitter_video",
                 new=AsyncMock(return_value=(None, None, "No video")),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.social._fetch_twitter_status",
+                "api.routes.webhook.waha.handles.social._fetch_twitter_status",
                 new=AsyncMock(return_value=PHOTO_STATUS),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.social._download_twitter_photo",
+                "api.routes.webhook.waha.handles.social._download_twitter_photo",
                 new=AsyncMock(return_value=(b"photo", None)),
             ) as photo_download,
         ):
@@ -119,11 +119,11 @@ class TwitterDownloadTests(unittest.IsolatedAsyncioTestCase):
         status["quoted_tweet"] = {"mediaDetails": [quoted_video]}
         status["extended_entities"]["media"].append(quoted_video)
         with (
-            patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status",
+            patch("api.routes.webhook.waha.handles.social._fetch_twitter_status",
                   new=AsyncMock(return_value=status)) as fetch,
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_video",
+            patch("api.routes.webhook.waha.handles.social._download_twitter_video",
                   new=AsyncMock(return_value=(b"wrong-video", None, None))) as video,
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_photo",
+            patch("api.routes.webhook.waha.handles.social._download_twitter_photo",
                   new=AsyncMock(return_value=(b"own-photo", None))) as photo,
         ):
             result = await download_twitter_media("https://x.com/usuario/status/12345/photo/1")
@@ -135,9 +135,9 @@ class TwitterDownloadTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_quote_video_downloads_only_own_stream(self):
         with (
-            patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status",
+            patch("api.routes.webhook.waha.handles.social._fetch_twitter_status",
                   new=AsyncMock(return_value=VIDEO_STATUS)),
-            patch("api.routes.webhook.evolution.handles.social._download_twitter_video",
+            patch("api.routes.webhook.waha.handles.social._download_twitter_video",
                   new=AsyncMock(return_value=(b"own-video", None, None))) as video,
         ):
             result = await download_twitter_media("https://x.com/usuario/status/12345")
@@ -148,12 +148,12 @@ class TwitterDownloadTests(unittest.IsolatedAsyncioTestCase):
         for quote_key in ("quoted_tweet", "quoted_status"):
             with (
                 self.subTest(quote_key=quote_key),
-                patch("api.routes.webhook.evolution.handles.social._fetch_twitter_status",
+                patch("api.routes.webhook.waha.handles.social._fetch_twitter_status",
                       new=AsyncMock(return_value={"text": "Comentário", quote_key: VIDEO_STATUS,
                                                  "mediaDetails": []})),
-                patch("api.routes.webhook.evolution.handles.social._download_twitter_video",
+                patch("api.routes.webhook.waha.handles.social._download_twitter_video",
                       new=AsyncMock()) as video,
-                patch("api.routes.webhook.evolution.handles.social._download_twitter_photo",
+                patch("api.routes.webhook.waha.handles.social._download_twitter_photo",
                       new=AsyncMock()) as photo,
             ):
                 result = await download_twitter_media("https://x.com/usuario/status/12345")
@@ -169,11 +169,11 @@ class TwitterCommandTests(unittest.IsolatedAsyncioTestCase):
         result = TwitterMediaDownloadResult(b"video", "video", None, "texto")
         with (
             patch(
-                "api.routes.webhook.evolution.handles.social.download_twitter_media",
+                "api.routes.webhook.waha.handles.social.download_twitter_media",
                 new=AsyncMock(return_value=result),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.social.send_video",
+                "api.routes.webhook.waha.handles.social.send_video",
                 new=AsyncMock(),
             ) as send_video,
         ):
@@ -189,11 +189,11 @@ class TwitterCommandTests(unittest.IsolatedAsyncioTestCase):
         result = TwitterMediaDownloadResult(b"photo", "image", None, "texto")
         with (
             patch(
-                "api.routes.webhook.evolution.handles.social.download_twitter_media",
+                "api.routes.webhook.waha.handles.social.download_twitter_media",
                 new=AsyncMock(return_value=result),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.social.send_image",
+                "api.routes.webhook.waha.handles.social.send_image",
                 new=AsyncMock(),
             ) as send_image,
         ):

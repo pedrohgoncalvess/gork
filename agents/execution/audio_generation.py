@@ -58,7 +58,7 @@ async def text_to_speech(
 
     audio_bytes = await generate_speech(payload)
     # Gemini TTS emits 24 kHz mono PCM16. A WAV header makes it playable by
-    # Evolution without a local synthesizer or native audio dependencies.
+    # WAHA before voice-note conversion, without a local synthesizer.
     if len(audio_bytes) % 2:
         raise RuntimeError("OpenRouter returned truncated PCM16 audio.")
     buffer = io.BytesIO()

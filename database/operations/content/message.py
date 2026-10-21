@@ -106,6 +106,7 @@ class MessageRepository(BaseRepository[Message]):
         filters = [
             Message.group_id.is_(None),
             Message.user_id.in_([user_id, gork_user_id]),
+            or_(Message.chat_user_id == user_id, Message.chat_user_id.is_(None)),
             Message.deleted_at.is_(None),
         ]
 

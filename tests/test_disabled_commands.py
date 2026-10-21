@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from api.routes.webhook.evolution.processors.common import process_commands
+from api.routes.webhook.waha.processors.common import process_commands
 from database.operations.manager.disabled_command import (
     DisabledCommandRepository,
     normalize_command,
@@ -58,15 +58,15 @@ class DisabledCommandDispatchTests(unittest.IsolatedAsyncioTestCase):
         user = SimpleNamespace(id=7)
         with (
             patch(
-                "api.routes.webhook.evolution.processors.common.get_disabled_command_message",
+                "api.routes.webhook.waha.processors.common.get_disabled_command_message",
                 new=AsyncMock(return_value="Comando temporariamente desativado."),
             ),
             patch(
-                "api.routes.webhook.evolution.processors.common.send_message",
+                "api.routes.webhook.waha.processors.common.send_message",
                 new=AsyncMock(),
             ) as send,
             patch(
-                "api.routes.webhook.evolution.processors.common.process_explicit_commands",
+                "api.routes.webhook.waha.processors.common.process_explicit_commands",
                 new=AsyncMock(),
             ) as dispatch,
         ):
@@ -92,15 +92,15 @@ class DisabledCommandDispatchTests(unittest.IsolatedAsyncioTestCase):
         user = SimpleNamespace(id=7)
         with (
             patch(
-                "api.routes.webhook.evolution.processors.common.get_disabled_command_message",
+                "api.routes.webhook.waha.processors.common.get_disabled_command_message",
                 new=AsyncMock(return_value="Interações pausadas."),
             ) as lookup,
             patch(
-                "api.routes.webhook.evolution.processors.common.send_message",
+                "api.routes.webhook.waha.processors.common.send_message",
                 new=AsyncMock(),
             ),
             patch(
-                "api.routes.webhook.evolution.processors.common.handle_conversation_agent",
+                "api.routes.webhook.waha.processors.common.handle_conversation_agent",
                 new=AsyncMock(),
             ) as conversation,
         ):

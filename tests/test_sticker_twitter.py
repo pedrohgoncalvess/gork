@@ -2,8 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from api.routes.webhook.evolution.handles.image import handle_sticker_command
-from api.routes.webhook.evolution.handles.social import TwitterMediaDownloadResult
+from api.routes.webhook.waha.handles.image import handle_sticker_command
+from api.routes.webhook.waha.handles.social import TwitterMediaDownloadResult
 
 
 def _command(extra_params: str = "") -> SimpleNamespace:
@@ -26,15 +26,15 @@ class TwitterStickerTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.download_twitter_media",
+                "api.routes.webhook.waha.handles.image.download_twitter_media",
                 new=AsyncMock(return_value=result),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_static.static_sticker",
+                "api.routes.webhook.waha.handles.image.sticker_static.static_sticker",
                 new=AsyncMock(return_value="webp-base64"),
             ) as static_sticker,
             patch(
-                "api.routes.webhook.evolution.handles.image.send_sticker",
+                "api.routes.webhook.waha.handles.image.send_sticker",
                 new=AsyncMock(),
             ) as send_sticker,
         ):
@@ -59,15 +59,15 @@ class TwitterStickerTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.download_twitter_media",
+                "api.routes.webhook.waha.handles.image.download_twitter_media",
                 new=AsyncMock(return_value=result),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_animated.animated_sticker_from_bytes",
+                "api.routes.webhook.waha.handles.image.sticker_animated.animated_sticker_from_bytes",
                 new=AsyncMock(return_value="sticker-url"),
             ) as animated_sticker,
             patch(
-                "api.routes.webhook.evolution.handles.image.send_animated_sticker",
+                "api.routes.webhook.waha.handles.image.send_animated_sticker",
                 new=AsyncMock(),
             ) as send_sticker,
         ):
@@ -84,15 +84,15 @@ class TwitterStickerTests(unittest.IsolatedAsyncioTestCase):
         result = TwitterMediaDownloadResult(b"video-bytes", "video", None, None)
         with (
             patch(
-                "api.routes.webhook.evolution.handles.image.download_twitter_media",
+                "api.routes.webhook.waha.handles.image.download_twitter_media",
                 new=AsyncMock(return_value=result),
             ),
             patch(
-                "api.routes.webhook.evolution.handles.image.sticker_animated.animated_sticker_from_bytes",
+                "api.routes.webhook.waha.handles.image.sticker_animated.animated_sticker_from_bytes",
                 new=AsyncMock(return_value="sticker-url"),
             ) as animated_sticker,
             patch(
-                "api.routes.webhook.evolution.handles.image.send_animated_sticker",
+                "api.routes.webhook.waha.handles.image.send_animated_sticker",
                 new=AsyncMock(),
             ),
         ):

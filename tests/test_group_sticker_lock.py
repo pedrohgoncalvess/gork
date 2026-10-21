@@ -3,10 +3,10 @@ from contextlib import ExitStack, nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
-from api.routes.webhook.evolution.processors.group import process_group_message
+from api.routes.webhook.waha.processors.group import process_group_message
 
 
-MODULE = "api.routes.webhook.evolution.processors.group."
+MODULE = "api.routes.webhook.waha.processors.group."
 
 
 class GroupStickerLockTests(unittest.IsolatedAsyncioTestCase):
@@ -33,12 +33,13 @@ class GroupStickerLockTests(unittest.IsolatedAsyncioTestCase):
             mock("WhiteListRepository", return_value=whitelist)
             mock("MessageRepository", return_value=AsyncMock())
             mock("save_profile_pic", new=AsyncMock())
+            mock("get_instance_number", new=AsyncMock(return_value="5511000000000"))
             mock("is_feature_blocked", new=AsyncMock(return_value=blocked))
             mock("log_blocked_request", new=AsyncMock())
             send = mock("send_message", new=AsyncMock())
             dispatch = mock("process_commands", new=AsyncMock())
             lock = mock("serialize_group_conversation", return_value=nullcontext())
-            if "!sticker" in content:
+            if "!sticker" in content or "!ban" in content:
                 lock.side_effect = TimeoutError("conversation lock is still held")
             await process_group_message(body, "group-id", Mock(), Mock())
         return dispatch, lock, send
@@ -52,6 +53,11 @@ class GroupStickerLockTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_normal_sticker_also_does_not_wait_for_agent(self):
         dispatch, lock, _ = await self._process("!sticker teste")
+        dispatch.assert_awaited_once()
+        lock.assert_not_called()
+
+    async def test_ban_does_not_wait_for_an_agent_conversation_lock(self):
+        dispatch, lock, _ = await self._process('@Gork !ban @222 :expiration=5')
         dispatch.assert_awaited_once()
         lock.assert_not_called()
 

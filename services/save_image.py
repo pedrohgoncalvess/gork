@@ -8,7 +8,7 @@ from agents.execution.describe_image import describe_image_agent
 from database.models.content import Media
 from database.operations.content import MediaRepository, MessageRepository
 from embeddings import generate_text_embeddings
-from external.evolution import download_media
+from external.waha import download_media
 from log import logger
 from services.save_media import save_media_if_new
 from utils import get_phash

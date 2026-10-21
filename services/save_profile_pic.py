@@ -5,7 +5,7 @@ import httpx
 from database import PgConnection
 from database.models.base import User
 from database.operations.base import UserRepository
-from external.evolution import get_profile_info
+from external.waha import get_profile_info
 from s3 import S3Client
 
 
@@ -39,7 +39,7 @@ async def save_profile_pic(
         # calls so this operation does not reserve a pooled connection while idle.
         await db.commit()
 
-        profile_infos = await get_profile_info(phone_number)
+        profile_infos = await get_profile_info(phone_number or f"{user.src_id}@lid")
         image_url = profile_infos.get("picture")
 
         if image_url is None:

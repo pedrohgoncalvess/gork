@@ -8,3 +8,4 @@ from database.models.manager.model_price import ModelPrice
 from database.models.manager.model_conversation import ModelConversation
 from database.models.manager.remember import Remember
 from database.models.manager.observation import Observation
+from database.models.manager.mcp_server import McpServer
