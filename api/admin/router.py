@@ -6,13 +6,12 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError, OperationalError
 
 from api.admin import connection, store
 from api.admin.auth import COOKIE_NAME, SESSION_SECONDS, create_session, csrf_token, password, require_admin
 from api.admin.schemas import (AgentInput, BlacklistInput, CommandInput, GroupInput, GroupSettings,
                                Login, ModelInput, OverrideInput, PairingCode, UserInput, WhitelistInput)
-from database import PgConnection
+from api.admin.dependencies import get_db
 from database.models.base import BlackList, Group, User, WhiteList
 from database.models.manager import Agent, DisabledCommand, Model, ModelConversation
 from database.operations.base import GroupRepository, UserRepository
@@ -23,18 +22,6 @@ from agents.init import init_agents
 STATIC_DIR = Path(__file__).parent / "static"
 router = APIRouter(prefix="/admin", tags=["Administration"])
 api = APIRouter(prefix="/api", dependencies=[Depends(require_admin)])
-
-
-async def get_db():
-    async with PgConnection() as db:
-        try:
-            yield db
-        except IntegrityError:
-            await db.rollback()
-            raise HTTPException(409, "Já existe um registro com esse identificador.") from None
-        except OperationalError:
-            await db.rollback()
-            raise HTTPException(503, "O banco de dados está indisponível. Tente novamente.") from None
 
 
 @router.get("", include_in_schema=False)
