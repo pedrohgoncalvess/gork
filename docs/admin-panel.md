@@ -62,7 +62,7 @@ Os formatos estruturados das respostas continuam sendo definidos pelo código.
 ## Aparência
 
 `tokens.css` define apenas cores, fontes, espaçamento, raios e dimensões básicas.
-A interface usa fontes do sistema, SVGs locais, superfícies claras e verde escuro.
+A interface usa Arial, controles compactos, bordas retas e tons de cinza.
 Sidebar com submenus, formulários e tabelas se adaptam a telas menores.
 
 ## Setup e sincronização

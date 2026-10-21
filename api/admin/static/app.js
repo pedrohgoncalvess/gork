@@ -26,6 +26,12 @@ document.querySelectorAll("[data-icon]").forEach(node => { node.innerHTML = icon
 const state = {page:"connection", csrf:null, q:"", offset:0, poll:null, qrUrl:null, qrAt:0, connection:null, mode:"qr", code:null, editor:null, data:{}, tab:"defaults", navigation:0};
 const titles = {connection:["CONEXÃO","WhatsApp","Vincule seu celular e acompanhe a conexão do Gork."],users:["ACESSOS","Usuários","Defina quem pode conversar com o Gork e acessar seus recursos."],groups:["ACESSOS","Grupos","Gerencie os grupos autorizados e as respostas automáticas."],blacklist:["ACESSOS","Blacklist","Controle bloqueios completos ou restrinja recursos por usuário."],agents:["CONFIGURAÇÃO","Agentes","Ajuste os modelos e as instruções de cada agente."],models:["CONFIGURAÇÃO","Modelos","Modelos disponíveis para os agentes e suas conversas."],commands:["CONFIGURAÇÃO","Permissões de comandos","Defina restrições por comando, usuário ou grupo."]};
 const loading = '<div class="loading" role="status"><span class="spinner"></span>Carregando…</div>';
+titles.mcps = ["CONFIGURAÇÃO", "Servidores MCP", "Cadastre os serviços que o Gork pode consultar por ferramentas."];
+titles.bans = ["ACESSOS", "Banimentos", "Acompanhe votações e gerencie os banimentos temporários dos grupos."];
+titles.sync = ["CONEXÃO", "Sincronização", "Importe contatos e o histórico disponível na conta conectada."];
+titles.testing = ["CONFIGURAÇÃO", "Número de teste", "Configure o número autorizado para testar o Gork em uma conversa privada."];
+titles.attachments = ["DATA", "Anexos", "Explore os anexos salvos nas conversas e busque pelo significado das descrições."];
+titles.messages = ["DATA", "Mensagens", "Explore o histórico de mensagens e encontre conversas pelo significado."];
 const badge = (text, color="") => `<span class="badge ${color}">${esc(text)}</span>`;
 const initials = value => String(value || "?").trim().split(/\s+/).slice(0,2).map(word=>word[0]).join("").toUpperCase();
 const person = (name, subline, kind="user") => `<div class="person"><span class="avatar">${kind==="group"?icon("group"):esc(initials(name))}</span><div><strong>${esc(name || "Sem nome")}</strong>${subline?`<span class="subline mono">${esc(subline)}</span>`:""}</div></div>`;
@@ -62,6 +68,8 @@ function heading(page){const [section,title,description]=titles[page];let action
  if(page==="agents")actions=button("new-override","Definir por conversa","plus",true);
  if(page==="models")actions=button("new-model","Adicionar modelo","plus",true);
  if(page==="commands")actions=button("new-command","Nova restrição","plus",true);
+ if(page==="mcps")actions=button("new-mcp","Adicionar MCP","plus",true);
+ if(page==="bans")actions=button("refresh-bans","Atualizar","refresh");
  $("#page-heading").innerHTML=`<div class="heading"><div><span class="eyebrow">${section}</span><h1>${title}</h1><p>${description}</p></div><div class="heading-actions">${actions}</div></div>`;
  $("#breadcrumb-current").textContent=title;document.title=`${title} · Gork`;
 }
@@ -74,23 +82,133 @@ async function navigate(){
 function empty(title, description, glyph="layers", action=""){return `<div class="empty"><div class="icon-box">${icon(glyph)}</div><h3>${title}</h3><p>${description}</p>${action}</div>`;}
 function errorState(error){return `<div class="card error-state">${empty("Não foi possível carregar",esc(message(error)),"info",button("retry","Tentar novamente","refresh"))}</div>`;}
 async function loadPage(){const nav=state.navigation;try{
+ if(["attachments","messages"].includes(state.page)){await renderDataShell();return;}
+ if(state.page==="bans"){clearInterval(state.poll);renderBansShell();await loadBans();if(nav===state.navigation)state.poll=setInterval(()=>{if(!document.hidden&&!$("#editor").open)loadBans();},5000);return;}
  if(state.page==="connection"){renderConnection();await refreshConnection();if(nav===state.navigation)state.poll=setInterval(()=>{if(!document.hidden)refreshConnection();},5000);return;}
+ if(state.page==="sync"){const data=await api("/sync");if(nav!==state.navigation)return;state.data=data;renderSync();state.poll=setInterval(()=>refreshSync().catch(error=>toast(message(error))),3000);return;}
+ if(state.page==="testing"){const data=await api("/settings");if(nav!==state.navigation)return;state.data=data;renderTesting();return;}
  if(state.page==="users"||state.page==="groups"){renderDirectoryShell();await loadDirectory();return;}
  let data;
  if(state.page==="agents"){const [agents,models,overrides]=await Promise.all([api("/agents"),api("/models"),api("/overrides")]);data={agents,models,overrides};}
  if(state.page==="models")data={models:await api("/models")};
+ if(state.page==="mcps")data={servers:await api("/mcps")};
  if(state.page==="blacklist"){const [entries,commands]=await Promise.all([api("/blacklist"),api("/commands")]);data={entries,catalog:commands.catalog};}
  if(state.page==="commands")data=await api("/commands");
  if(nav!==state.navigation)return;state.data=data;renderPage();
  }catch(error){if(nav===state.navigation)$("#page-content").innerHTML=errorState(error);}}
-function renderPage(){if(state.page==="agents")renderAgents();else if(state.page==="models")renderModels();else if(state.page==="blacklist")renderBlacklist();else if(state.page==="commands")renderCommands();}
+function renderPage(){if(state.page==="agents")renderAgents();else if(state.page==="models")renderModels();else if(state.page==="blacklist")renderBlacklist();else if(state.page==="commands")renderCommands();else if(state.page==="mcps")renderMcps();}
+
+const banStatus = {active:["Ativo","red"],voting:["Em votação","amber"],closing:["Em apuração","amber"],preparing:["Preparando","amber"],expired:["Expirado",""],rejected:["Rejeitado",""],cancelled:["Votação cancelada",""],revoked:["Encerrado no painel",""],invalid:["Votos ilegíveis","red"],failed:["Falha no envio","red"]};
+function renderBansShell(){
+ const views=[{id:"all",name:"Todos"},{id:"active",name:"Bans ativos"},{id:"voting",name:"Votações abertas"},{id:"history",name:"Histórico"}];
+ $("#page-content").innerHTML=`<section class="card"><div class="ban-filters">${field(label("Estado","ban-view"),select("ban-view",views,state.banView||"all"))}${field(label("Buscar membro ou grupo","ban-search"),input("ban-search","Nome ou identificador",state.q,'type="search" maxlength="100"'))}</div><div id="ban-results">${loading}</div></section>${note("Atualização automática a cada 5 segundos. Para abrir uma votação, use !ban @usuário no grupo. Encerrar um ban libera as novas mensagens; o histórico é preservado.")}`;
+}
+async function loadBans(){
+ if(state.page!=="bans"||!state.csrf)return;
+ const nav=state.navigation,request=state.banRequest=(state.banRequest||0)+1;
+ try{
+ const result=await api(`/bans?${new URLSearchParams({view:state.banView||"all",q:state.q,offset:state.offset,limit:30})}`);
+ if(nav!==state.navigation||request!==state.banRequest)return;
+ const date=value=>value?new Date(value).toLocaleString("pt-BR"):"—";
+ const rows=result.items.map(item=>{
+ const [name,color]=banStatus[item.status]||[item.status,""];
+ let action="";
+ if(item.status==="active")action=button("revoke-ban","Encerrar ban",null,false,`data-id="${item.id}"`);
+ if(["preparing","voting","closing"].includes(item.status))action=button("cancel-ban-poll","Cancelar votação",null,false,`data-id="${item.id}"`);
+ if(item.next_vote_at&&new Date(item.next_vote_at)>new Date())action+=`<span class="subline">Nova votação: ${esc(date(item.next_vote_at))}</span>`;
+ return `<tr><td>${person(item.target_name,item.target_id)}<span class="subline">Aberta em ${esc(date(item.opened_at))}</span></td><td>${person(item.group_name||"Grupo",item.chat_id,"group")}</td><td>${badge(name,color)}</td><td><strong>${item.yes_votes} Sim · ${item.no_votes} Não</strong><span class="subline">${item.yes_votes+item.no_votes} de ${item.member_count} membros · quórum ${Math.max(3,Math.ceil(item.member_count/3))} · maioria decide</span></td><td>${item.duration_minutes} min<span class="subline">Votação até ${esc(date(item.closes_at))}</span>${item.ban_until?`<span class="subline">Ban até ${esc(date(item.ban_until))}</span>`:""}</td><td>${action}</td></tr>`;
+ }).join("");
+ $("#ban-results").innerHTML=rows?`<div class="table-scroll"><table><thead><tr><th>Membro</th><th>Grupo</th><th>Estado</th><th>Votos</th><th>Duração e prazos</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div><div class="table-footer"><span>${result.offset+1}–${result.offset+result.items.length} de ${result.total}</span><div class="pagination">${button("bans-prev","Anterior",null,false,result.offset===0?"disabled":"")}${button("bans-next","Próxima",null,false,result.offset+result.items.length>=result.total?"disabled":"")}</div></div>`:empty("Nenhum banimento encontrado","Votações abertas pelo comando !ban aparecerão aqui. Ajuste os filtros para consultar outros registros.","shield");
+ }catch(error){if(nav===state.navigation&&request===state.banRequest)$("#ban-results").innerHTML=errorState(error);}
+}
+
+async function renderDataShell(){
+ const nav=state.navigation;
+ const [groups,users]=await Promise.all([api("/directory/group?limit=30"),api("/directory/user?limit=30")]);
+ if(nav!==state.navigation)return;
+ const picker=(kind,items)=>`<div class="field"><label for="data-${kind}">${kind==="group"?"Grupo":"Contato"}</label><input type="search" class="picker-search" data-picker="data-${kind}" data-kind="${kind}" aria-label="Buscar ${kind==="group"?"grupo":"contato"}" placeholder="Buscar por nome ou identificador">${select(`data-${kind}`,[{id:"",name:"Todos"},...items.map(item=>({id:item.id,name:item.name||item.phone_number||item.src_id||`#${item.id}`}))])}</div>`;
+ $("#page-content").innerHTML=`<section class="card"><form id="data-filters" class="data-filters">${picker("group",groups.items)}${picker("user",users.items)}${field(label("Janela de tempo","data-period"),select("data-period",[{id:"all",name:"Todo o histórico"},{id:"1",name:"Últimas 24 horas"},{id:"7",name:"Últimos 7 dias"},{id:"30",name:"Últimos 30 dias"},{id:"custom",name:"Período personalizado"}]))}<div id="data-dates" class="data-dates" hidden>${field(label("Início","data-start"),input("data-start","","",'type="datetime-local"'))}${field(label("Fim (exclusivo)","data-end"),input("data-end","","",'type="datetime-local"'))}<p class="field-hint">Fuso horário do navegador.</p></div><div class="data-query">${field(label("Busca semântica","data-query"),input("data-query","Ex.: planejamento da viagem","",'type="search" maxlength="2000"'),"Ordena por relevância. Deixe vazio para ver os registros mais recentes.")}</div><div class="data-actions"><button class="button primary" type="submit">${icon("search")}Aplicar filtros</button><button class="button" type="reset">Limpar</button></div><p id="data-error" class="form-error" role="alert" hidden></p></form></section><div id="data-results">${loading}</div>${note(state.page==="attachments"?"A busca semântica inclui anexos que já possuem descrição indexada. Cada cartão representa o envio de um anexo em uma conversa.":"A busca semântica indexa até 100 mensagens por vez e usa o modelo de embeddings configurado. A primeira busca pode demorar; continue a indexação para incluir todo o período. Mensagens sem texto aparecem na listagem cronológica.")}`;
+ state.dataFilters=new URLSearchParams();state.dataOffset=0;
+ await loadData();
+}
+async function loadData(indexMessages=false){
+ const nav=state.navigation,request=(state.dataRequest||0)+1;state.dataRequest=request;
+ const params=new URLSearchParams(state.dataFilters);params.set("offset",state.dataOffset);params.set("limit",30);
+ if(indexMessages)params.set("index_messages","true");
+ $("#data-results").innerHTML=loading;
+ try{
+ const result=await api(`/data/${state.page}?${params}`);
+ if(nav!==state.navigation||request!==state.dataRequest)return;
+ state.dataListing=result;
+ const cards=result.items.map(item=>{
+ const context=`<header><strong>${esc(item.user_name||item.phone_number||"Contato desconhecido")}</strong><span class="subline">${esc(item.group_name||item.contact_name||"Conversa privada")}</span><time datetime="${esc(item.created_at)}">${esc(new Date(item.created_at).toLocaleString("pt-BR"))}</time>${item.similarity!=null?badge(`Relevância ${(item.similarity*100).toFixed(0)}%`):""}</header>`;
+ let preview="";
+ if(item.media_url){const url=esc(item.media_url),name=esc(item.media_name||"Anexo");
+ if(["image","sticker"].includes(item.media_type))preview=`<a href="${url}" target="_blank" rel="noopener"><img class="attachment-preview" src="${url}" alt="${name}" loading="lazy"></a>`;
+ else if(item.media_type==="video")preview=`<video class="attachment-preview" controls preload="none" src="${url}" aria-label="${name}"></video>`;
+ else if(item.media_type==="audio")preview=`<audio controls preload="none" src="${url}" aria-label="${name}"></audio>`;
+ preview+=`<a class="attachment-download" href="${url}?download=true">${icon("layers")}${name}${item.size!=null?` · ${Number(item.size).toFixed(2)} MB`:""} · Baixar</a>`;}
+ return `<article class="data-item card">${context}${preview}${item.content?`<p class="message-content">${esc(item.content)}</p>`:""}${item.description?`<details class="attachment-description"><summary>Descrição do anexo</summary><p class="message-content">${esc(item.description)}</p></details>`:""}${!item.content&&!item.media_url?'<p class="muted">Mensagem sem texto.</p>':""}</article>`;
+ }).join("");
+ $("#data-results").innerHTML=`${result.indexing_remaining?`<div class="note">${icon("info")}<span>Resultados parciais: ${result.indexing_remaining} mensagens ainda precisam ser indexadas.</span>${button("data-index","Continuar indexação","refresh")}</div>`:""}<div class="data-summary">${result.total} ${state.page==="attachments"?"anexos":"mensagens"}${state.dataFilters.get("q")?" com conteúdo indexado · ordem de relevância":" · mais recentes primeiro"}</div>${cards?`<div class="${state.page==="attachments"?"attachment-grid":"message-list"}">${cards}</div>`:`<section class="card">${empty("Nenhum resultado","Ajuste os filtros ou tente outra busca.")}</section>`}<div class="data-pagination">${button("data-prev","Anterior","",false,state.dataOffset===0?"disabled":"")}<span>${result.total?state.dataOffset+1:0}–${Math.min(state.dataOffset+30,result.total)} de ${result.total}</span>${button("data-next","Próxima","",false,state.dataOffset+30>=result.total?"disabled":"")}</div>`;
+ }catch(error){if(nav===state.navigation&&request===state.dataRequest){$("#data-results").innerHTML=`<section class="card">${empty("Não foi possível carregar",esc(message(error)),"info",button("data-retry","Tentar novamente","refresh"))}</section>`;}}
+}
+document.addEventListener("submit",async event=>{
+ if(event.target.id!=="data-filters")return;event.preventDefault();
+ const errorNode=$("#data-error");errorNode.hidden=true;
+ try{
+ const params=new URLSearchParams();for(const key of ["group","user"]){const value=$(`#data-${key}`).value;if(value)params.set(`${key}_id`,value);}
+ const period=$("#data-period").value;
+ if(period==="custom"){const start=$("#data-start").value,end=$("#data-end").value;if(!start||!end||new Date(start)>=new Date(end))throw new Error("Preencha um período com fim posterior ao início.");params.set("start",new Date(start).toISOString());params.set("end",new Date(end).toISOString());}
+ else if(period!=="all"){const now=new Date();params.set("start",new Date(now.getTime()-Number(period)*86400000).toISOString());params.set("end",now.toISOString());}
+ const q=$("#data-query").value.trim();if(q)params.set("q",q);
+ state.dataFilters=params;state.dataOffset=0;await loadData(true);
+ }catch(error){errorNode.textContent=message(error);errorNode.hidden=false;}
+});
+document.addEventListener("reset",event=>{if(event.target.id!=="data-filters")return;setTimeout(()=>{$("#data-dates").hidden=true;$("#data-error").hidden=true;state.dataFilters=new URLSearchParams();state.dataOffset=0;loadData();},0);});
+
+function syncProgress(job){
+ if(!job)return note("Nenhuma sincronização iniciada.");
+ const names={running:"Em andamento",completed:"Concluída",failed:"Interrompida"};
+ const phase={contacts:"Contatos",history:"Histórico"}[job.phase];
+ return `<div class="card-head"><div><h3>${esc(names[job.status]||job.status)}${phase?` · ${phase}`:""}</h3><p>${job.contacts} contatos · ${job.messages} mensagens importadas · ${job.skipped} itens ignorados ou já existentes</p>${job.error?`<p role="alert">${esc(job.error)}</p>`:""}</div>${badge(names[job.status]||job.status,job.status==="completed"?"green":"amber")}</div>`;
+}
+function renderSync(){
+ const periods=[{id:"3d",name:"3 dias"},{id:"5d",name:"5 dias"},{id:"1w",name:"1 semana"},{id:"2w",name:"2 semanas"},{id:"1m",name:"1 mês"},{id:"3m",name:"3 meses"},{id:"custom",name:"Janela de tempo específica"},{id:"all",name:"Todo o histórico (all time)"}];
+ $("#page-content").innerHTML=`<section class="card"><form id="sync-form" class="dialog-fields">${checkbox("sync-contacts","Sincronizar contatos","Importa nomes, telefones e LIDs sem autorizar novos acessos.",true)}${checkbox("sync-history","Sincronizar histórico","Importa mensagens sem executar comandos nem enviar respostas.")}<div id="history-options" hidden>${field(label("Período do histórico","sync-period"),select("sync-period",periods,"3d"))}<div id="sync-dates" hidden>${field(label("Início","sync-start"),input("sync-start","","",'type="datetime-local"'))}${field(label("Fim","sync-end"),input("sync-end","","",'type="datetime-local"'))}<p class="form-info">As datas usam o fuso horário do seu navegador.</p></div></div><p id="sync-error" class="form-error" role="alert" hidden></p><button id="sync-submit" type="submit" class="button primary" ${state.data.job?.status==="running"?"disabled":""}>${icon("refresh")}Iniciar sincronização</button></form></section><section id="sync-progress" class="card">${syncProgress(state.data.job)}</section>${note("Os períodos se aplicam às mensagens; a agenda de contatos é sincronizada por completo. O histórico depende do que o WhatsApp disponibilizou ao WAHA. Você pode repetir a importação sem duplicar mensagens.")}`;
+}
+async function refreshSync(){
+ if(state.page!=="sync"||document.hidden||state.syncRefreshing)return;
+ state.syncRefreshing=true;const nav=state.navigation;
+ try{const data=await api("/sync");if(nav!==state.navigation)return;state.data=data;$("#sync-progress").innerHTML=syncProgress(data.job);$("#sync-submit").disabled=data.job?.status==="running";}finally{state.syncRefreshing=false;}
+}
+function renderTesting(){
+ const data=state.data;
+ $("#page-content").innerHTML=`<section class="card"><form id="test-settings-form" class="dialog-fields">${field(label("Número de teste","test-number"),input("test-number","5511999999999",data.test_number||"",'type="tel" pattern="\\+?[1-9][0-9]{6,14}"'),"Código do país + DDD + número.")}${checkbox("test-mode","Ativar modo de teste","O Gork responderá somente a esse número em mensagens privadas. Grupos e outros contatos serão ignorados.",data.test_mode)}<p id="test-error" class="form-error" role="alert" hidden></p><button class="button primary" type="submit">Salvar configuração</button></form></section>${note(`Conta principal: <strong>${esc(data.phone_number||"Aguardando conexão do WhatsApp")}</strong>${data.lid?` · LID: ${esc(data.lid)}`:""}. Identificada automaticamente pelo WAHA. As alterações são preservadas após reiniciar.`)}`;
+}
+document.addEventListener("submit",async event=>{
+ if(!["sync-form","test-settings-form"].includes(event.target.id))return;
+ event.preventDefault();const form=event.target;const submit=$('button[type="submit"]',form);submit.disabled=true;
+ const errorNode=$(form.id==="sync-form"?"#sync-error":"#test-error");errorNode.hidden=true;
+ try{
+  if(form.id==="sync-form"){
+   const payload={contacts:$("#sync-contacts").checked,history:$("#sync-history").checked,period:$("#sync-period").value};
+   if(payload.period==="custom"&&payload.history){payload.start=new Date($("#sync-start").value).toISOString();payload.end=new Date($("#sync-end").value).toISOString();}
+   if(!payload.history)payload.period="3d";
+   state.data=await api("/sync",{method:"POST",body:JSON.stringify(payload)});$("#sync-progress").innerHTML=syncProgress(state.data.job);toast("Sincronização iniciada.");
+  }else{
+   const payload={test_mode:$("#test-mode").checked,test_number:$("#test-number").value.trim()||null};
+   state.data=await api("/settings/test",{method:"PUT",body:JSON.stringify(payload)});toast("Configuração de teste salva.");
+  }
+ }catch(error){errorNode.textContent=message(error);errorNode.hidden=false;}finally{if(submit.isConnected)submit.disabled=form.id==="sync-form"&&state.data.job?.status==="running";}
+});
 const statusNames={WORKING:["Conectado","green"],SCAN_QR_CODE:["Aguardando conexão","amber"],STARTING:["Conectando","amber"],STOPPED:["Desconectado",""],FAILED:["Falha na conexão","red"],NOT_CREATED:["Não conectado",""],UNKNOWN:["Estado indisponível",""]};
 function renderConnection(){
  const status=state.connection?.status;const [label,color]=statusNames[status]||["Verificando conexão",""];const ready=status==="SCAN_QR_CODE";const working=status==="WORKING";
  let body;
  if(working){body=`<div class="connected-box"><div class="connected-icon">${icon("check")}</div><h2>Seu WhatsApp está conectado.</h2><p>O Gork está pronto para receber e enviar mensagens.</p><span class="mono muted">${esc(state.connection.me?.name || "")} ${esc((state.connection.me?.id||"").split("@")[0])}</span></div>`;}
  else if(state.mode==="code"){
- body=`<div class="code-panel"><h2>Conecte com seu número.</h2><p>Informe o número do celular que será usado pelo Gork, com o código do país e DDD.</p><form id="pairing-form"><label for="phone-number">Número do WhatsApp</label><input type="tel" id="phone-number" name="phone_number" autocomplete="tel" placeholder="55 11 99999-9999" required ${!ready?"disabled":""}><p class="field-hint">${ready?"Um código será exibido para inserir no WhatsApp.":"Inicie a conexão para solicitar um código."}</p><button class="button primary" type="submit" ${!ready?"disabled":""}>Gerar código ${icon("arrow")}</button></form><div id="pairing-result">${state.code?codeMarkup():""}</div><p id="pairing-error" class="form-error" role="alert" hidden></p><div class="link-alternative">${button("qr-mode","Usar QR code","phone")}</div></div><div class="connection-instructions"><span class="eyebrow">NO SEU CELULAR</span><h2>Insira o código no WhatsApp.</h2><ol class="steps"><li><span class="step-number">1</span><span>Abra <strong>Aparelhos conectados</strong>.</span></li><li><span class="step-number">2</span><span>Toque em <strong>Conectar um aparelho</strong>.</span></li><li><span class="step-number">3</span><span>Escolha <strong>Conectar com número de telefone</strong> e insira o código.</span></li></ol></div>`;
+ body=`<div class="code-panel"><h2>Conecte com seu número.</h2><p>Informe o número do celular que será usado pelo Gork, com o código do país e DDD.</p><form id="pairing-form"><label for="phone-number">Número do WhatsApp</label><input type="tel" id="phone-number" name="phone_number" autocomplete="tel" placeholder="55 11 99999-9999" value="${esc(state.phoneNumber||'')}" required ${state.pairingBusy?"disabled":""}><p class="field-hint">${ready?"Um código será exibido para inserir no WhatsApp.":"A conexão será iniciada automaticamente ao gerar o código."}</p><button class="button primary" type="submit" ${state.pairingBusy?"disabled":""}>Gerar código ${icon("arrow")}</button></form><div id="pairing-result">${state.code?codeMarkup():""}</div><p id="pairing-error" class="form-error" role="alert" hidden></p><div class="link-alternative">${button("qr-mode","Usar QR code","phone")}</div></div><div class="connection-instructions"><span class="eyebrow">NO SEU CELULAR</span><h2>Insira o código no WhatsApp.</h2><ol class="steps"><li><span class="step-number">1</span><span>Abra <strong>Aparelhos conectados</strong>.</span></li><li><span class="step-number">2</span><span>Toque em <strong>Conectar um aparelho</strong>.</span></li><li><span class="step-number">3</span><span>Escolha <strong>Conectar com número de telefone</strong> e insira o código.</span></li></ol></div>`;
  }else{
  body=`<div class="qr-column"><div class="qr-frame" id="qr-frame">${state.qrUrl?`<img src="${esc(state.qrUrl)}" alt="QR code para conectar o WhatsApp">`:`<div class="qr-placeholder">${icon("phone")}<p>${ready?"Carregando QR code…":"Inicie a conexão para exibir o QR code."}</p></div>`}</div><div class="qr-caption" id="qr-caption">${qrCaption()}</div></div><div class="connection-instructions"><h2>Conecte seu celular.</h2><p>Leia o QR code ao lado para vincular o WhatsApp ao Gork. Leva só alguns instantes.</p><ol class="steps"><li><span class="step-number">1</span><span>Abra o <strong>WhatsApp</strong> no celular.</span></li><li><span class="step-number">2</span><span>Vá em <strong>Aparelhos conectados</strong>.</span></li><li><span class="step-number">3</span><span>Toque em <strong>Conectar um aparelho</strong> e aponte a câmera.</span></li></ol><div class="link-alternative">${button("code-mode","Conectar com número de telefone","arrow")}</div></div>`;
  }
@@ -104,7 +222,8 @@ async function refreshConnection(){if(state.refreshing||state.page!=="connection
  if(next.status==="SCAN_QR_CODE" && state.mode==="qr" && Date.now()-state.qrAt>25000)await fetchQr();
  }catch(error){if(nav!==state.navigation)return;if(!state.connection){state.connection={status:"UNKNOWN"};renderConnection();}const box=$("#connection-error");if(box){box.textContent=message(error);box.hidden=false;}}finally{state.refreshing=false;}}
 async function fetchQr(){const nav=state.navigation;const blob=await api("/connection/qr",{binary:true});if(nav!==state.navigation||state.page!=="connection"||state.mode!=="qr")return;clearQr();state.qrUrl=URL.createObjectURL(blob);state.qrAt=Date.now();if($("#qr-frame"))$("#qr-frame").innerHTML=`<img src="${state.qrUrl}" alt="QR code para conectar o WhatsApp">`;if($("#qr-caption"))$("#qr-caption").innerHTML=qrCaption();}
-document.addEventListener("submit",async event=>{if(event.target.id!=="pairing-form")return;event.preventDefault();const form=event.target;const submit=$("button[type=submit]",form);submit.disabled=true;$("#pairing-error").hidden=true;try{const phone=$("#phone-number").value.replace(/[^\d+]/g,"");if(!/^\+?[1-9]\d{6,14}$/.test(phone))throw new Error("Informe um número válido, com código do país e DDD.");const result=await api("/connection/code",{method:"POST",body:JSON.stringify({phone_number:phone})});state.code=result.code;if($("#pairing-result"))$("#pairing-result").innerHTML=codeMarkup();}catch(error){if($("#pairing-error")){$("#pairing-error").textContent=message(error);$("#pairing-error").hidden=false;}}finally{submit.disabled=false;}});
+document.addEventListener("input",event=>{if(event.target.id==="phone-number")state.phoneNumber=event.target.value;});
+document.addEventListener("submit",async event=>{if(event.target.id!=="pairing-form")return;event.preventDefault();if(state.pairingBusy)return;state.pairingBusy=true;const form=event.target;const submit=$("button[type=submit]",form);submit.disabled=true;$("#pairing-error").hidden=true;try{const phone=$("#phone-number").value.replace(/[^\d+]/g,"");if(!/^\+?[1-9]\d{6,14}$/.test(phone))throw new Error("Informe um número válido, com código do país e DDD.");const result=await api("/connection/code",{method:"POST",body:JSON.stringify({phone_number:phone})});state.code=result.code;if($("#pairing-result"))$("#pairing-result").innerHTML=codeMarkup();}catch(error){if($("#pairing-error")){$("#pairing-error").textContent=message(error);$("#pairing-error").hidden=false;}}finally{state.pairingBusy=false;const liveForm=$("#pairing-form");if(liveForm)liveForm.querySelectorAll("input,button[type=submit]").forEach(node=>node.disabled=false);}});
 function renderDirectoryShell(){const kind=state.page==="users"?"user":"group";$("#page-content").innerHTML=`<section class="card"><div class="table-toolbar"><label class="search-field" for="directory-search">${icon("search")}<input id="directory-search" type="search" placeholder="${kind==="user"?"Buscar por nome, telefone ou LID":"Buscar por nome ou identificador"}" autocomplete="off"></label><span class="count-label" id="directory-count"></span></div><div id="directory-results">${loading}</div></section>${note("Estar na whitelist permite usar o Gork. Restrições de comandos e blacklist continuam sendo aplicadas.")}`;}
 async function loadDirectory(){const nav=state.navigation;const kind=state.page==="users"?"user":"group";const result=await api(`/directory/${kind}?q=${encodeURIComponent(state.q)}&offset=${state.offset}&limit=30`);if(nav!==state.navigation)return;state.data.directory=result;$("#directory-count").textContent=`${result.total} ${kind==="user"?"usuários":"grupos"}`;
  const headers=kind==="user"?["Usuário","Telefone","Whitelist","Perfil",""]:["Grupo","Whitelist","Respostas automáticas",""];
@@ -123,8 +242,41 @@ function renderModels(){const models=state.data.models;$("#page-content").innerH
 function renderBlacklist(){const entries=state.data.entries;$("#page-content").innerHTML=`<section class="card"><div class="card-head"><div><h3>Usuários com restrições</h3><p>Bloqueios são aplicados em conversas privadas e grupos.</p></div><span class="count-label">${entries.length} registros</span></div>${entries.length?`<div class="table-scroll"><table><thead><tr><th>Usuário</th><th>Recursos bloqueados</th><th></th></tr></thead><tbody>${entries.map(item=>`<tr><td>${person(item.name,item.phone_number||item.src_id)}</td><td>${item.features.length?`<div class="tags">${item.features.map(value=>`<span class="tag">${esc(value)}</span>`).join("")}</div>`:badge("Todos os recursos","red")}</td><td><div class="row-actions">${button("edit-blacklist","Editar",null,false,`data-id="${item.user_id}"`)}${button("delete-blacklist","Desbloquear",null,false,`data-id="${item.user_id}"`)}</div></td></tr>`).join("")}</tbody></table></div>`:empty("Nenhum usuário bloqueado","Os usuários autorizados podem usar os recursos liberados nas permissões.","shield")}</section>`;}
 function scopeName(item){if(item.user_id&&item.group_id)return `${item.user_name||"Usuário #"+item.user_id} em ${item.group_name||"Grupo #"+item.group_id}`;return item.group_id?item.group_name||"Grupo #"+item.group_id:item.user_id?item.user_name||"Usuário #"+item.user_id:"Todos os usuários e grupos";}
 function formatDate(value){return value?new Intl.DateTimeFormat("pt-BR",{dateStyle:"short",timeStyle:"short"}).format(new Date(value)):"Sem prazo";}
-function renderCommands(){const {rules}=state.data;$("#page-content").innerHTML=`<section class="card"><div class="card-head"><div><h3>Restrições de uso</h3><p>Por padrão, os comandos estão liberados para quem está na whitelist.</p></div><span class="count-label">${rules.length} regras</span></div>${rules.length?`<div class="table-scroll"><table><thead><tr><th>Comando</th><th>Aplicar a</th><th>Vigência</th><th></th></tr></thead><tbody>${rules.map(item=>{const expired=item.disabled_until&&new Date(item.disabled_until)<=new Date();return `<tr><td><span class="tag">${esc(item.command==="interaction"?"conversas":"!"+item.command)}</span></td><td>${esc(scopeName(item))}</td><td>${badge(expired?"Expirada":"Ativa",expired?"":"amber")} <span class="subline muted">${esc(formatDate(item.disabled_until))}</span></td><td><div class="row-actions">${button("edit-command","Editar",null,false,`data-id="${item.id}"`)}<button class="icon-button" data-action="delete-command" data-id="${item.id}" aria-label="Remover restrição">${icon("trash")}</button></div></td></tr>`;}).join("")}</tbody></table></div>`:empty("Nenhuma restrição de comando","Crie uma regra para suspender um recurso globalmente ou apenas em uma conversa.","terminal")}</section>${note("Restrições com prazo deixam de bloquear automaticamente na data escolhida. Remover uma regra não remove outras restrições ou bloqueios de blacklist.")}`;}
+function renderCommands(){const {rules}=state.data;$("#page-content").innerHTML=`<section class="card"><div class="card-head"><div><h3>Restrições de uso</h3><p>Por padrão, os comandos estão liberados para quem está na whitelist.</p></div><span class="count-label">${rules.length} regras</span></div>${rules.length?`<div class="table-scroll"><table><thead><tr><th>Comando</th><th>Aplicar a</th><th>Vigência</th><th></th></tr></thead><tbody>${rules.map(item=>{const expired=item.disabled_until&&new Date(item.disabled_until)<=new Date();return `<tr><td><span class="tag">${esc(item.command==="interaction"?"Conversas":item.command==="mcp"?"Consultas MCP":"!"+item.command)}</span></td><td>${esc(scopeName(item))}</td><td>${badge(expired?"Expirada":"Ativa",expired?"":"amber")} <span class="subline muted">${esc(formatDate(item.disabled_until))}</span></td><td><div class="row-actions">${button("edit-command","Editar",null,false,`data-id="${item.id}"`)}<button class="icon-button" data-action="delete-command" data-id="${item.id}" aria-label="Remover restrição">${icon("trash")}</button></div></td></tr>`;}).join("")}</tbody></table></div>`:empty("Nenhuma restrição de comando","Crie uma regra para suspender um recurso globalmente ou apenas em uma conversa.","terminal")}</section>${note("Restrições com prazo deixam de bloquear automaticamente na data escolhida. Remover uma regra não remove outras restrições ou bloqueios de blacklist.")}`;}
 const field = (label,html,hint="")=>`<div class="field">${label}${html}${hint?`<p class="field-hint">${hint}</p>`:""}</div>`;
+function renderMcps(){
+ const servers=state.data.servers;
+ $("#page-content").innerHTML=`<section class="card">${servers.length?`<div class="table-scroll"><table><thead><tr><th>Servidor</th><th>Disponível para</th><th>Ferramentas</th><th>Estado</th><th></th></tr></thead><tbody>${servers.map(item=>{
+ const count=item.tool_names.length?item.tools.filter(tool=>item.tool_names.includes(tool.name)).length:item.tools.length;
+ const status=!item.enabled?badge("Desativado"):item.last_error?badge("Erro","red"):item.checked_at?badge(count?"Pronto":"Sem ferramentas",count?"green":"amber"):badge("Não testado","amber");
+ return `<tr><td><strong>${esc(item.name)}</strong><span class="subline mcp-description">${esc(item.description)}</span></td><td>${esc(item.group_id?"Grupo #"+item.group_id:item.user_id?"Usuário #"+item.user_id:"Todos os autorizados")}</td><td>${count}</td><td>${status}</td><td><div class="row-actions">${button("edit-mcp","Editar",null,false,`data-id="${item.id}"`)}${button("sync-mcp","Testar",null,false,`data-id="${item.id}"`)}<button class="icon-button" data-action="delete-mcp" data-id="${item.id}" aria-label="Remover MCP">${icon("trash")}</button></div></td></tr>`;
+ }).join("")}</tbody></table></div>`:empty("Nenhum MCP cadastrado","Adicione um endpoint, salve a configuração e teste para descobrir suas ferramentas.","terminal")}</section>${note("Headers e parâmetros são fixos no servidor. O modelo escolhe as ferramentas por tool call, mas não pode alterar esses valores. Após cadastrar ou mudar a conexão, use Testar.")}`;
+}
+function jsonField(id,title,value,hint){return field(label(title,id),`<textarea id="${id}" name="${id}" class="json-editor" spellcheck="false">${esc(JSON.stringify(value||{},null,2))}</textarea>`,hint);}
+function parseObject(data,key){let value;try{value=JSON.parse(data.get(key)||"{}");}catch{throw new Error(`O campo ${key} precisa conter JSON válido.`);}if(value===null||Array.isArray(value)||typeof value!=="object")throw new Error(`Use um objeto JSON no campo ${key}.`);return value;}
+async function mcpEditor(identifier=null){
+ const item=identifier?await api(`/mcps/${identifier}`):{name:"",description:"",url:"",transport:"streamable_http",enabled:true,headers:{},params:{},fixed_arguments:{},tool_names:[],tools:[],timeout_seconds:20};
+ const scope=item.user_id?"user":item.group_id?"group":"global";
+ const picker=scope==="global"?"":await directoryPicker(scope,"target_id",{id:item.user_id||item.group_id,name:scope==="user"?"Usuário #"+item.user_id:"Grupo #"+item.group_id});
+ const catalog=item.tools.length?`<details class="mcp-tools"><summary>Ferramentas descobertas (${item.tools.length})</summary>${item.tools.map(tool=>`<p class="mono">${esc(tool.name)}</p><p class="field-hint">${esc(tool.description)}</p><pre>${esc(JSON.stringify(tool.inputSchema,null,2))}</pre>`).join("")}</details>`:"";
+ editor(identifier?"Editar MCP":"Adicionar MCP",
+ field(label("Nome","name"),input("name","Ex.: Base de documentos",item.name,'required maxlength="100"'))+
+ field(label("Descrição para o Gork","description"),`<textarea id="description" name="description" rows="3" required maxlength="3000">${esc(item.description)}</textarea>`,"Explique o que consultar neste serviço e quando usá-lo.")+
+ field(label("URL do endpoint MCP","url"),input("url","http://servico:8000/mcp",item.url,'type="url" required maxlength="2000"'))+
+ `<div class="field-row">${field(label("Transporte","transport"),select("transport",[{id:"streamable_http",name:"Streamable HTTP"},{id:"sse",name:"SSE (legado)"}],item.transport))}${field(label("Timeout (segundos)","timeout_seconds"),input("timeout_seconds","20",item.timeout_seconds,'type="number" min="3" max="60" required'))}</div>`+
+ field(label("Disponível para","scope"),select("scope",[{id:"global",name:"Todos os usuários e grupos autorizados"},{id:"user",name:"Um usuário, somente no privado"},{id:"group",name:"Um grupo"}],scope))+
+ `<div id="mcp-targets">${picker}</div>`+
+ jsonField("headers","Headers fixos (JSON)",item.headers,'Ex.: {"Authorization": "Bearer sua-chave"}. Não são enviados ao modelo.')+
+ jsonField("params","Parâmetros fixos da conexão (JSON)",item.params,'São enviados na query da URL em todas as requisições. Ex.: {"workspace_id": "123"}.')+
+ jsonField("fixed_arguments","Argumentos fixos por ferramenta (JSON)",item.fixed_arguments,'Use o nome original da ferramenta. Ex.: {"search_documents": {"tenant_id": "123", "limit": 10}}. Esses valores prevalecem sobre os argumentos do modelo.')+
+ field(label("Ferramentas permitidas","tool_names"),`<textarea id="tool_names" name="tool_names" rows="3" placeholder="Uma ferramenta por linha">${esc(item.tool_names.join("\n"))}</textarea>`,"Deixe vazio para disponibilizar todas as ferramentas descobertas. O nome deve ser exatamente o informado pelo MCP.")+
+ checkbox("enabled","Habilitar MCP","Disponibiliza as ferramentas ao Gork, após testar a conexão.",item.enabled)+catalog,
+ async data=>{
+ const scope=data.get("scope");const payload={name:data.get("name"),description:data.get("description"),url:data.get("url"),transport:data.get("transport"),enabled:data.has("enabled"),timeout_seconds:Number(data.get("timeout_seconds")),headers:parseObject(data,"headers"),params:parseObject(data,"params"),fixed_arguments:parseObject(data,"fixed_arguments"),tool_names:String(data.get("tool_names")).split("\n").map(name=>name.trim()).filter(Boolean),user_id:scope==="user"?Number(data.get("target_id")):null,group_id:scope==="group"?Number(data.get("target_id")):null};
+ const result=await api(identifier?`/mcps/${identifier}`:"/mcps",{method:identifier?"PUT":"POST",body:JSON.stringify(payload)});
+ return result.needs_sync?"MCP salvo. Use Testar para carregar as ferramentas.":"MCP atualizado.";
+ });
+}
 const label = (text,id)=>`<label for="${id}">${text}</label>`;
 function input(id,placeholder="",value="",extra=""){return `<input id="${id}" name="${id}" placeholder="${placeholder}" value="${esc(value)}" ${extra}>`;}
 function select(id,options,value="",extra=""){return `<select id="${id}" name="${id}" ${extra}>${options.map(item=>`<option value="${esc(item.id)}" ${String(item.id)===String(value)?"selected":""}>${esc(item.name)}</option>`).join("")}</select>`;}
@@ -133,7 +285,7 @@ function editor(title,html,save,saveLabel="Salvar alterações"){state.editor=sa
 function closeEditor(){ $("#editor").close();state.editor=null; }
 $("#close-editor").addEventListener("click",closeEditor);$("#cancel-editor").addEventListener("click",closeEditor);
 $("#editor").addEventListener("close",()=>{state.editor=null;});
-$("#editor-form").addEventListener("submit",async event=>{event.preventDefault();const save=state.editor;if(!save)return;$("#save-editor").disabled=true;$("#editor-error").hidden=true;try{await save(new FormData(event.target));closeEditor();toast("Configuração salva.");if(state.page==="users"||state.page==="groups")await loadDirectory();else await loadPage();}catch(error){$("#editor-error").textContent=message(error);$("#editor-error").hidden=false;}finally{$("#save-editor").disabled=false;}});
+$("#editor-form").addEventListener("submit",async event=>{event.preventDefault();const save=state.editor;if(!save)return;$("#save-editor").disabled=true;$("#editor-error").hidden=true;try{const result=await save(new FormData(event.target));closeEditor();toast(typeof result==="string"?result:"Configuração salva.");if(state.page==="users"||state.page==="groups")await loadDirectory();else await loadPage();}catch(error){$("#editor-error").textContent=message(error);$("#editor-error").hidden=false;}finally{$("#save-editor").disabled=false;}});
 function confirmAction(title,text,action,saveLabel="Confirmar"){editor(title,`<p class="confirm-text">${esc(text)}</p>`,action,saveLabel);}
 async function directoryPicker(kind,id,chosen=null){const result=await api(`/directory/${kind}?limit=30`);return pickerMarkup(kind,id,result.items,chosen);}
 function pickerMarkup(kind,id,items,chosen){if(chosen&&!items.some(item=>item.id===chosen.id))items=[chosen,...items];return field(label(kind==="user"?"Usuário":"Grupo",id),`<input type="search" class="picker-search" data-picker="${id}" data-kind="${kind}" placeholder="Buscar por nome ou identificador" aria-label="Buscar ${kind==="user"?"usuário":"grupo"}">${select(id,[{id:"",name:"Selecione…"},...items.map(item=>({id:item.id,name:`${item.name||"Sem nome"} · ${item.phone_number||item.src_id||"#"+item.id}`}))],chosen?.id||"",'required')}`);}
@@ -150,11 +302,11 @@ async function overrideEditor(item=null){if(!state.data.agents){const [agents,mo
  if(item){$("#scope").disabled=true;$("#agent_id").disabled=true;$("#target_id").disabled=true;$(".picker-search",$("#target-picker")).disabled=true;const originalSave=state.editor;state.editor=data=>{data.set("scope",kind);data.set("agent_id",item.agent_id);data.set("target_id",chosen.id);return originalSave(data);};}
 }
 async function blacklistEditor(item=null){const chosen=item?{id:item.user_id,name:item.name,src_id:item.src_id}:null;const picker=await directoryPicker("user","user_id",chosen);const catalog=state.data.catalog||[];
- editor(item?"Editar bloqueio":"Bloquear usuário",picker+checkbox("all_features","Bloquear todos os recursos","Desmarque para escolher apenas alguns recursos.",!item?.features?.length)+`<div id="feature-options" class="feature-grid" ${!item?.features?.length?"hidden":""}>${catalog.map(command=>`<div class="feature-option"><input type="checkbox" name="features" id="feature-${esc(command.id)}" value="${esc(command.id)}" ${item?.features?.includes(command.id)?"checked":""}><label for="feature-${esc(command.id)}">${esc(command.id==="interaction"?"Conversas":"!"+command.id)}</label></div>`).join("")}</div>`,async data=>{const features=data.has("all_features")?[]:data.getAll("features");if(!data.has("all_features")&&!features.length)throw new Error("Selecione ao menos um recurso ou marque o bloqueio completo.");await api("/blacklist",{method:"PUT",body:JSON.stringify({user_id:Number(data.get("user_id")),features})});});
+ editor(item?"Editar bloqueio":"Bloquear usuário",picker+checkbox("all_features","Bloquear todos os recursos","Desmarque para escolher apenas alguns recursos.",!item?.features?.length)+`<div id="feature-options" class="feature-grid" ${!item?.features?.length?"hidden":""}>${catalog.map(command=>`<div class="feature-option"><input type="checkbox" name="features" id="feature-${esc(command.id)}" value="${esc(command.id)}" ${item?.features?.includes(command.id)?"checked":""}><label for="feature-${esc(command.id)}">${esc(command.id==="interaction"?"Conversas":command.id==="mcp"?"Consultas MCP":"!"+command.id)}</label></div>`).join("")}</div>`,async data=>{const features=data.has("all_features")?[]:data.getAll("features");if(!data.has("all_features")&&!features.length)throw new Error("Selecione ao menos um recurso ou marque o bloqueio completo.");await api("/blacklist",{method:"PUT",body:JSON.stringify({user_id:Number(data.get("user_id")),features})});});
  if(item){$("#user_id").disabled=true;$(".picker-search").disabled=true;const save=state.editor;state.editor=data=>{data.set("user_id",item.user_id);return save(data);};}
 }
 async function commandEditor(item=null){const scope=item?.user_id&&item?.group_id?"both":item?.user_id?"user":item?.group_id?"group":"global";
- const options=state.data.catalog.map(row=>({id:row.id,name:row.id==="interaction"?"Conversas":"!"+row.id}));
+ const options=state.data.catalog.map(row=>({id:row.id,name:row.id==="interaction"?"Conversas":row.id==="mcp"?"Consultas MCP":"!"+row.id}));
  editor(item?"Editar restrição":"Nova restrição",field(label("Comando","command"),select("command",options,item?.command))+field(label("Aplicar a","scope"),select("scope",[{id:"global",name:"Todos os usuários e grupos"},{id:"user",name:"Um usuário"},{id:"group",name:"Um grupo"},{id:"both",name:"Um usuário em um grupo"}],scope))+`<div id="command-targets">${loading}</div>`+field(label("Bloquear até (opcional)","disabled_until"),input("disabled_until","",item?.disabled_until?localDate(item.disabled_until):"",'type="datetime-local"'),"Sem data, a restrição permanece até ser removida.")+field(label("Mensagem exibida ao usuário","message"),`<textarea id="message" name="message" rows="3" required maxlength="1000">${esc(item?.message||"Este comando está temporariamente desativado.")}</textarea>`),async data=>{const scope=data.get("scope");const until=data.get("disabled_until");await api(item?`/commands/${item.id}`:"/commands",{method:item?"PUT":"POST",body:JSON.stringify({command:data.get("command"),user_id:["user","both"].includes(scope)?Number(data.get("user_id")):null,group_id:["group","both"].includes(scope)?Number(data.get("group_id")):null,message:data.get("message"),disabled_until:until?new Date(until).toISOString():null})});});
  await commandTargets(scope,item);
 }
@@ -162,15 +314,29 @@ function localDate(value){const date=new Date(value);return new Date(date.getTim
 async function commandTargets(scope,item=null){let html="";if(["user","both"].includes(scope))html+=await directoryPicker("user","user_id",item?.user_id?{id:item.user_id,name:item.user_name}:null);if(["group","both"].includes(scope))html+=await directoryPicker("group","group_id",item?.group_id?{id:item.group_id,name:item.group_name}:null);if($("#command-targets"))$("#command-targets").innerHTML=html;}
 let searchTimer, pickerTimer;
 document.addEventListener("input",event=>{
+ if(event.target.id==="ban-search"){clearTimeout(searchTimer);state.q=event.target.value;state.offset=0;searchTimer=setTimeout(loadBans,250);}
  if(event.target.id==="directory-search"){clearTimeout(searchTimer);state.q=event.target.value;state.offset=0;searchTimer=setTimeout(()=>loadDirectory().catch(error=>toast(message(error))),250);}
  if(event.target.dataset.picker){const {picker,kind}=event.target.dataset;const query=event.target.value;clearTimeout(pickerTimer);pickerTimer=setTimeout(async()=>{try{const result=await api(`/directory/${kind}?q=${encodeURIComponent(query)}&limit=30`);const target=$("#"+picker);if(!target)return;target.innerHTML=`<option value="">Selecione…</option>`+result.items.map(item=>`<option value="${item.id}">${esc(item.name||"Sem nome")} · ${esc(item.phone_number||item.src_id||"#"+item.id)}</option>`).join("");}catch(error){toast(message(error));}},250);}
 });
 document.addEventListener("change",async event=>{try{
+ if(event.target.id==="ban-view"){state.banView=event.target.value;state.offset=0;await loadBans();}
+ if(event.target.id==="data-period")$("#data-dates").hidden=event.target.value!=="custom";
+ if(event.target.id==="sync-history"){$("#history-options").hidden=!event.target.checked;}
+ if(event.target.id==="sync-period"){$("#sync-dates").hidden=event.target.value!=="custom";}
  if(event.target.id==="all_features")$("#feature-options").hidden=event.target.checked;
- if(event.target.id==="scope"){if($("#command-targets"))await commandTargets(event.target.value);else if($("#target-picker"))$("#target-picker").innerHTML=await directoryPicker(event.target.value,"target_id");}
+ if(event.target.id==="scope"){if($("#command-targets"))await commandTargets(event.target.value);else if($("#mcp-targets"))$("#mcp-targets").innerHTML=event.target.value==="global"?"":await directoryPicker(event.target.value,"target_id");else if($("#target-picker"))$("#target-picker").innerHTML=await directoryPicker(event.target.value,"target_id");}
  }catch(error){toast(message(error));}});
 document.addEventListener("click",async event=>{const node=event.target.closest("[data-action]");if(!node||node.disabled)return;const action=node.dataset.action,id=Number(node.dataset.id);node.disabled=true;try{
  switch(action){
+ case "refresh-bans":await loadBans();break;
+ case "bans-prev":state.offset=Math.max(0,state.offset-30);await loadBans();break;
+ case "bans-next":state.offset+=30;await loadBans();break;
+ case "cancel-ban-poll":confirmAction("Cancelar votação?","Os votos desta enquete não serão apurados e ela não aplicará um banimento. A enquete continuará visível no WhatsApp.",async()=>{await api(`/bans/${id}/cancel`,{method:"POST"});state.offset=0;},"Cancelar votação");break;
+ case "revoke-ban":confirmAction("Encerrar banimento?","Este período de banimento será encerrado. Se houver outros bans ativos para o mesmo membro neste grupo, encerre-os também para liberar as mensagens. As mensagens já excluídas não são recuperadas.",async()=>{await api(`/bans/${id}/revoke`,{method:"POST"});state.offset=0;},"Encerrar ban");break;
+ case "data-prev":state.dataOffset=Math.max(0,state.dataOffset-30);await loadData();break;
+ case "data-next":state.dataOffset+=30;await loadData();break;
+ case "data-index":state.dataOffset=0;await loadData(true);break;
+ case "data-retry":await loadData();break;
  case "retry":await loadPage();break;
  case "refresh-connection":await refreshConnection();break;
  case "start-connection":await api("/connection/start",{method:"POST"});await refreshConnection();break;
@@ -185,6 +351,10 @@ document.addEventListener("click",async event=>{const node=event.target.closest(
  case "prev-page":state.offset=Math.max(0,state.offset-30);await loadDirectory();break;
  case "next-page":state.offset+=30;await loadDirectory();break;
  case "new-model":modelEditor();break;
+ case "new-mcp":await mcpEditor();break;
+ case "edit-mcp":await mcpEditor(id);break;
+ case "sync-mcp":try{const result=await api(`/mcps/${id}/sync`,{method:"POST"});toast(`MCP conectado: ${result.tools.length} ferramentas encontradas.`);}finally{await loadPage();}break;
+ case "delete-mcp":confirmAction("Remover MCP?","O Gork deixará de usar este servidor. O histórico de chamadas será mantido.",()=>api(`/mcps/${id}`,{method:"DELETE"}),"Remover MCP");break;
  case "edit-agent":await agentEditor(id);break;
  case "reset-agent":confirmAction("Restaurar configuração original?","O modelo e as instruções deste agente voltarão ao padrão definido no projeto. As exceções por conversa serão mantidas.",()=>api(`/agents/${id}/reset`,{method:"POST"}),"Restaurar padrão");break;
  case "agent-tab":state.tab=node.dataset.tab;renderAgents();break;

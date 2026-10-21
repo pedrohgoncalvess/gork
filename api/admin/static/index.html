@@ -8,13 +8,14 @@
   <link rel="icon" href="/admin/assets/mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/admin/assets/tokens.css">
   <link rel="stylesheet" href="/admin/assets/app.css">
+  <link rel="stylesheet" href="/admin/assets/basic.css">
   <script src="/admin/assets/app.js" defer></script>
 </head>
 <body>
   <div id="login-screen" class="login-screen" hidden>
     <main class="login-card">
       <a class="brand" href="/admin" aria-label="Gork"><span class="brand-mark">g.</span><span>gork<span class="brand-caption">ADMINISTRAÇÃO</span></span></a>
-      <div class="login-heading"><span class="eyebrow">SEU ESPAÇO DE CONTROLE</span><h1>Bem-vindo de volta.</h1><p>Entre para gerenciar as configurações do Gork.</p></div>
+      <div class="login-heading"><h1>Administração do Gork</h1><p>Digite a senha para acessar as configurações.</p></div>
       <form id="login-form">
         <label for="password">Senha de acesso</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required placeholder="Digite sua senha">
@@ -32,9 +33,10 @@
       <a class="brand" href="#connection"><span class="brand-mark">g.</span><span>gork<span class="brand-caption">ADMINISTRAÇÃO</span></span></a>
       <div class="workspace-label"><span class="workspace-dot"></span> Painel de controle <span class="workspace-key">G</span></div>
       <nav aria-label="Configurações">
-        <details class="nav-section" open><summary>CONEXÃO<span aria-hidden="true">⌃</span></summary><a href="#connection" data-page="connection"><span data-icon="phone"></span>WhatsApp</a></details>
-        <details class="nav-section" open><summary>ACESSOS<span aria-hidden="true">⌃</span></summary><a href="#users" data-page="users"><span data-icon="users"></span>Usuários</a><a href="#groups" data-page="groups"><span data-icon="group"></span>Grupos</a><a href="#blacklist" data-page="blacklist"><span data-icon="shield"></span>Blacklist</a></details>
-        <details class="nav-section" open><summary>CONFIGURAÇÃO<span aria-hidden="true">⌃</span></summary><a href="#agents" data-page="agents"><span data-icon="sliders"></span>Agentes</a><a href="#models" data-page="models"><span data-icon="layers"></span>Modelos</a><a href="#commands" data-page="commands"><span data-icon="terminal"></span>Permissões de comandos</a></details>
+        <details class="nav-section" open><summary>CONEXÃO<span aria-hidden="true">⌃</span></summary><a href="#connection" data-page="connection"><span data-icon="phone"></span>WhatsApp</a><a href="#sync" data-page="sync"><span data-icon="refresh"></span>Sincronização</a><a href="#testing" data-page="testing"><span data-icon="settings"></span>Número de teste</a></details>
+        <details class="nav-section" open><summary>ACESSOS<span aria-hidden="true">⌃</span></summary><a href="#users" data-page="users"><span data-icon="users"></span>Usuários</a><a href="#groups" data-page="groups"><span data-icon="group"></span>Grupos</a><a href="#blacklist" data-page="blacklist"><span data-icon="shield"></span>Blacklist</a><a href="#bans" data-page="bans"><span data-icon="shield"></span>Banimentos</a></details>
+        <details class="nav-section" open><summary>CONFIGURAÇÃO<span aria-hidden="true">⌃</span></summary><a href="#agents" data-page="agents"><span data-icon="sliders"></span>Agentes</a><a href="#models" data-page="models"><span data-icon="layers"></span>Modelos</a><a href="#mcps" data-page="mcps"><span data-icon="terminal"></span>Servidores MCP</a><a href="#commands" data-page="commands"><span data-icon="terminal"></span>Permissões de comandos</a></details>
+        <details class="nav-section"><summary>Data<span aria-hidden="true">⌃</span></summary><a href="#attachments" data-page="attachments"><span data-icon="layers"></span>Anexos</a><a href="#messages" data-page="messages"><span data-icon="terminal"></span>Mensagens</a></details>
       </nav>
       <div class="sidebar-bottom"><div class="account-avatar">A</div><div><strong>Administrador</strong><span>Configurações do Gork</span></div><button id="logout" class="icon-button" title="Sair do painel" aria-label="Sair do painel"><span data-icon="logout"></span></button></div>
     </aside>

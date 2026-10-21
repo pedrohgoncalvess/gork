@@ -1,19 +1,19 @@
 /* Gork: a small shared vocabulary for the administration interface. */
 :root {
-  --color-canvas: #f6f7f8;
+  --color-canvas: #ffffff;
   --color-surface: #ffffff;
   --color-subtle: #fafbfc;
-  --color-text: #202722;
-  --color-muted: #747d78;
-  --color-border: #e5e9e6;
-  --color-accent: #244d3d;
-  --color-accent-hover: #193c2e;
-  --color-accent-soft: #edf3ef;
+  --color-text: #202020;
+  --color-muted: #626262;
+  --color-border: #bfbfbf;
+  --color-accent: #333333;
+  --color-accent-hover: #111111;
+  --color-accent-soft: #eeeeee;
   --color-danger: #a8413e;
   --color-danger-soft: #fbefed;
   --color-warning: #976a20;
   --color-warning-soft: #fbf5e9;
-  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-body: Arial, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
   --space-1: 4px;
   --space-2: 8px;
@@ -22,9 +22,9 @@
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 48px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --shadow-dialog: 0 20px 80px #15271b24;
-  --sidebar-width: 244px;
+  --radius-sm: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --shadow-dialog: none;
+  --sidebar-width: 220px;
 }
