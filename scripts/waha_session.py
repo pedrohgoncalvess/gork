@@ -26,9 +26,9 @@ def session_config(webhook_url: str, token: str) -> dict:
         raise ValueError("WAHA_WEBHOOK_TOKEN is required")
     webhook_url = DEFAULT_WEBHOOK_URL if webhook_url == LEGACY_WEBHOOK_URL else webhook_url
     return {
-        "gows": {"storage": {"messages": True, "groups": True, "chats": True, "contacts": True}},
+        "gows": {"storage": {"messages": True, "groups": True, "chats": True, "contacts": True, "messageSecrets": True}},
         "webhooks": [{
-            "url": webhook_url, "events": ["message.any"],
+            "url": webhook_url, "events": ["message.any", "poll.vote", "poll.vote.failed"],
             "customHeaders": [{"name": "X-Webhook-Token", "value": token}],
             "retries": {"policy": "constant", "delaySeconds": 2, "attempts": 5},
         }],

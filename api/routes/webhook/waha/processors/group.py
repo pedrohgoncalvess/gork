@@ -244,11 +244,11 @@ async def process_group_message(
             )
             context_message["text_message"] = conversation
 
-    # Explicit sticker commands use the selected message/link and do not need
-    # the agent's conversation lock, which may outlive a restarted worker.
+    # Sticker and moderation commands do not need the agent's conversation lock,
+    # which may outlive a restarted worker.
     command_context = (
         nullcontext()
-        if requested_feature == "sticker"
+        if requested_feature in ("sticker", "ban")
         else serialize_group_conversation(group.id)
     )
     async with command_context:

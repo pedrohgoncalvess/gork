@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -88,6 +89,10 @@ async def process_explicit_commands(
         db_message: Message,
 ):
     lw_conversation = conversation.lower()
+    if re.search(r"(?<!\S)!ban(?=\s|$)", lw_conversation):
+        from services.group_ban import handle_ban_command
+        await handle_ban_command(remote_id, conversation, message_id, body)
+        return
     if "!status" in lw_conversation:
         await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
         return

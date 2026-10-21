@@ -22,6 +22,6 @@ async def send_message(contact_id: str, message: str, message_id: str = None,
     payload = await message_payload(contact_id, message_id if is_first else None)
     payload["text"] = message
     if mentioned:
-        payload["mentions"] = list(dict.fromkeys(chat_id(value) for value in mentioned))
+        payload["mentions"] = list(dict.fromkeys("all" if value == "all" else chat_id(value) for value in mentioned))
     response = await request("POST", "/api/sendText", payload=payload)
     return await sent_response(response, contact_id)

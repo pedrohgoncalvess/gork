@@ -256,6 +256,9 @@ class WahaWebhookTests(unittest.IsolatedAsyncioTestCase):
         principal = patch("api.routes.webhook.waha.services.map_principal", new=AsyncMock())
         self.map_principal = principal.start()
         self.addCleanup(principal.stop)
+        moderation = patch("api.routes.webhook.waha.services.moderate_group_message", new=AsyncMock(return_value=False))
+        moderation.start()
+        self.addCleanup(moderation.stop)
 
     async def asyncTearDown(self):
         import asyncio
@@ -331,11 +334,12 @@ class WahaWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(process.await_args.args[0]["data"]["key"]["participantAlt"], "5511999999999@s.whatsapp.net")
         save.assert_awaited_once_with(body["payload"], "120363123456789012@g.us")
 
-    def test_session_subscribes_only_to_message_any_with_authentication(self):
+    def test_session_subscribes_to_messages_and_poll_votes_with_authentication(self):
         config = session_config("http://gork/webhook/waha", "token")
-        self.assertEqual(config["webhooks"][0]["events"], ["message.any"])
+        self.assertEqual(config["webhooks"][0]["events"], ["message.any", "poll.vote", "poll.vote.failed"])
         self.assertEqual(config["webhooks"][0]["customHeaders"], [{"name": "X-Webhook-Token", "value": "token"}])
         self.assertTrue(config["gows"]["storage"]["messages"])
+        self.assertTrue(config["gows"]["storage"]["messageSecrets"])
 
     def test_legacy_webhook_hostname_is_migrated_to_valid_compose_service(self):
         config = session_config("http://webhook_fastapi:9001/webhook/waha", "token")

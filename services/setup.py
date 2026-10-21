@@ -64,6 +64,8 @@ async def save_test_settings(test_mode, test_number, db):
     await db.execute(text("UPDATE base.app_settings SET test_mode=:mode, test_number=:number WHERE id=1"),
                      {"mode": test_mode, "number": number})
     await db.commit()
+    from services.ban_cache import invalidate
+    await invalidate()
     return await settings(db)
 
 

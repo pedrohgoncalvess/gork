@@ -277,6 +277,8 @@ async def remove_command(identifier: int, db=Depends(get_db)):
 
 
 from api.admin.data import router as data_router
+from api.admin.bans import router as bans_router
 
 api.include_router(data_router)
+api.include_router(bans_router)
 router.include_router(api)

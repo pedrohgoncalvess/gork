@@ -36,6 +36,10 @@ async def startup_event():
     await init_assets()
     await set_remembers(scheduler)
     from services.setup import automate_setup
+    from services.group_ban import close_due_polls
+    scheduler.add_job(close_due_polls, "interval", seconds=5, id="group-ban-polls",
+                      replace_existing=True, max_instances=1, coalesce=True,
+                      next_run_time=datetime.now(timezone.utc))
     scheduler.add_job(automate_setup, "interval", seconds=30, id="automatic-setup",
                       replace_existing=True, max_instances=1, next_run_time=datetime.now(timezone.utc))
     scheduler.start()

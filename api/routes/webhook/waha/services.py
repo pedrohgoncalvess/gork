@@ -1,4 +1,6 @@
+import json
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import text
 import httpx
 
 from api.routes.webhook.waha.processors import (
@@ -15,17 +17,61 @@ from api.routes.webhook.waha.normalize import normalize_webhook, remote_address
 from log import logger
 from services.conversation_lock import serialize_direct_message
 from services.setup import settings, map_principal
+from services.ban_cache import decision as cached_ban_decision
 
 
+async def moderate_group_message(body: dict) -> bool:
+    data = body["data"]
+    remote = data["key"]["remoteJid"]
+    if data["key"].get("fromMe") or not remote.endswith("@g.us"):
+        return False
+    from services.group_ban import enforce_ban
+    cached = await cached_ban_decision(data, remote)
+    if cached is False:
+        return False
+    if cached is True:
+        return await enforce_ban(data, remote, known_active=True)
+    if (await settings())["test_mode"]:
+        return False
+    return await enforce_ban(data, remote)
+
+
+async def persist_ban_deletion(body: dict, normalized: dict):
+    payload = body['payload']
+    data = normalized['data']
+    key = data['key']
+    # The DELETE has completed. Retain the received content/metadata, not media downloads.
+    async with PgConnection() as db:
+        await db.execute(text('''INSERT INTO manager.group_ban_deletion
+            (session, chat_id, provider_id, message_id, sender_id, payload)
+            VALUES (:session, :chat, :provider, :message, :sender, CAST(:payload AS jsonb))
+            ON CONFLICT (session, chat_id, provider_id) DO NOTHING'''),
+            {'session': waha_session, 'chat': key['remoteJid'], 'provider': payload['id'],
+             'message': key['id'], 'sender': key['participant'], 'payload': json.dumps(payload)})
+        await db.commit()
+    await save_reference(payload, key['remoteJid'])
 
 
 async def process_waha_webhook(body: dict, scheduler: AsyncIOScheduler):
+    if body.get("event") in ("poll.vote", "poll.vote.failed"):
+        from services.group_ban import record_vote, record_failed_vote
+        if not (await settings())["test_mode"]:
+            if body["event"] == "poll.vote":
+                await record_vote(body)
+            else:
+                await record_failed_vote(body)
+        return
     normalized = normalize_webhook(body)
     if normalized is None:
         return
     payload = body["payload"]
     remote = remote_address(payload)
     key = normalized["data"]["key"]
+    key["providerId"] = payload["id"]
+    # Delete before identity lookups, reference writes, media downloads or agents.
+    if await moderate_group_message(normalized):
+        await persist_ban_deletion(body, normalized)
+        return
     if body.get("me", {}).get("id"):
         await map_principal(body["me"])
     # Resolve missing phone/LID aliases before matching existing users and whitelist.

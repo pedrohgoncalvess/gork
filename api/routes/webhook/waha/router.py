@@ -41,16 +41,28 @@ async def waha_webhook(request: Request):
         raise HTTPException(status_code=400, detail="Expected a JSON object")
     if body.get("session") != (get_env_var("WAHA_SESSION") or "default"):
         raise HTTPException(status_code=403, detail="Unexpected WAHA session")
-    if body.get("event") not in ("message.any", "message"):
+    if body.get("event") not in ("message.any", "message", "poll.vote", "poll.vote.failed"):
         return {"status": "ignored"}
     if not isinstance(body.get("payload"), dict):
         raise HTTPException(status_code=400, detail="Invalid message payload")
-    try:
-        normalized = normalize_webhook(body)
-    except (ValueError, TypeError, AttributeError):
-        raise HTTPException(status_code=400, detail="Invalid message payload")
-    if normalized is None:
-        return {"status": "ignored"}
+    if body.get("event") in ("poll.vote", "poll.vote.failed"):
+        payload = body["payload"]
+        if not isinstance(payload.get("poll"), dict) or not isinstance(payload.get("vote"), dict):
+            raise HTTPException(status_code=400, detail="Invalid poll payload")
+        try:
+            # Acknowledge only after persistence. A 503 makes WAHA retry the event.
+            await process_waha_webhook(body, scheduler)
+        except Exception as error:
+            await logger.error('GroupBan', 'VoteWebhookFailed', type(error).__name__)
+            raise HTTPException(status_code=503, detail="Could not persist poll event; retry delivery") from None
+        return {"status": "received"}
+    else:
+        try:
+            normalized = normalize_webhook(body)
+        except (ValueError, TypeError, AttributeError):
+            raise HTTPException(status_code=400, detail="Invalid message payload")
+        if normalized is None:
+            return {"status": "ignored"}
     task = asyncio.create_task(process_waha_webhook(body, scheduler), name=f"waha:{body.get('id')}")
     background_tasks.add(task)
     task.add_done_callback(_handle_webhook_task_exception)

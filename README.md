@@ -541,7 +541,8 @@ docker compose -f docker-compose.dev.yaml logs
 Use `make waha-logs` and the `scripts.waha_session status` command described in
 [the migration guide](docs/waha-migration.md). The session must be `WORKING`,
 `WAHA_API_KEY` must match the container, and `X-Webhook-Token` must match
-`WAHA_WEBHOOK_TOKEN`. Subscribe only to `message.any`. Keep the existing bot
+`WAHA_WEBHOOK_TOKEN`. Subscribe to `message.any`, `poll.vote` and `poll.vote.failed`.
+See [temporary group bans](docs/group-ban.md) for `!ban`. Keep the existing bot
 number and whitelist entries. The API listens on localhost port 3002 by default.
 
 ### Database Connection Errors

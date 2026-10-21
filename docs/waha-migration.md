@@ -81,6 +81,10 @@ os vínculos em `content.message`/`content.media` e os objetos no MinIO. Teste
 incluindo uma menção enviada pelo bot. Reinicie os serviços e repita uma resposta
 com mídia citada para verificar a persistência.
 
+O comando [`!ban`](group-ban.md) usa enquetes e os eventos `poll.vote` e
+`poll.vote.failed`, além de `message.any`. Preserve o armazenamento de segredos
+das mensagens (`gows.storage.messageSecrets`) para decifrar votos após reinícios.
+
 Referências do contrato WAHA: [envio](https://waha.devlike.pro/docs/how-to/send-messages/),
 [recebimento](https://waha.devlike.pro/docs/how-to/receive-messages/),
 [webhooks](https://waha.devlike.pro/docs/how-to/events/),
