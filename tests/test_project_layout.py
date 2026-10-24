@@ -50,10 +50,13 @@ class ProjectLayoutTests(unittest.TestCase):
         from scripts.waha_session import DEFAULT_WEBHOOK_URL
 
         host = urlsplit(DEFAULT_WEBHOOK_URL).hostname
+        self.assertRegex(host, r'^[a-z0-9]+(?:-[a-z0-9]+)*$')
         for relative in ("compose.yaml", "docker/compose.dev.yaml"):
             with self.subTest(compose=relative):
                 config = yaml.safe_load((ROOT / relative).read_text(encoding="utf-8"))
                 backends = [service for service in config['services'].values()
-                            if service.get('container_name') == host]
+                            if isinstance(service.get('networks'), dict)
+                            if host in service.get('networks', {}).get('dokploy-network', {}).get('aliases', [])
+                            ]
                 self.assertEqual(len(backends), 1)
                 self.assertEqual(backends[0]['build']['dockerfile'], 'docker/Dockerfile')

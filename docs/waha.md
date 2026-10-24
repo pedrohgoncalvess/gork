@@ -44,11 +44,12 @@ Leia o QR com **WhatsApp → Aparelhos conectados** e confirme o estado `WORKING
 Em produção, use `compose.yaml` e o serviço `api` nos comandos acima;
 Postgres e MinIO continuam sendo os serviços externos configurados no `.env`.
 O endereço interno do webhook é o mesmo nos dois composes:
-`http://webhook_fastapi:9001/webhook/waha`. Esse endereço usa o nome fixo do
-container e continua válido quando o serviço Compose é chamado `api`, `backend`
-ou `webhook-fastapi`. O antigo endereço `http://api:9001/webhook/waha` é
-convertido automaticamente durante a configuração da sessão. Endereços
-personalizados em `WAHA_WEBHOOK_URL` são preservados.
+`http://gork-api:9001/webhook/waha`. Esse endereço usa um alias de rede declarado
+nos dois arquivos Compose e continua válido quando o serviço é chamado `api`,
+`backend` ou `webhook-fastapi`. Os endereços antigos com `api` e `webhook_fastapi`
+são convertidos automaticamente durante a configuração da sessão. O nome
+`webhook_fastapi` resolve no Docker, mas é rejeitado pelo validador de URLs do
+WAHA por conter `_`. Endereços personalizados em `WAHA_WEBHOOK_URL` são preservados.
 
 Para rodar o script fora do container, use `WAHA_BASE_URL=http://localhost:3002`
 no ambiente desse processo. O argumento `--webhook-url` deve continuar apontando

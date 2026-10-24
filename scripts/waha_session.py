@@ -12,21 +12,21 @@ from external.waha.base import request, segment, waha_api, waha_api_key, waha_se
 from utils import get_env_var
 
 
-# Both Compose stacks set this container_name. Service names may be customized
-# (api/backend/webhook-fastapi), so they cannot be used as a shared default.
-DEFAULT_WEBHOOK_URL = "http://webhook_fastapi:9001/webhook/waha"
-LEGACY_WEBHOOK_URL = "http://api:9001/webhook/waha"
+# Both Compose stacks declare this network alias. Unlike the container name,
+# it is also accepted by WAHA's URL validator (which rejects underscores).
+DEFAULT_WEBHOOK_URL = "http://gork-api:9001/webhook/waha"
+LEGACY_WEBHOOK_URLS = {"http://api:9001/webhook/waha", "http://webhook_fastapi:9001/webhook/waha"}
 
 
 def get_webhook_url():
     value = get_env_var("WAHA_WEBHOOK_URL") or DEFAULT_WEBHOOK_URL
-    return DEFAULT_WEBHOOK_URL if value == LEGACY_WEBHOOK_URL else value
+    return DEFAULT_WEBHOOK_URL if value in LEGACY_WEBHOOK_URLS else value
 
 
 def session_config(webhook_url: str, token: str) -> dict:
     if not token:
         raise ValueError("WAHA_WEBHOOK_TOKEN is required")
-    webhook_url = DEFAULT_WEBHOOK_URL if webhook_url == LEGACY_WEBHOOK_URL else webhook_url
+    webhook_url = DEFAULT_WEBHOOK_URL if webhook_url in LEGACY_WEBHOOK_URLS else webhook_url
     return {
         "gows": {"storage": {"messages": True, "groups": True, "chats": True, "contacts": True, "messageSecrets": True}},
         "webhooks": [{
