@@ -32,6 +32,10 @@ def event(**changes):
 
 
 class WahaNormalizationTests(unittest.TestCase):
+    def test_missing_profile_name_does_not_turn_sender_code_into_a_name(self):
+        data = normalize_webhook(event(_data={}))['data']
+        self.assertIsNone(data['pushName'])
+
     def test_incoming_group_preserves_stanza_lid_phone_name_and_command(self):
         normalized = normalize_webhook(event())
         self.assertEqual(normalized["event"], "messages.upsert")

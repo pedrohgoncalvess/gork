@@ -193,7 +193,7 @@ async def _dispatch_gork_response(
     try:
         parsed = await parse_gork_response(raw_response, group_id=group_id)
     except ValueError as e:
-        await logger.error("ConversationHandle", "ParseError", f"Failed to parse raw_response: '{raw_response}'. Error: {str(e)}")
+        await logger.error("ConversationHandle", "ParseError", f"error={type(e).__name__} response_characters={len(raw_response or '')}")
 
         if parse_retry_count < MAX_RESPONSE_PARSE_RETRIES:
             retry_instruction = (
@@ -490,7 +490,7 @@ async def _execute_database_query(
             "result": result,
         }
     except Exception as error:
-        await logger.error("ConversationHandle", "DatabaseQueryError", str(error))
+        await logger.error("ConversationHandle", "DatabaseQueryError", type(error).__name__)
         return {
             "query_type": query_type,
             "parameters": params,

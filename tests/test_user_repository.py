@@ -78,6 +78,18 @@ class UserRepositoryIdentityTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn("LIMIT", str(statement))
 
+    async def test_missing_name_or_provider_address_preserves_known_name(self):
+        user = SimpleNamespace(id=7, src_id="161323350499368",
+                               phone_number="554899865556", name="Pedro")
+        self.repository.find_by_lid.return_value = user
+        for name in (None, "", "  ", user.src_id, user.phone_number,
+                     user.src_id + "@lid", user.phone_number + "@c.us"):
+            with self.subTest(name=name):
+                result = await self.repository.find_or_create(
+                    lid=user.src_id, phone_number=user.phone_number, name=name)
+                self.assertIs(result, user)
+        self.repository.update.assert_not_awaited()
+
 
 if __name__ == "__main__":
     unittest.main()

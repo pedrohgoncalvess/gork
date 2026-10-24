@@ -22,7 +22,7 @@ antes da implantação e preparar a conversão de bases com dados em texto puro.
 - Referências completas e metadados de mídia do WAHA.
 - Nomes dos alvos de moderação, telefones/LIDs nas listas de eleitores e votos.
 - Configuração de números da aplicação, erros de sincronização, metadados MCP.
-- Novas linhas dos logs da aplicação e conteúdo sensível do cache de moderação.
+- Conteúdo sensível do cache de moderação.
 - Chaves Redis que poderiam conter telefones, como locks de conversas privadas.
 
 IDs internos, seriais, UUIDs, datas, relações, flags, contagens, tamanhos, tipos de
@@ -93,8 +93,10 @@ outros processadores precisam de criptografia do disco/volume, ou temporários e
 memória com swap protegido. Configurar TLS entre serviços também é uma etapa de
 infraestrutura independente. A alteração não reconfigura esses serviços.
 
-Os logs são envelopes `gork:v1:` por linha. Ferramentas de análise precisam
-descriptografar as linhas com o domínio `log`.
+Novos logs da aplicação são gravados sem criptografia, apenas nos níveis WARN e
+ERROR, com timestamp, módulo, tipo de erro e detalhes técnicos. Eventos de
+mensagens recebidas/enviadas, prompts, payloads e respostas da IA não são
+registrados. Arquivos antigos não são convertidos por esta alteração.
 
 ## Verificação
 

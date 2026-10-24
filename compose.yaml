@@ -57,6 +57,7 @@ services:
       --preload
       -b 0.0.0.0:9001
       --timeout 120
+      --log-level warning
 
   redis:
     container_name: gork_redis

@@ -51,6 +51,11 @@ class UserRepository(BaseRepository[User]):
             phone_number: str = None,
             name: str = None
     ) -> User:
+        # Provider fallbacks are addresses, not profile names. In particular,
+        # a history import must not replace an existing name with a LID/phone.
+        name = name.strip() if isinstance(name, str) else None
+        if name and name.split("@", 1)[0] in {lid, phone_number}:
+            name = None
         # A phone-only DM may already have produced a duplicate whose src_id is
         # also the phone number. Prefer the whitelisted phone match in that
         # payload shape so conversation ownership and access are preserved.

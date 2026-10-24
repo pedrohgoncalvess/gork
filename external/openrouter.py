@@ -57,7 +57,7 @@ def _video_error_details(response: httpx.Response) -> tuple[str | None, str]:
 
 def _video_payload_for_log(payload: dict) -> dict:
     sanitized = _payload_for_log(payload)
-    prompt = sanitized.pop("prompt", None)
+    prompt = payload.get("prompt")
     if isinstance(prompt, str):
         sanitized["prompt_characters"] = len(prompt)
     return sanitized
@@ -116,7 +116,7 @@ async def submit_video(payload: dict) -> dict:
                 "OpenRouter",
                 f"VideoHTTPError_{response.status_code}",
                 f"Provider code: {provider_code or 'unknown'}. "
-                f"Response: {provider_message}. Payload: {_video_payload_for_log(payload)}",
+                f"Metadata: {_video_payload_for_log(payload)}",
             )
             raise OpenRouterVideoError(
                 response.status_code,
@@ -170,49 +170,15 @@ async def download_video(job_id: str) -> bytes:
 
 
 def _payload_for_log(payload: dict) -> dict:
-    """Return a copy safe for logs, replacing image data with a counter."""
-    image_count = 0
-    sanitized_payload = dict(payload)
-    sanitized_messages = []
-
-    for message in payload.get("messages", []):
-        if not isinstance(message, dict):
-            sanitized_messages.append(message)
-            continue
-
-        sanitized_message = dict(message)
-        if message.get("role") == "tool":
-            sanitized_message["content"] = "[tool output omitted from logs]"
-            sanitized_messages.append(sanitized_message)
-            continue
-        if message.get("tool_calls"):
-            sanitized_message["tool_calls"] = [
-                {"id": call.get("id"), "type": call.get("type"),
-                 "function": {"name": (call.get("function") or {}).get("name"), "arguments": "[omitted]"}}
-                for call in message["tool_calls"]
-            ]
-        content = message.get("content")
-        if isinstance(content, list):
-            sanitized_content = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "image_url":
-                    image_count += 1
-                    continue
-                sanitized_content.append(item)
-            sanitized_message["content"] = sanitized_content
-
-        sanitized_messages.append(sanitized_message)
-
-    if "messages" in payload:
-        sanitized_payload["messages"] = sanitized_messages
-
-    input_references = payload.get("input_references")
-    if isinstance(input_references, list):
-        image_count += len(input_references)
-        sanitized_payload.pop("input_references", None)
-
-    sanitized_payload["image_count"] = image_count
-    return sanitized_payload
+    """Allow only operational metadata; never retain request content."""
+    metadata = {"model": payload.get("model")}
+    messages = payload.get("messages")
+    if isinstance(messages, list):
+        metadata["message_count"] = len(messages)
+    references = payload.get("input_references")
+    if isinstance(references, list):
+        metadata["image_count"] = len(references)
+    return metadata
 
 
 async def generate_speech(payload: dict) -> bytes:
@@ -230,13 +196,6 @@ async def generate_speech(payload: dict) -> bytes:
         expected_type = {"mp3": "audio/mpeg", "pcm": "audio/pcm"}.get(payload.get("response_format"))
         if not expected_type or content_type != expected_type or not response.content:
             raise RuntimeError("OpenRouter returned no valid speech audio.")
-        await openrouter_logger.info(
-            "OpenRouter", "Speech",
-            f"Model: {payload.get('model')} - Voice: {payload.get('voice')} - "
-            f"Input characters: {len(payload.get('input', ''))} - "
-            f"Generation: {response.headers.get('x-generation-id', 'unknown')} - "
-            f"Audio bytes: {len(response.content)}",
-        )
         return response.content
 
 
@@ -255,28 +214,25 @@ async def completions(payload: dict, is_online: bool = False) -> dict:
     log_payload = _payload_for_log(payload)
 
     async with httpx.AsyncClient(timeout=120) as client:
-        duration = datetime.now() - start
         try:
             response = await client.post(f"{OPENROUTER_ENDPOINT}/chat/completions", json=payload, headers=headers)
             if response.status_code >= 400:
-                minutes = duration.total_seconds() / 60
+                minutes = (datetime.now() - start).total_seconds() / 60
                 await openrouter_logger.error(
                     "OpenRouter",
                     f"HTTPError_{response.status_code}",
-                    f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Status: {response.status_code}. Response: {response.text}. Payload: {log_payload}"
+                    f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Status: {response.status_code}. Metadata: {log_payload}"
                 )
             response.raise_for_status()
-            minutes = duration.total_seconds() / 60
-            await openrouter_logger.info("OpenRouter", "Conversation", f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Payload: {log_payload}")
             return response.json()
         except Exception as error:
-            minutes = duration.total_seconds() / 60
-            await openrouter_logger.info(
+            minutes = (datetime.now() - start).total_seconds() / 60
+            await openrouter_logger.error(
                 "OpenRouter",
-                "Conversation",
-                f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Payload: {log_payload}. Error: {error}"
+                "ConversationError",
+                f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Error: {type(error).__name__}"
             )
-            raise error
+            raise
 
 
 async def generate_images(payload: dict) -> dict:
@@ -294,32 +250,24 @@ async def generate_images(payload: dict) -> dict:
                 json=payload,
                 headers=headers,
             )
-            duration = datetime.now() - start
-            minutes = duration.total_seconds() / 60
+            minutes = (datetime.now() - start).total_seconds() / 60
             if response.status_code >= 400:
                 await openrouter_logger.error(
                     "OpenRouter",
                     f"ImageHTTPError_{response.status_code}",
                     f"Model: {payload.get('model')} - Time took: {minutes:.2f}. "
-                    f"Status: {response.status_code}. Response: {response.text}. "
-                    f"Payload: {log_payload}",
+                    f"Status: {response.status_code}. "
+                    f"Metadata: {log_payload}",
                 )
             response.raise_for_status()
-            await openrouter_logger.info(
-                "OpenRouter",
-                "ImageGeneration",
-                f"Model: {payload.get('model')} - Time took: {minutes:.2f}. "
-                f"Payload: {log_payload}",
-            )
             return response.json()
         except Exception as error:
-            duration = datetime.now() - start
-            minutes = duration.total_seconds() / 60
-            await openrouter_logger.info(
+            minutes = (datetime.now() - start).total_seconds() / 60
+            await openrouter_logger.error(
                 "OpenRouter",
-                "ImageGeneration",
+                "ImageGenerationError",
                 f"Model: {payload.get('model')} - Time took: {minutes:.2f}. "
-                f"Payload: {log_payload}. Error: {error}",
+                f"Error: {type(error).__name__}",
             )
             raise
 
@@ -341,16 +289,12 @@ async def embeddings(text: str | list[str], model: str) -> dict:
         try:
             response = await client.post(f"{OPENROUTER_ENDPOINT}/embeddings", json=payload, headers=headers)
             response.raise_for_status()
-            duration = datetime.now() - start
-            minutes = duration.total_seconds() / 60
-            await openrouter_logger.info("OpenRouter", "Embedding", f"Model: {payload.get('model')} - Time took: {minutes:.2f}")
             return response.json()
         except Exception as error:
-            duration = datetime.now() - start
-            minutes = duration.total_seconds() / 60
-            await openrouter_logger.info(
+            minutes = (datetime.now() - start).total_seconds() / 60
+            await openrouter_logger.error(
                 "OpenRouter",
-                "Conversation",
-                f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Payload: {payload}. Error: {error}"
+                "EmbeddingError",
+                f"Model: {payload.get('model')} - Time took: {minutes:.2f}. Error: {type(error).__name__}"
             )
-            raise error
+            raise

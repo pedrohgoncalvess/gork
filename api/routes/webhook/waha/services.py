@@ -14,7 +14,6 @@ from external.waha.base import request, segment, waha_session
 from external.waha.identifiers import get_reference, save_reference
 from external.waha.base import chat_id
 from api.routes.webhook.waha.normalize import normalize_webhook, remote_address
-from log import logger
 from services.conversation_lock import serialize_direct_message
 from services.setup import settings, map_principal
 from services.ban_cache import decision as cached_ban_decision
@@ -113,8 +112,6 @@ async def process_webhook(body: dict, scheduler: AsyncIOScheduler):
         valid_events = ["messages.upsert", "send.message"]
         if event_type not in valid_events:
             return
-
-        await logger.info("Request", body.get("instance"), body)
 
         remote_id = event_data.get("key", {}).get("remoteJid", "")
         alt_id = event_data.get("key", {}).get("remoteJidAlt", "")

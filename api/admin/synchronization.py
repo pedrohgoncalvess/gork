@@ -17,6 +17,7 @@ from database.models.content import Message
 from database.operations.base import GroupRepository, UserRepository
 from external.waha.base import request, segment, waha_session
 from external.waha.identifiers import save_reference
+from external.waha.group import get_group_info
 from services.setup import address_part, discover_principal
 
 
@@ -148,10 +149,22 @@ async def import_message(payload, principal):
         group_id = None
         chat_user_id = None
         if remote.endswith("@g.us"):
-            group_id = (await GroupRepository(db).find_or_create(group_jid=remote.removesuffix("@g.us"))).id
+            groups = GroupRepository(db)
+            group = await groups.find_or_create(group_jid=remote.removesuffix("@g.us"))
+            if not group.name:
+                try:
+                    info = await get_group_info(remote)
+                except httpx.HTTPStatusError as error:
+                    # Historical groups may no longer be accessible to this account.
+                    if error.response.status_code != 404:
+                        raise
+                else:
+                    group = await groups.find_or_create(group_jid=remote.removesuffix("@g.us"),
+                        name=info["subject"], description=info.get("desc"))
+            group_id = group.id
         else:
             alias = address_part(key.get("remoteJidAlt"), ("@s.whatsapp.net",))
-            contact = await contact_user(db, remote, phone=alias)
+            contact = await contact_user(db, remote, name=None if key["fromMe"] else data["pushName"], phone=alias)
             if not contact:
                 return False
             chat_user_id = contact.id
@@ -185,7 +198,7 @@ async def run(job_id, data, principal):
             async for batch in pages("/api/contacts/all", {"session": waha_session, "sortBy": "id", "sortOrder": "asc"}, stop_on_short_page=True):
                 for entry in batch:
                     async with PgConnection() as db:
-                        user = await contact_user(db, entry.get("id"), entry.get("name") or entry.get("pushname"))
+                        user = await contact_user(db, entry.get("id"), entry.get("name") or entry.get("pushname") or entry.get("pushName"))
                     counts["contacts" if user else "skipped"] += 1
                     await progress(job_id, counts)
         if data.history:
