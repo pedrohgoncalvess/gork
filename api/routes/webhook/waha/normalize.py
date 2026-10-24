@@ -106,7 +106,7 @@ def normalize_webhook(body: dict) -> dict | None:
             "key": {"id": stanza_id(identifier), "fromMe": from_me,
                     "remoteJid": legacy_jid(remote), "remoteJidAlt": legacy_jid(remote_alt),
                     "participant": legacy_jid(sender), "participantAlt": legacy_jid(sender_alt)},
-            "pushName": payload.get("pushName") or info.get("PushName") or sender.split("@")[0],
+            "pushName": payload.get("pushName") or info.get("PushName") or None,
             "messageTimestamp": timestamp, "messageType": message_type,
             "message": message, "contextInfo": context,
         },

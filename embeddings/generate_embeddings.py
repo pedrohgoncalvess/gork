@@ -48,7 +48,7 @@ async def generate_text_embeddings(
         return []
 
     if not embedding_json or "data" not in embedding_json or not embedding_json["data"]:
-        await logger.error("Embeddings", "GenerateTextEmbeddings", f"Unexpected embedding response format: {embedding_json}")
+        await logger.error("Embeddings", "GenerateTextEmbeddings", "Unexpected embedding response format")
         return []
 
     resolved_user_id = user_id

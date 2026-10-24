@@ -1,34 +1,10 @@
-from security.crypto import encrypt
-""" Asynchronous Relational Logger Module
-
-This module provides a structured logging system that writes logs in a relational format,
-similar to database records with consistent delimiters.
-The logs are stored in files organized by date, making them easy to parse and analyze.
-
-Features:
-- Asynchronous file operations using aiofiles
-- Date-based log file partitioning
-- Configurable log formats and separators
-- Environment-aware logging
-- Support for different log levels (INFO, ERROR)
-
-Usage:
-from log import logger
-
-# Log information
-await logger.info("ModuleName", "OperationType", "Detailed message")
-
-# Log errors
-await logger.error("ModuleName", "ErrorType", "Exception details")
-"""
+"""Asynchronous warning/error logs with timestamps and technical context only."""
 import functools
-import json
 import os
 import re
 from datetime import datetime
-from functools import reduce
 from string import Template
-from typing import Any, Optional
+from typing import Optional
 
 import aiofiles
 
@@ -80,7 +56,7 @@ class StructuredLogger:
     async def _write_log_(self, log_message: str):
         await self.init()
         async with aiofiles.open(self._log_path_, "a", encoding="utf-8") as f:
-            await f.write(encrypt(log_message, "log") + "\n")
+            await f.write(log_message + "\n")
 
     @debug
     async def error(self, module:str, error_type:str, exception: str | None = None):
@@ -106,17 +82,11 @@ class StructuredLogger:
             )
         )
 
-    @debug
-    async def info(self, module:str, info_type:str, message:str):
-        await self._write_log_(
-            self.format.substitute(
-                mode="INFO",
-                message=info_type,
-                created_at=datetime.now().strftime(self.time_format),
-                detail=message,
-                module=module
-            )
-        )
+    warning = warn
+
+    async def info(self, module: str, info_type: str, message):
+        """Retained for callers; informational events never create or write logs."""
+        return None
 
 # Customize your log formats and files
 logger = StructuredLogger()

@@ -118,7 +118,7 @@ async def filter_agent(
     try:
         response = await parse_filter_response(raw_response)
     except ValueError as error:
-        await logger.error("Agent", "FilterParseError", f"{error}. Raw response: {raw_response}")
+        await logger.error("Agent", "FilterParseError", str(error))
         response = {
             "reasoning": "Filter parser failed; defaulting to no response.",
             "should_respond": False,

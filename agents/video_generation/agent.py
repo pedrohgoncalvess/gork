@@ -412,7 +412,11 @@ async def handle_video_command(
         )
         job = await submit_video(payload)
     except Exception as error:
-        await logger.error("VideoGeneration", "SubmitFailed", str(error))
+        await logger.error(
+            "VideoGeneration", "SubmitFailed",
+            f"error={type(error).__name__} status={getattr(error, 'status_code', None)} "
+            f"provider_code={getattr(error, 'provider_code', None)}",
+        )
         await send_message(
             remote_id,
             video_submit_error_message(error),
@@ -457,7 +461,7 @@ async def _finish_video(**context) -> None:
             context["quoted_message_id"],
         )
     except Exception as error:
-        await logger.error("VideoGeneration", "CompletionFailed", str(error))
+        await logger.error("VideoGeneration", "CompletionFailed", type(error).__name__)
         await send_message(remote_id, "Não consegui concluir a geração do vídeo. Tente novamente.")
 
 

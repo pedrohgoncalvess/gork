@@ -363,36 +363,36 @@ def _provider_error(error: httpx.HTTPStatusError) -> ImageGenerationError:
         return ImageGenerationError(
             "content_moderated",
             "A geração foi bloqueada pela moderação do provedor. Tente reformular o pedido.",
-            error.response.text[:1500],
+            f"HTTPStatusError status={status}",
         )
     if status == 429:
         return ImageGenerationError(
             "rate_limited",
             "O serviço de imagens está sobrecarregado agora. Tente novamente em alguns instantes.",
-            error.response.text[:1500],
+            f"HTTPStatusError status={status}",
         )
     if status == 402:
         return ImageGenerationError(
             "provider_credits",
             "O serviço de imagens está temporariamente indisponível por limite de uso.",
-            error.response.text[:1500],
+            f"HTTPStatusError status={status}",
         )
     if status in (401, 403):
         return ImageGenerationError(
             "provider_auth",
             "O serviço de imagens está com um problema de configuração.",
-            error.response.text[:1500],
+            f"HTTPStatusError status={status}",
         )
     if status >= 500:
         return ImageGenerationError(
             "provider_unavailable",
             "O provedor de imagens está indisponível no momento. Tente novamente mais tarde.",
-            error.response.text[:1500],
+            f"HTTPStatusError status={status}",
         )
     return ImageGenerationError(
         "provider_rejected_request",
         "O provedor não conseguiu processar esse pedido de imagem. Tente reformulá-lo.",
-        error.response.text[:1500],
+        f"HTTPStatusError status={status}",
     )
 
 
@@ -428,11 +428,10 @@ def _extract_image_reference(response: dict) -> str:
     message = choices[0].get("message") if isinstance(choices[0], dict) else None
     images = message.get("images") if isinstance(message, dict) else None
     if not isinstance(images, list) or not images:
-        provider_error = response.get("error")
         raise ImageGenerationError(
             "image_not_generated",
             "Não foi possível gerar a imagem. Tente reformular o pedido ou tente novamente mais tarde.",
-            f"Response has no images. Provider error: {provider_error}",
+            "Response has no images.",
         )
 
     first_image = images[0]
@@ -820,7 +819,7 @@ async def _generate_image(
                 )
             except Exception as interaction_error:
                 await _log_generation_error(
-                    "interaction_log_failed", str(interaction_error)
+                    "interaction_log_failed", type(interaction_error).__name__
                 )
             raise
 
@@ -854,6 +853,6 @@ async def _generate_image(
                 group_id=db_message.group_id if db_message else None,
             )
         except Exception as interaction_error:
-            await _log_generation_error("interaction_log_failed", str(interaction_error))
+            await _log_generation_error("interaction_log_failed", type(interaction_error).__name__)
 
         return output_base64

@@ -66,7 +66,7 @@ async def parse_filter_response(llm_output: str) -> Dict[str, Any]:
             await _log_parse_attempt_error("ValidationError", attempt, candidate, error)
             continue
 
-    await logger.error("GorkFilter", "ParseFailed", llm_output)
+    await logger.error("GorkFilter", "ParseFailed", "No valid JSON response")
     raise ValueError("Failed to parse valid filter JSON response")
 
 
@@ -79,7 +79,8 @@ async def _log_parse_attempt_error(
     await logger.error(
         "GorkFilter",
         f"ParseAttempt{attempt}{error_type}",
-        f"{error}. Candidate: {candidate[:1000]}",
+        f"error={type(error).__name__} candidate_characters={len(candidate)}"
+        + (f" line={error.lineno} column={error.colno}" if isinstance(error, json.JSONDecodeError) else ""),
     )
 
 

@@ -90,7 +90,7 @@ async def parse_gork_response(llm_output: str) -> Dict[str, Any]:
             continue
 
     # If all candidates fail, log and raise
-    await logger.error("GorkParser", "ParseFailed", llm_output)
+    await logger.error("GorkParser", "ParseFailed", "No valid JSON response")
     raise ValueError("Failed to parse valid Gork JSON response")
 
 
@@ -126,7 +126,8 @@ async def _log_parse_attempt_error(
     await logger.error(
         "GorkParser",
         f"ParseAttempt{attempt}{error_type}",
-        f"{error}. Candidate: {candidate[:1000]}",
+        f"error={type(error).__name__} candidate_characters={len(candidate)}"
+        + (f" line={error.lineno} column={error.colno}" if isinstance(error, json.JSONDecodeError) else ""),
     )
 
 

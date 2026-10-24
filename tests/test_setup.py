@@ -134,9 +134,38 @@ class SetupAsyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stmt.params["user_id"], 42)
         self.assertEqual(stmt.params["chat_user_id"], 5)
 
+    async def test_private_history_uses_only_incoming_contact_name(self):
+        db = SimpleNamespace(execute=AsyncMock(return_value=Mock()), commit=AsyncMock())
+        for outgoing in (False, True):
+            payload = {"id": f"{str(outgoing).lower()}_5511888888888@c.us_OLD",
+                       "fromMe": outgoing, "from": "5511888888888@c.us",
+                       "to": "5511888888888@c.us", "timestamp": 1700000000,
+                       "body": "oi", "pushName": "Ana"}
+            with (self.subTest(outgoing=outgoing),
+                  patch.object(sync, "PgConnection", self.database(db)),
+                  patch.object(sync, "contact_user", new=AsyncMock(return_value=SimpleNamespace(id=5))) as contact,
+                  patch.object(sync, "save_reference", new=AsyncMock())):
+                await sync.import_message(payload, {"user_id": 42})
+                self.assertEqual(contact.await_args.kwargs['name'], None if outgoing else 'Ana')
+
+    async def test_group_history_resolves_missing_group_name(self):
+        db = SimpleNamespace(execute=AsyncMock(return_value=Mock()), commit=AsyncMock())
+        groups = SimpleNamespace(find_or_create=AsyncMock(side_effect=[
+            SimpleNamespace(id=3, name=None), SimpleNamespace(id=3, name="Amigos")]))
+        payload = {"id": "true_120363123456789012@g.us_OLD", "fromMe": True,
+                   "to": "120363123456789012@g.us", "timestamp": 1700000000, "body": "oi"}
+        with (patch.object(sync, "PgConnection", self.database(db)),
+              patch.object(sync, "GroupRepository", return_value=groups),
+              patch.object(sync, "get_group_info", new=AsyncMock(return_value={"subject": "Amigos", "desc": "Grupo"})) as info,
+              patch.object(sync, "save_reference", new=AsyncMock())):
+            await sync.import_message(payload, {"user_id": 42})
+        info.assert_awaited_once_with("120363123456789012@g.us")
+        self.assertEqual(groups.find_or_create.await_args.kwargs['name'], 'Amigos')
+
     async def test_test_number_is_normalized_and_saved(self):
         db = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
-        with patch.object(setup, "settings", new=AsyncMock(return_value={})):
+        with (patch.object(setup, "settings", new=AsyncMock(return_value={})),
+              patch("services.ban_cache.invalidate", new=AsyncMock())):
             await setup.save_test_settings(True, "+5511999999999", db)
         from security.crypto import decrypt
         saved = db.execute.await_args.args[1]
@@ -152,7 +181,6 @@ class SetupAsyncTests(unittest.IsolatedAsyncioTestCase):
             with (patch.object(services, "PgConnection", self.database(Mock())),
                   patch.object(services, "serialize_direct_message", lambda _: self.database(None)()),
                   patch.object(services, "settings", new=AsyncMock(return_value={"test_mode": True, "test_number": "5511999999999"})),
-                  patch.object(services.logger, "info", new=AsyncMock()),
                   patch.object(services, "process_private_message", new=AsyncMock()) as private,
                   patch.object(services, "process_group_message", new=AsyncMock()) as group):
                 await services.process_webhook(body, Mock())
