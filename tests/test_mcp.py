@@ -166,12 +166,16 @@ class McpInvocationTests(KeyMixin,unittest.IsolatedAsyncioTestCase):
             bindings,unavailable=await available_bindings(db,1,None)
         self.assertEqual(bindings,{})
 
-    async def test_no_mcp_keeps_original_completion_contract(self):
+    async def test_no_mcp_keeps_response_contract_and_offers_local_knowledge(self):
         payload={"messages":[{"role":"user","content":"olá"}],"response_format":{"type":"json_object"}}
         completion=AsyncMock(return_value=response(content="final"))
         with patch("services.mcp_runtime.available_bindings",new=AsyncMock(return_value=({},[]))):
             await complete_with_mcp(payload,Mock(),user_id=1,group_id=None,message_id=1,completion=completion,record_response=AsyncMock())
-        self.assertEqual(completion.await_args.args[0],payload)
+        request=completion.await_args.args[0]
+        self.assertEqual(request["response_format"],payload["response_format"])
+        self.assertEqual(request["messages"][0],payload["messages"][0])
+        self.assertEqual([tool["function"]["name"] for tool in request["tools"]],["consult_gork_knowledge"])
+        self.assertNotIn("tools",payload)
 
     async def test_tool_loop_is_bounded_even_when_model_ignores_stop(self):
         bindings=bindings_for([server()]);alias=next(iter(bindings))

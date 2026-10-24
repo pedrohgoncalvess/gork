@@ -17,6 +17,7 @@ Some operational guides are in Portuguese, matching the panel and bot messages.
 | [MCP servers](mcp.md) | Remote tools, authentication, scopes, and call history |
 | [Development and deployment](development.md) | Docker layout, tests, rebuilds, and backups |
 | [Agent packages](agents.md) | Locate or extend each agent's code, prompt, parser, and schema |
+| [Gork knowledge base](knowledge/README.md) | On-demand tool for project history, capabilities, architecture, security, and setup |
 | [Data encryption](encryption.md) | Encryption coverage, keys, search behavior, and deployment prerequisites |
 
 Send `!help` inside WhatsApp for the command catalog. Its source is

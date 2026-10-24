@@ -104,8 +104,10 @@ externas não são buscadas. Falhas viram resultados de erro para o modelo, sem
 inventar dados. Textos e `structuredContent` entram no contexto; blocos binários
 de áudio/imagem não são encaminhados por esse fluxo de consulta.
 
-Há um limite de 128 ferramentas anunciadas por execução, 6 rodadas, 12 chamadas
-e 60 segundos acumulados em consultas externas. Chamadas idênticas no mesmo turno
+Há um limite de 128 ferramentas anunciadas por execução, incluindo uma vaga
+reservada à [base de conhecimento local do Gork](knowledge/README.md) e até 127
+ferramentas remotas, 6 rodadas, 12 chamadas e 60 segundos acumulados em consultas.
+Chamadas idênticas no mesmo turno
 reutilizam o resultado. Não há repetição automática de operações de negócio.
 O timeout por MCP é configurável de 3 a 60 segundos. As rodadas do modelo têm
 seus tokens e custo registrados pelo fluxo de consumo existente.

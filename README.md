@@ -16,6 +16,7 @@ Built with Python, FastAPI, WAHA (GOWS), OpenRouter, PostgreSQL with pgvector, M
 - **Group tools:** optional automatic replies, temporary bans through polls, access lists, and command permissions.
 - **Admin panel:** connect WhatsApp, import contacts and history, manage users and groups, configure agents and models, and inspect usage.
 - **MCP integrations:** connect remote tool servers and make their tools available to the conversation agents.
+- **On-demand self-knowledge:** a built-in tool consults project history, capabilities, architecture, encryption, and setup guides when needed, without loading the knowledge base into every model request. See the [knowledge base guide](docs/knowledge/README.md).
 
 ## Getting started
 
