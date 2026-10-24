@@ -1,8 +1,10 @@
+name: gork
+
 services:
   waha:
     image: gork-waha:gows-2026.9.1
     build:
-      context: ./docker/waha
+      context: ./waha
       args:
         WAHA_IMAGE: ${WAHA_IMAGE:-devlikeapro/waha:gows-2026.9.1@sha256:d2056b8dec41b218b54f431b8b4eb7d148346d530bb3658295ecb882944e9a18}
     user: "1000:1000"
@@ -44,8 +46,8 @@ services:
 
   webhook-fastapi:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: webhook_fastapi
     command: >
       gunicorn main:app
@@ -66,22 +68,20 @@ services:
       - MALLOC_TRIM_THRESHOLD_=131072
       - OMP_NUM_THREADS=1
     volumes:
-      - hf_cache:/root/.cache/huggingface
-      - ./.env:/app/.env:ro
-      - ./main.py:/app/main.py:ro
+      - ../.env:/app/.env:ro
+      - ../main.py:/app/main.py:ro
 
-      - ./agents:/app/agents:ro
-      - ./api:/app/api:ro
-      - ./external:/app/external:ro
-      - ./services:/app/services:ro
-      - ./tts:/app/tts:ro
-      - ./utils:/app/utils:ro
-      - ./s3:/app/s3:ro
-      - ./scheduler:/app/scheduler:ro
-      - ./embeddings:/app/embeddings:ro
+      - ../agents:/app/agents:ro
+      - ../api:/app/api:ro
+      - ../external:/app/external:ro
+      - ../services:/app/services:ro
+      - ../utils:/app/utils:ro
+      - ../s3:/app/s3:ro
+      - ../scheduler:/app/scheduler:ro
+      - ../embeddings:/app/embeddings:ro
 
-      - ./database:/app/database:rw
-      - ./log:/app/log:rw
+      - ../database:/app/database:rw
+      - ../log:/app/log:rw
     networks:
       dokploy-network:
         aliases:
@@ -134,5 +134,4 @@ volumes:
   waha_media:
   postgres_data:
   minio_data:
-  hf_cache:
   redis_data:

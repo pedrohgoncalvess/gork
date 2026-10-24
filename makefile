@@ -10,7 +10,7 @@ ifeq ($(OS),Windows_NT)
     UV = uv.exe
     NULL_OUTPUT = >nul 2>&1
     WHICH = where
-    DOCKER_COMPOSE = docker compose
+    DOCKER_COMPOSE = docker compose --env-file .env
 else
     RM = rm -rf
     PYTHON_DEFAULT = python3
@@ -18,7 +18,7 @@ else
     UV ?= $(HOME)/.local/bin/uv
     NULL_OUTPUT = >/dev/null 2>&1
     WHICH = which
-    DOCKER_COMPOSE = docker compose
+    DOCKER_COMPOSE = docker compose --env-file .env
 endif
 
 .PHONY: setup run clean check-uv install-uv check-python create-venv install-deps
@@ -135,7 +135,7 @@ endif
 	@echo Virtual environment removed!
 
 
-COMPOSE_FILE ?= docker-compose.dev.yaml
+COMPOSE_FILE ?= docker/compose.dev.yaml
 GORK_SERVICE ?= webhook-fastapi
 
 .PHONY: waha-start waha-stop waha-logs waha-configure
