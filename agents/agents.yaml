@@ -2,67 +2,67 @@ agents:
   - name: conversation-dm
     description: Agent responsible for direct WhatsApp conversations.
     model: openai/gpt-6-luna
-    prompt_path: agents/prompts/conversation-dm.md
-    schema_path: agents/schemas/conversation.json
+    prompt_path: agents/conversation_dm/prompt.md
+    schema_path: agents/conversation_dm/schema.json
 
   - name: conversation-group
     description: Agent responsible for WhatsApp group conversations.
     model: openai/gpt-6-luna
-    prompt_path: agents/prompts/conversation-group.md
-    schema_path: agents/schemas/conversation.json
+    prompt_path: agents/conversation_group/prompt.md
+    schema_path: agents/conversation_group/schema.json
 
   - name: filter
     description: Agent that decides whether Gork should respond to a conversation.
     model: qwen/qwen3.6-flash
-    prompt_path: agents/prompts/filter.md
-    schema_path: agents/schemas/filter.json
+    prompt_path: agents/filter/prompt.md
+    schema_path: agents/filter/schema.json
 
   - name: modify-image
     description: Multimodal assistant for generating and editing images.
     model: x-ai/grok-imagine-image-quality
-    prompt_path: agents/prompts/modify-image.md
+    prompt_path: agents/modify_image/prompt.md
 
   - name: video-generation
     description: Assistant responsible for generating videos with OpenRouter.
     model: bytedance/seedance-2.0-mini
-    prompt_path: agents/prompts/video-generation.md
+    prompt_path: agents/video_generation/prompt.md
 
   - name: remember-formatter
     description: Agent assigned to extract dates, times, and messages to schedule reminders.
     model: qwen/qwen3.6-flash
-    prompt_path: agents/prompts/remember-formatter.md
-    schema_path: agents/schemas/remember-formatter.json
+    prompt_path: agents/remember_formatter/prompt.md
+    schema_path: agents/remember_formatter/schema.json
 
   - name: audio-generation
     description: Agent responsible for synthesizing WhatsApp voice replies through OpenRouter.
     model: google/gemini-3.8-flash-lite-tts
-    prompt_path: agents/prompts/audio-generation.md
+    prompt_path: agents/audio_generation/prompt.md
 
   - name: transcriber
     description: Agent specialized in transcribing audio files.
     model: google/gemini-2.5-flash-lite
-    prompt_path: agents/prompts/transcriber.md
-    schema_path: agents/schemas/transcriber.json
+    prompt_path: agents/transcriber/prompt.md
+    schema_path: agents/transcriber/schema.json
 
   - name: describe-image
     description: Agent responsible for describing images with WhatsApp conversation context.
     model: google/gemini-2.5-flash-lite
-    prompt_path: agents/prompts/describe-image.md
-    schema_path: agents/schemas/describe-image.json
+    prompt_path: agents/describe_image/prompt.md
+    schema_path: agents/describe_image/schema.json
 
   - name: web-search
     description: Agent responsible for summarizing web search results.
     model: qwen/qwen3.6-flash
-    prompt_path: agents/prompts/web-search.md
-    schema_path: agents/schemas/web-search.json
+    prompt_path: agents/web_search/prompt.md
+    schema_path: agents/web_search/schema.json
 
   - name: resume
     description: Agent responsible for summarizing recent group messages.
     model: qwen/qwen3.6-flash
-    prompt_path: agents/prompts/resume.md
-    schema_path: agents/schemas/resume.json
+    prompt_path: agents/resume/prompt.md
+    schema_path: agents/resume/schema.json
 
   - name: resize-image
     description: Agent responsible for resizing images to given dimensions.
     model: black-forest-labs/flux.2-klein-4b
-    prompt_path: agents/prompts/resize-image.md
+    prompt_path: agents/resize_image/prompt.md

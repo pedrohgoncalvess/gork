@@ -6,10 +6,10 @@ from typing import Optional, List
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.execution.describe_image import describe_image_agent
+from agents.describe_image.agent import describe_image_agent
 from api.routes.webhook.waha.handles.core import clean_text
 from api.routes.webhook.waha.handles.image.gallery import list_images, search_images
-from api.routes.webhook.waha.handles.image.generate import generate_image
+from agents.modify_image.agent import generate_image
 from api.routes.webhook.waha.handles.image.picture import get_pictures
 from api.routes.webhook.waha.handles.social import (
     download_twitter_card,

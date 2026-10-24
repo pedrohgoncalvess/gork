@@ -4,7 +4,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.parser.filter import parse_filter_response
+from agents.filter.parser import parse_filter_response
 from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository

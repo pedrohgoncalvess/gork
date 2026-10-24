@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from database.models.manager import Interaction
 from database.operations.manager import InteractionRepository
 from database.operations.manager.interaction import MissingModelPriceError
-from agents.execution.conversation import _record_conversation_interaction
+from agents._shared.conversation import _record_conversation_interaction
 from services.model_pricing import (
     model_price_values,
     refresh_model_prices_and_reschedule,
@@ -153,7 +153,7 @@ class InteractionPricingTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_unpriced_usage_does_not_block_completed_conversation(self):
         repository = SimpleNamespace(create_interaction=AsyncMock(side_effect=MissingModelPriceError("missing")))
-        with patch("agents.execution.conversation.logger.warn", new=AsyncMock()) as warn:
+        with patch("agents._shared.conversation.logger.warn", new=AsyncMock()) as warn:
             await _record_conversation_interaction(
                 repository, model_id=76, user_id=9, group_id=1,
                 input_tokens=4, output_tokens=2, actual_cost=0.003,

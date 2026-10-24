@@ -9,7 +9,6 @@ from io import BytesIO
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.routes.webhook.waha.handles.core import clean_text
 from database import PgConnection
 from database.models.content import Message
 from database.operations.content import MediaRepository, MessageRepository
@@ -327,6 +326,8 @@ async def handle_video_command(
     db: AsyncSession,
     action_params: dict | None = None,
 ) -> None:
+    from api.routes.webhook.waha.handles.core import clean_text
+
     params = parse_params(db_message.content or "")
     params.update(action_params or {})
 
