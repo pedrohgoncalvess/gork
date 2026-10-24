@@ -16,7 +16,7 @@ from external.waha.audio import send_audio
 from external.waha.media import download_media, file_payload
 from external.waha.message import send_message
 from external.waha.presence import send_presence
-from scripts.waha_session import configure_session, session_config
+from scripts.waha_session import configure_session, get_webhook_url, session_config
 from services.message_context import verifiy_media
 
 
@@ -345,9 +345,28 @@ class WahaWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(config["gows"]["storage"]["messages"])
         self.assertTrue(config["gows"]["storage"]["messageSecrets"])
 
-    def test_legacy_webhook_hostname_is_migrated_to_valid_compose_service(self):
+    def test_webhook_uses_fixed_container_name_instead_of_service_name(self):
+        for configured in (None, "http://api:9001/webhook/waha", "http://webhook_fastapi:9001/webhook/waha"):
+            with self.subTest(configured=configured), patch("scripts.waha_session.get_env_var", return_value=configured):
+                self.assertEqual(get_webhook_url(), "http://webhook_fastapi:9001/webhook/waha")
+        config = session_config("http://api:9001/webhook/waha", "token")
+        self.assertEqual(config["webhooks"][0]["url"], "http://webhook_fastapi:9001/webhook/waha")
+
+    def test_custom_webhook_url_is_preserved(self):
+        url = "http://custom-backend:8080/webhook/waha"
+        with patch("scripts.waha_session.get_env_var", return_value=url):
+            self.assertEqual(get_webhook_url(), url)
+        self.assertEqual(session_config(url, "token")["webhooks"][0]["url"], url)
+
+    async def test_existing_session_webhook_is_migrated_without_restarting_whatsapp(self):
         config = session_config("http://webhook_fastapi:9001/webhook/waha", "token")
-        self.assertEqual(config["webhooks"][0]["url"], "http://api:9001/webhook/waha")
+        config['webhooks'][0]['url'] = "http://api:9001/webhook/waha"
+        with (patch("scripts.waha_session.request", new=AsyncMock(return_value={"status": "WORKING", "config": config})) as send,
+              patch("scripts.waha_session.get_env_var", return_value="token")):
+            self.assertEqual(await configure_session("http://api:9001/webhook/waha"), "WORKING")
+        self.assertEqual([call.args[0] for call in send.await_args_list], ["GET", "PUT", "GET"])
+        updated = send.await_args_list[1].kwargs['payload']['config']
+        self.assertEqual(updated['webhooks'][0]['url'], "http://webhook_fastapi:9001/webhook/waha")
 
     async def test_unchanged_configuration_does_not_interrupt_authentication(self):
         config = session_config("http://gork/webhook/waha", "token")
