@@ -78,6 +78,14 @@ Migrations run before agent/asset initialization and scheduled jobs. Inspect
 startup logs first when the panel cannot connect: a database failure can prevent
 the app from reaching WhatsApp setup.
 
+Startup uses a PostgreSQL session advisory lock before creating `yoyo_lock` and
+running migrations, so multiple workers/containers can bootstrap a fresh database.
+Use a direct PostgreSQL connection (or session pooling) for the startup `PG_*`
+connection; transaction pooling cannot preserve session locks. The database role
+must have CREATE permission on the current schema and access to existing Yoyo
+tables. Permission errors are reported directly instead of being hidden behind
+`relation "yoyo_lock" does not exist`.
+
 Back up PostgreSQL, MinIO objects, WAHA sessions/media, and `.env` together.
 The database stores message references, access rules, reminders, agent overrides,
 and encrypted MCP settings. Preserve `DATA_ENCRYPTION_KEY` for encrypted fields
