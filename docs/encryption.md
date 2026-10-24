@@ -6,9 +6,12 @@ A criptografia é obrigatória para os campos sensíveis e anexos. A leitura exi
 um envelope reconhecido e autenticado com a chave da aplicação. Os campos e modos
 estão inventariados em `security/schema.py`.
 
-**A preparação do esquema ainda está pendente antes da implantação:** os tipos,
-limites e defaults do PostgreSQL precisam corresponder aos modelos criptografados.
-Esta alteração não executa limpeza de dados nem altera o banco em uso.
+A migração `20261024_01_EncryptedTextColumns` converte para TEXT os campos
+criptografados que tinham limites VARCHAR: identificador, telefone e nome do
+usuário, nome do grupo e nome da mídia. Ela roda no startup e preserva os valores
+existentes, sem truncar nem converter dados antigos para o formato criptografado.
+Ainda é necessário revisar constraints e defaults dos demais campos protegidos
+antes da implantação e preparar a conversão de bases com dados em texto puro.
 
 ## Cobertura
 
