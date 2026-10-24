@@ -43,7 +43,9 @@ services:
       - ./log:/app/log:rw
       - ./utils:/app/utils:rw
     networks:
-      - dokploy-network
+      dokploy-network:
+        aliases:
+          - gork-api
     restart: unless-stopped
     depends_on:
       waha:

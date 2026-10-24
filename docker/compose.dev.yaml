@@ -87,6 +87,7 @@ services:
       dokploy-network:
         aliases:
           - api
+          - gork-api
     restart: unless-stopped
     depends_on:
       waha:

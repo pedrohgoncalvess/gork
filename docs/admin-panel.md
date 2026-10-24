@@ -25,7 +25,7 @@ Configure no `.env`:
 ```dotenv
 ADMIN_PASSWORD=uma-senha-longa-e-exclusiva
 ADMIN_SESSION_SECRET=uma-chave-aleatoria-diferente
-WAHA_WEBHOOK_URL=http://webhook_fastapi:9001/webhook/waha
+WAHA_WEBHOOK_URL=http://gork-api:9001/webhook/waha
 ```
 
 Abra `http://localhost:9001/admin` e use a senha `ADMIN_PASSWORD`.
