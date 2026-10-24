@@ -8,6 +8,7 @@ from typing import List, Optional
 from minio import Minio
 from minio.error import S3Error
 from PIL import Image
+from security.files import IteratorReader, encrypt_stream, decrypt_stream
 
 from utils import get_env_var
 
@@ -70,6 +71,16 @@ class S3Client:
                     bucket_name
                 )
 
+    def put_encrypted(self, bucket, path, source):
+        path = path.lstrip('/')
+        reader = IteratorReader(encrypt_stream(source, f'{bucket}/{path}'))
+        return self.client.put_object(bucket, path, reader, -1,
+                                      content_type='application/octet-stream',
+                                      part_size=5 * 1024 * 1024)
+
+    def decrypt_object(self, response, bucket, path):
+        return decrypt_stream(response, f"{bucket}/{path.lstrip('/')}")
+
     async def get_image_base64(
             self,
             bucket_name: str,
@@ -100,10 +111,12 @@ class S3Client:
                 object_path
             )
 
-            image_bytes = response.read()
-            response.close()
-            response.release_conn()
-
+            try:
+                image_bytes = await asyncio.to_thread(
+                    lambda: b''.join(self.decrypt_object(response, bucket_name, object_path)))
+            finally:
+                response.close()
+                response.release_conn()
             base64_string = base64.b64encode(image_bytes).decode('utf-8')
 
             return base64_string
@@ -162,12 +175,10 @@ class S3Client:
 
         await loop.run_in_executor(
             None,
-            self.client.put_object,
+            self.put_encrypted,
             bucket_name,
             object_name,
             buffer,
-            buffer.getbuffer().nbytes,
-            content_type
         )
 
         return object_name
@@ -203,12 +214,10 @@ class S3Client:
 
         await loop.run_in_executor(
             None,
-            self.client.put_object,
+            self.put_encrypted,
             bucket_name,
             object_name,
             buffer,
-            len(video_bytes),
-            content_type
         )
 
         return object_name
@@ -230,12 +239,10 @@ class S3Client:
 
         await loop.run_in_executor(
             None,
-            self.client.put_object,
+            self.put_encrypted,
             bucket_name,
             object_name,
             buffer,
-            len(media_bytes),
-            content_type,
         )
 
         return object_name
@@ -246,33 +253,10 @@ class S3Client:
             bucket_name: str = "images",
             expires_minutes: int = 30
     ) -> str:
-        loop = asyncio.get_event_loop()
-
-        object_path = sub_path.lstrip('/')
-
-        url = await loop.run_in_executor(
-            None,
-            self.client.presigned_get_object,
-            bucket_name,
-            object_path,
-            timedelta(minutes=expires_minutes)
-        )
-
-        return url
+        raise RuntimeError('Encrypted media must be served by an authenticated application endpoint.')
 
     async def get_url_from_path(self, bucket_name: str, object_path: str) -> str:
-        """
-        Get direct URL for an object (for public buckets)
-
-        Args:
-            bucket_name: Bucket name
-            object_path: Object path in bucket
-
-        Returns:
-            Direct object URL
-        """
-        object_path = object_path.lstrip('/')
-        return f"{self.endpoint}/{bucket_name}/{object_path}"
+        raise RuntimeError('Encrypted media must be served by an authenticated application endpoint.')
 
     async def object_exists(self, bucket_name: str, object_path: str) -> bool:
         """

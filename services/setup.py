@@ -1,3 +1,4 @@
+from security.crypto import encrypt, decrypt
 """Database-backed runtime settings and automatic WAHA account discovery."""
 import re
 import httpx
@@ -24,7 +25,8 @@ async def settings(db=None):
         async with PgConnection() as session:
             return await settings(session)
     row = (await db.execute(text("SELECT * FROM base.app_settings WHERE id = 1"))).mappings().one()
-    return dict(row)
+    return {key: decrypt(value, "identity") if key in ("phone_number", "lid", "test_number") else value
+            for key, value in row.items()}
 
 
 async def map_principal(me):
@@ -45,7 +47,7 @@ async def map_principal(me):
         user = await UserRepository(db).find_or_create(
             lid=lid or phone, phone_number=phone, name=me.get("pushName") or me.get("name") or "Gork")
         await db.execute(text("""UPDATE base.app_settings SET principal_user_id=:user,
-            phone_number=:phone, lid=:lid WHERE id=1"""), {"user": user.id, "phone": phone, "lid": lid})
+            phone_number=:phone, lid=:lid WHERE id=1"""), {"user": user.id, "phone": encrypt(phone, "identity", True), "lid": encrypt(lid, "identity", True)})
         await db.commit()
         return {"user_id": user.id, "phone_number": phone, "lid": lid}
 
@@ -62,7 +64,7 @@ async def save_test_settings(test_mode, test_number, db):
     if test_mode and (not number or not re.fullmatch(r"[1-9]\d{6,14}", number)):
         raise ValueError("Informe um número de teste válido antes de ativar o modo de teste.")
     await db.execute(text("UPDATE base.app_settings SET test_mode=:mode, test_number=:number WHERE id=1"),
-                     {"mode": test_mode, "number": number})
+                     {"mode": test_mode, "number": encrypt(number, "identity", True)})
     await db.commit()
     from services.ban_cache import invalidate
     await invalidate()

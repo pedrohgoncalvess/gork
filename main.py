@@ -24,6 +24,8 @@ app.mount("/admin/assets", StaticFiles(directory=STATIC_DIR), name="admin-assets
 
 @app.on_event("startup")
 async def startup_event():
+    from security.crypto import master_key
+    master_key()
     applied_migrations = await asyncio.to_thread(apply_pending_migrations)
     await logger.info(
         "Database",

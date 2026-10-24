@@ -3,7 +3,7 @@
 from typing import Any
 
 from pgvector.sqlalchemy import HALFVEC
-from sqlalchemy import cast, desc, func, literal_column, or_, select
+from sqlalchemy import cast, desc, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -120,13 +120,11 @@ async def search_observations(
 
     rankings = []
     if mode in {"term", "hybrid"}:
-        document = literal_column("manager.observation.search_document")
-        terms = func.websearch_to_tsquery("portuguese", query)
-        result = await db.execute(base.where(or_(
-            document.op("@@")(terms),
-            Observation.content.icontains(query, autoescape=True),
-        )).order_by(desc(func.ts_rank_cd(document, terms)), desc(Observation.id)).limit(limit))
-        rankings.append(list(result.scalars().all()))
+        # Only scoped notes enter memory; encrypted text cannot use SQL full-text indexes.
+        result = await db.execute(base.order_by(desc(Observation.id)))
+        needle = query.casefold()
+        rankings.append([note for note in result.scalars().all()
+                         if needle in note.content.casefold()][:limit])
 
     semantic_available = None
     if mode in {"similarity", "hybrid"}:

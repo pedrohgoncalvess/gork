@@ -1,3 +1,4 @@
+from security.search import matching_user_ids
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -234,7 +235,7 @@ class MessageRepository(BaseRepository[Message]):
         if user_id:
             filters.append(Message.user_id == user_id)
         if user_name:
-            filters.append(User.name.ilike(f"%{user_name}%"))
+            filters.append(User.id.in_(await matching_user_ids(self.db, user_name)))
 
         result = await self.db.execute(
             select(Message)

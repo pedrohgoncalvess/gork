@@ -1,3 +1,4 @@
+from security.types import EncryptedText
 from sqlalchemy import Column, ForeignKey, func, Integer, Numeric, Text, TIMESTAMP
 from sqlalchemy.orm import relationship
 
@@ -14,9 +15,9 @@ class Interaction(Base):
     agent_id = Column(Integer, ForeignKey("ai.agent.id"), nullable=True)
     user_id = Column(Integer, ForeignKey("base.user.id"), nullable=False)
     group_id = Column(Integer, ForeignKey("base.group.id"))
-    user_prompt = Column(Text, nullable=False)
-    response = Column(Text)
-    system_behavior = Column(Text)
+    user_prompt = Column(EncryptedText('interaction.user_prompt', False), nullable=False)
+    response = Column(EncryptedText('interaction.response', False))
+    system_behavior = Column(EncryptedText('interaction.system_behavior', False))
     input_tokens = Column(Integer, nullable=False)
     output_tokens = Column(Integer)
     actual_cost = Column(Numeric(30, 18))

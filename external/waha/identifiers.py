@@ -2,10 +2,21 @@
 import json
 import re
 
-from sqlalchemy import text
+from security.sql import typed_text
+from security.types import EncryptedText, EncryptedJSON
 
 from database import PgConnection
 from external.waha.base import chat_id, waha_session
+
+
+def text(sql):
+    binds = {'provider_id': EncryptedText('reference.provider_id'),
+             'chat_id': EncryptedText('identity', True), 'media': EncryptedJSON('reference.media')}
+    columns = {'provider_id': EncryptedText('reference.provider_id'),
+               'chat_id': EncryptedText('identity', True), 'media': EncryptedJSON('reference.media'),
+               'phone_number': EncryptedText('identity', True)}
+    return typed_text(sql, binds=binds,
+                      columns=columns if sql.lstrip().upper().startswith('SELECT') else None)
 
 
 def stanza_id(value: str) -> str:
@@ -31,7 +42,7 @@ async def save_reference(payload: dict, destination: str) -> None:
         """), {
             "session": waha_session, "message_id": stanza_id(identifier),
             "provider_id": identifier, "chat_id": chat_id(destination),
-            "media": json.dumps(payload["media"]) if payload.get("media") else None,
+            "media": payload.get("media") or None,
         })
         await db.commit()
 

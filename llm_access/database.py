@@ -36,6 +36,22 @@ def _serialize_datetime(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
+async def _matching_messages(db, statement, query, limit):
+    if not query or not query.strip():
+        return list((await db.execute(statement)).all())
+    needle = query.strip().casefold()
+    matched, offset = [], 0
+    while len(matched) < limit:
+        rows = (await db.execute(statement.limit(200).offset(offset))).all()
+        matched.extend(row for row in rows if any(
+            needle in str(getattr(row, key, '') or '').casefold()
+            for key in ('content', 'user_name', 'user_phone_number', 'user_src_id', 'media_type')))
+        if len(rows) < 200:
+            break
+        offset += len(rows)
+    return matched[:limit]
+
+
 async def get_group_users(
         db: AsyncSession,
         group_id: int,
@@ -60,20 +76,16 @@ async def get_group_users(
         .join(Message, Message.user_id == User.id)
         .where(Message.group_id == group_id)
         .distinct()
-        .order_by(User.name)
-        .limit(_limit(limit))
+        .order_by(User.id)
     )
 
-    if like_query:
-        stmt = stmt.where(
-            or_(
-                User.name.ilike(like_query),
-                User.phone_number.ilike(like_query),
-                User.src_id.ilike(like_query),
-            )
-        )
-
     result = await db.execute(stmt)
+    rows = list(result.all())
+    if query and query.strip():
+        needle = query.strip().casefold()
+        rows = [row for row in rows if any(needle in (getattr(row, key) or '').casefold()
+                for key in ('name', 'phone_number', 'src_id'))]
+    rows.sort(key=lambda row: ((row.name or '').casefold(), row.id))
     return [
         {
             "id": row.id,
@@ -82,7 +94,7 @@ async def get_group_users(
             "name": row.name,
             "profile_pic_path": row.profile_pic_path,
         }
-        for row in result.all()
+        for row in rows[:_limit(limit)]
     ]
 
 
@@ -109,18 +121,6 @@ async def get_group_messages(
     if media_type:
         filters.append(Media.type == media_type)
 
-    like_query = _like(query)
-    if like_query:
-        filters.append(
-            or_(
-                Message.content.ilike(like_query),
-                User.name.ilike(like_query),
-                User.phone_number.ilike(like_query),
-                User.src_id.ilike(like_query),
-                Media.type.ilike(like_query),
-            )
-        )
-
     stmt = (
         select(
             Message.id,
@@ -142,7 +142,7 @@ async def get_group_messages(
         .limit(_message_limit(limit))
     )
 
-    result = await db.execute(stmt)
+    rows = await _matching_messages(db, stmt, query, _message_limit(limit))
     return [
         {
             "id": row.id,
@@ -159,7 +159,7 @@ async def get_group_messages(
             },
             "media_type": row.media_type,
         }
-        for row in reversed(result.all())
+        for row in reversed(rows)
     ]
 
 
@@ -195,10 +195,6 @@ async def get_conversation_messages(
         Message.deleted_at.is_(None),
     ]
 
-    like_query = _like(query)
-    if like_query:
-        filters.append(Message.content.ilike(like_query))
-
     stmt = (
         select(
             Message.id,
@@ -220,7 +216,7 @@ async def get_conversation_messages(
         .limit(_message_limit(limit))
     )
 
-    result = await db.execute(stmt)
+    rows = await _matching_messages(db, stmt, query, _message_limit(limit))
     return [
         {
             "id": row.id,
@@ -237,7 +233,7 @@ async def get_conversation_messages(
             },
             "media_type": row.media_type,
         }
-        for row in reversed(result.all())
+        for row in reversed(rows)
     ]
 
 

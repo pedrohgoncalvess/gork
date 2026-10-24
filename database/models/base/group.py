@@ -1,3 +1,4 @@
+from security.types import EncryptedText
 from sqlalchemy import Boolean, Column, func, Integer, String, text, Text, TIMESTAMP, UUID
 from sqlalchemy.orm import relationship
 
@@ -11,9 +12,9 @@ class Group(Base):
     id = Column(Integer, primary_key=True)
     src_id = Column(String(100), unique=True, nullable=False)
     ext_id = Column(UUID, unique=True, nullable=False, server_default=text("uuid_generate_v4()"))
-    name = Column(String(255))
-    description = Column(Text)
-    profile_image_url = Column(Text)
+    name = Column(EncryptedText('group.name', True))
+    description = Column(EncryptedText('group.description', False))
+    profile_image_url = Column(EncryptedText('group.profile_image_url', False))
     auto_message = Column(Boolean, default=False, nullable=False)
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())

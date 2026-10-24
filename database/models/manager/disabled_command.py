@@ -1,3 +1,4 @@
+from security.types import EncryptedText
 from sqlalchemy import Column, ForeignKey, func, Integer, String, Text, TIMESTAMP
 from sqlalchemy.orm import relationship
 
@@ -13,10 +14,9 @@ class DisabledCommand(Base):
     user_id = Column(Integer, ForeignKey("base.user.id", ondelete="CASCADE"))
     group_id = Column(Integer, ForeignKey("base.group.id", ondelete="CASCADE"))
     message = Column(
-        Text,
+        EncryptedText('disabled_command.message', False),
         nullable=False,
         default="Este comando está temporariamente desativado.",
-        server_default="Este comando está temporariamente desativado.",
     )
     disabled_until = Column(TIMESTAMP(timezone=True))
     inserted_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), nullable=False)

@@ -160,6 +160,8 @@ class MediaRepository(BaseRepository[Media]):
             LIMIT :limit
         """)
 
+        query = query.columns(name=Media.name.type, description=Media.description.type,
+                              user_name=User.name.type)
         result = await self.db.execute(
             query,
             {"user_id": user_id, "limit": limit}
