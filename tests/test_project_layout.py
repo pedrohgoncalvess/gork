@@ -44,3 +44,16 @@ class ProjectLayoutTests(unittest.TestCase):
         schemas = [json.loads((ROOT / f"agents/{name}/schema.json").read_text(encoding="utf-8"))
                    for name in ("conversation_dm", "conversation_group")]
         self.assertEqual(*schemas)
+
+    def test_default_webhook_host_exists_in_each_compose_stack(self):
+        from urllib.parse import urlsplit
+        from scripts.waha_session import DEFAULT_WEBHOOK_URL
+
+        host = urlsplit(DEFAULT_WEBHOOK_URL).hostname
+        for relative in ("compose.yaml", "docker/compose.dev.yaml"):
+            with self.subTest(compose=relative):
+                config = yaml.safe_load((ROOT / relative).read_text(encoding="utf-8"))
+                backends = [service for service in config['services'].values()
+                            if service.get('container_name') == host]
+                self.assertEqual(len(backends), 1)
+                self.assertEqual(backends[0]['build']['dockerfile'], 'docker/Dockerfile')

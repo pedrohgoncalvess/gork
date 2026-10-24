@@ -68,7 +68,8 @@ docker compose -f compose.yaml logs -f api
 ```
 
 The deployment service is `api`; development uses `webhook-fastapi`. Both expose
-9001 and use `http://api:9001/webhook/waha` internally. Run one stack per bot:
+9001 and use `http://webhook_fastapi:9001/webhook/waha` internally, through the
+fixed container name shared by both stacks. Run one stack per bot:
 ports, container names, and the WhatsApp session overlap. Put HTTPS in front of
 remote admin access and replace the bundled local infrastructure credentials.
 

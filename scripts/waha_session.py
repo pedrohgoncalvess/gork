@@ -12,8 +12,10 @@ from external.waha.base import request, segment, waha_api, waha_api_key, waha_se
 from utils import get_env_var
 
 
-DEFAULT_WEBHOOK_URL = "http://api:9001/webhook/waha"
-LEGACY_WEBHOOK_URL = "http://webhook_fastapi:9001/webhook/waha"
+# Both Compose stacks set this container_name. Service names may be customized
+# (api/backend/webhook-fastapi), so they cannot be used as a shared default.
+DEFAULT_WEBHOOK_URL = "http://webhook_fastapi:9001/webhook/waha"
+LEGACY_WEBHOOK_URL = "http://api:9001/webhook/waha"
 
 
 def get_webhook_url():
