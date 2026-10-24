@@ -49,8 +49,8 @@ docker network create dokploy-network
 Start the infrastructure, then the application:
 
 ```sh
-docker compose -f docker-compose.dev.yaml up -d --build --wait postgres s3-minio redis waha
-docker compose -f docker-compose.dev.yaml up -d --build webhook-fastapi
+docker compose --env-file .env -f docker/compose.dev.yaml up -d --build --wait postgres s3-minio redis waha
+docker compose --env-file .env -f docker/compose.dev.yaml up -d --build webhook-fastapi
 ```
 
 This runs Gork, WAHA, PostgreSQL, MinIO, and Redis. Database migrations and initial agent configuration run automatically at application startup.
@@ -85,8 +85,8 @@ Send `!help` in an authorized chat for the full command list. In groups, mention
 ### Logs and shutdown
 
 ```sh
-docker compose -f docker-compose.dev.yaml logs -f webhook-fastapi
-docker compose -f docker-compose.dev.yaml down
+docker compose --env-file .env -f docker/compose.dev.yaml logs -f webhook-fastapi
+docker compose --env-file .env -f docker/compose.dev.yaml down
 ```
 
 Named volumes preserve the database, media, and WhatsApp session between restarts.
@@ -106,14 +106,14 @@ Use HTTPS for remote access to the admin panel. The bundled development credenti
 Start with the setup above. The development Compose file mounts the application source into the container, so you can edit locally and restart the app to load Python changes:
 
 ```sh
-docker compose -f docker-compose.dev.yaml restart webhook-fastapi
+docker compose --env-file .env -f docker/compose.dev.yaml restart webhook-fastapi
 ```
 
 After changing dependencies, update the lockfile with uv and rebuild:
 
 ```sh
 uv sync
-docker compose -f docker-compose.dev.yaml up -d --build webhook-fastapi
+docker compose --env-file .env -f docker/compose.dev.yaml up -d --build webhook-fastapi
 ```
 
 ### Tests
@@ -121,10 +121,10 @@ docker compose -f docker-compose.dev.yaml up -d --build webhook-fastapi
 Run the suite inside the application container so the database and other service hostnames resolve:
 
 ```sh
-docker compose -f docker-compose.dev.yaml exec webhook-fastapi python -m unittest discover -s tests
+docker compose --env-file .env -f docker/compose.dev.yaml exec webhook-fastapi python -m unittest discover -s tests
 ```
 
-Tests are included in the image; rebuild after editing tests. For local Python tooling, `uv sync --frozen` prepares `.venv`. Running the API or tests on the host requires FFmpeg for media operations and reachable service addresses:
+Tests, scripts, and bundled assets are included in the image; rebuild after editing them. For local Python tooling, `uv sync --frozen` prepares `.venv`. Running the API or tests on the host requires FFmpeg for media operations and reachable service addresses:
 
 | Setting | Docker application | Host process |
 | --- | --- | --- |
@@ -140,7 +140,8 @@ Keep the Docker application's `.env` settings intact when configuring a host pro
 
 ```text
 api/          Webhooks, command handlers, and admin panel
-agents/       Agent configuration, prompts, schemas, and execution
+agents/       One package per agent: code, prompt, parser, and schema
+docker/       Application/WAHA images and the development Compose stack
 external/     WAHA, OpenRouter, and other service clients
 database/     Models, repositories, and migrations
 services/     Conversation context, media storage, access rules, and setup
@@ -154,10 +155,17 @@ For new commands, add a handler under `api/routes/webhook/waha/handles/`, regist
 
 ## Documentation
 
+See the [documentation index](docs/README.md) for all guides.
+
+- [Conversations, summaries, and search](docs/conversations.md)
+- [Images, video, stickers, and downloads](docs/media.md)
+- [Reminders, favorites, and usage](docs/reminders-and-usage.md)
+- [Agent packages and configuration](docs/agents.md)
+- [Development, deployment, and backups](docs/development.md)
 - [WhatsApp connection and WAHA configuration](docs/waha.md)
 - [Admin panel, access lists, and synchronization](docs/admin-panel.md)
 - [Remote MCP servers](docs/mcp.md)
-- [Voice generation](docs/audio-generation.md)
+- [Voice generation and transcription](docs/audio-generation.md)
 - [Conversation observations](docs/observations.md)
 - [Temporary group bans](docs/group-ban.md)
 

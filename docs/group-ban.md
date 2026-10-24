@@ -1,5 +1,24 @@
 # Votação de banimento temporário
 
+## Exemplo rápido
+
+```text
+!ban @usuário :time 30min :expiration 5
+```
+
+Nesse exemplo, a votação fica aberta por até cinco minutos. Se houver quórum e
+maioria favorável, o Gork apaga mensagens novas do alvo por trinta minutos.
+O participante continua no grupo: a função não o expulsa nem o impede de enviar
+mensagens no cliente WhatsApp. O Gork precisa estar ativo e ser administrador
+para excluir essas mensagens.
+
+| Etapa | Resultado esperado |
+| --- | --- |
+| Abertura | Enquete e aviso com menções aos membros |
+| Decisão | Mensagem com votos, participação e motivo |
+| Ban aprovado | Exclusão de mensagens novas até o prazo |
+| Intervenção manual | Cancelar votação ou encerrar ban pelo painel |
+
 Em grupos autorizados, use `!ban @usuário :time 30min`, mencionando exatamente um
 membro pelo WhatsApp. Qualquer membro autorizado a usar comandos pode propor a
 votação; a conta do Gork precisa ser administradora do grupo.
@@ -103,3 +122,15 @@ a menção a todos, alterações e retirada de votos, encerramento sem maioria,
 aprovação com maioria e exclusão de texto e mídia do alvo. A exclusão de
 mensagens de terceiros depende das permissões e do comportamento do WAHA/GOWS;
 uma falha da API é registrada como `GroupBan/DeleteMessage`.
+
+## Diagnóstico
+
+Se o comando for recusado, confira grupo autorizado, permissões do Gork, alvo
+único, cooldown e modo de teste. Se a enquete abrir mas não receber votos no
+backend, confira as assinaturas `poll.vote`/`poll.vote.failed` e o armazenamento
+de segredos da sessão. Se um ban aprovado não excluir mensagens, consulte as
+falhas WAHA e as permissões de administrador antes de alterar a votação.
+
+O painel mantém histórico de decisões e exclusões; encerrar um ban não apaga
+esses registros. Veja [administração](admin-panel.md) para acesso e
+[WAHA](waha.md) para diagnóstico do provedor.

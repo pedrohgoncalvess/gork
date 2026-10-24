@@ -1,5 +1,17 @@
 # MCPs no Gork
 
+## Exemplo de uso
+
+Um servidor de documentação pode oferecer `search_documents`. Cadastre seu
+endpoint, descreva quando consultá-lo e salve a autenticação nos headers fixos.
+Se o servidor exigir um tenant, configure `tenant_id` como argumento fixo da
+ferramenta. O modelo pode escolher o texto da busca, mas não trocar esse tenant.
+
+Primeiro use **Testar** para confirmar a descoberta do catálogo. Depois peça ao
+Gork, em uma conversa autorizada, uma informação que exija consultar os documentos.
+Confira no histórico se a ferramenta foi chamada: descobrir o catálogo não
+executa a ferramenta e não garante que o modelo a escolherá em todo pedido.
+
 O painel **Configuração → Servidores MCP** cadastra múltiplos servidores remotos.
 Os clientes rodam no processo FastAPI existente. Não há serviço novo no Compose.
 
@@ -113,3 +125,19 @@ das respostas de ferramentas e argumentos das chamadas.
 OAuth interativo, servidores locais por comando/stdio, prompts e recursos MCP
 não são configurados neste painel; a integração expõe ferramentas dos endpoints
 HTTP/SSE e usa autenticação determinística por headers/parâmetros.
+
+## Quando uma ferramenta não aparece ou falha
+
+Confira se o servidor está habilitado e permitido para o usuário/grupo atual,
+se o nome está na lista de ferramentas permitidas e se a URL é acessível de
+dentro do container. Um endpoint local à máquina do desenvolvedor não é o
+`localhost` do container Gork.
+
+Falhas de catálogo costumam envolver URL, transporte, autenticação ou timeout.
+Falhas de execução também podem vir do schema ou dos argumentos fixos. O teste
+do painel não valida uma operação de negócio. Consulte o histórico de chamadas
+para separar falha do servidor, limite de execução e uma decisão do modelo de
+não chamar a ferramenta.
+
+Preserve `MCP_ENCRYPTION_KEY` ao mover o ambiente. Uma senha nova de painel não
+substitui a chave necessária para ler headers e parâmetros já cifrados.
