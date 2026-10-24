@@ -1,5 +1,3 @@
-import shutil
-from services.audio_conversion import audio_to_wav
 import base64
 import io
 from pathlib import Path
@@ -156,23 +154,3 @@ class AudioConfigurationTests(unittest.TestCase):
         self.assertNotIn('name = "piper-tts"', lock)
         self.assertNotIn('name = "soundfile"', lock)
         self.assertIn('name = "onnxruntime"', lock)  # Background removal still needs it.
-
-class AudioConversionTests(unittest.IsolatedAsyncioTestCase):
-    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is not installed")
-    async def test_real_conversion_preserves_audio_duration_without_soundfile(self):
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as source:
-            source.setnchannels(2)
-            source.setsampwidth(2)
-            source.setframerate(8000)
-            source.writeframes(b"\0" * 3200)
-        converted = await audio_to_wav(buffer.getvalue())
-        with wave.open(io.BytesIO(converted), "rb") as result:
-            self.assertEqual(result.getnchannels(), 1)
-            self.assertEqual(result.getframerate(), 16000)
-            self.assertEqual(result.getsampwidth(), 2)
-            self.assertAlmostEqual(len(result.readframes(100000)) / 32000, 0.1, places=2)
-
-    async def test_empty_audio_is_rejected(self):
-        with self.assertRaises(ValueError):
-            await audio_to_wav(b"")

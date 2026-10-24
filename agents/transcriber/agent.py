@@ -2,13 +2,12 @@ import base64
 import json
 from typing import Optional
 
+from agents.transcriber.parser import audio_format, parse_transcription
 from database import PgConnection
-from database.models.manager import Agent, Command, Interaction, Model
+from database.models.manager import Command, Interaction
 from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelConversationRepository
 from external import completions
-from external.waha import download_media, send_message
-from services.audio_conversion import audio_to_wav
-
+from external.waha import download_media
 
 async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[int], command: bool = False) -> str:
     async with PgConnection() as db:
@@ -44,11 +43,9 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
                     .get("contextInfo", {})
                     .get("stanzaId")
                 )
-        audio_base64, _ = await download_media(message_id)
-        audio_bytes = base64.b64decode(audio_base64)
-        wav_bytes = await audio_to_wav(audio_bytes)
-
-        base64_audio = base64.b64encode(wav_bytes).decode("utf-8")
+        base64_audio, filename = await download_media(message_id)
+        audio_bytes = base64.b64decode(base64_audio, validate=True)
+        format_name = audio_format(audio_bytes, filename)
 
         payload = {
             "model": audio_model.openrouter_id,
@@ -61,7 +58,7 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
                             "type": "input_audio",
                             "input_audio": {
                                 "data": base64_audio,
-                                "format": "wav"
+                                "format": format_name
                             }
                         }
                     ]
@@ -77,19 +74,14 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
 
         req = await completions(payload)
         resp = req["choices"][0]["message"]["content"]
-        if transcriber_agent.response_format:
-            try:
-                parsed_json = json.loads(resp)
-                if isinstance(parsed_json, dict) and "transcription" in parsed_json:
-                    resp = parsed_json["transcription"]
-            except Exception:
-                pass
+        resp = parse_transcription(resp, bool(transcriber_agent.response_format))
 
         if command:
             command_repo = CommandRepository(Command, db)
             new_command = await command_repo.create_command(
                 "transcribe",
-                user_id
+                user_id,
+                group_id=group_id,
             )
         else:
             new_command = None
