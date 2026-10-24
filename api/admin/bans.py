@@ -3,7 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
+from security.sql import ban_text as text
 
 from api.admin.dependencies import get_db
 from external.waha.base import waha_session
@@ -35,7 +35,7 @@ BASE = '''WITH bans AS (
 async def list_bans(view: Literal['all', 'active', 'voting', 'history'] = 'all',
                     q: str = Query('', max_length=100), offset: int = Query(0, ge=0),
                     limit: int = Query(30, ge=1, le=100), db=Depends(get_db)):
-    params = {'session': waha_session, 'view': view, 'q': q.strip(),
+    params = {'session': waha_session, 'view': view, 'q': '',
               'search': '%' + q.strip() + '%', 'offset': offset, 'limit': limit}
     total = (await db.execute(text(BASE + 'SELECT count(*) FROM filtered'), params)).scalar_one()
     rows = (await db.execute(text(BASE + '''SELECT f.id, f.chat_id, f.target_id, f.target_name,
@@ -49,14 +49,16 @@ async def list_bans(view: Literal['all', 'active', 'voting', 'history'] = 'all',
         FROM filtered f ORDER BY
             CASE WHEN display_status='active' THEN 0
                  WHEN display_status IN ('voting','preparing','closing') THEN 1 ELSE 2 END,
-            opened_at DESC, id DESC LIMIT :limit OFFSET :offset'''), params)).mappings().all()
+            opened_at DESC, id DESC '''), params)).mappings().all()
     items = []
     for row in rows:
         item = dict(row)
         for key in ('opened_at', 'closes_at', 'ban_started_at', 'ban_until', 'next_vote_at'):
             item[key] = item[key].isoformat() if item.get(key) else None
-        items.append(item)
-    return JSONResponse({'items': items, 'total': total, 'offset': offset, 'limit': limit},
+        if not q.strip() or any(q.strip().casefold() in str(item.get(key) or '').casefold()
+                                    for key in ('target_name', 'chat_id', 'target_id', 'group_name')):
+            items.append(item)
+    return JSONResponse({'items': items[offset:offset + limit], 'total': len(items), 'offset': offset, 'limit': limit},
                         headers={'Cache-Control': 'no-store'})
 
 

@@ -74,7 +74,7 @@ class StaticStickerFallbackTests(unittest.IsolatedAsyncioTestCase):
                 "api.routes.webhook.waha.handles.image.sticker_static.MessageRepository"
             ) as message_repo,
             patch(
-                "agents.execution.resize_image.resize_image_agent",
+                "agents.resize_image.agent.resize_image_agent",
                 new=AsyncMock(
                     return_value=base64.b64encode(resized.getvalue()).decode("ascii")
                 ),
@@ -111,7 +111,7 @@ class StaticStickerFallbackTests(unittest.IsolatedAsyncioTestCase):
                 "api.routes.webhook.waha.handles.image.sticker_static.MessageRepository"
             ) as message_repo,
             patch(
-                "agents.execution.resize_image.resize_image_agent",
+                "agents.resize_image.agent.resize_image_agent",
                 new=AsyncMock(side_effect=RuntimeError("provider failed")),
             ),
         ):

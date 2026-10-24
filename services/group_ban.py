@@ -5,7 +5,10 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 import httpx
-from sqlalchemy import text
+from security.sql import ban_text as text
+from security.sql import typed_text
+from security.types import EncryptedText
+from sqlalchemy import ARRAY
 
 from database import PgConnection
 from external.waha.base import chat_id, request, segment, waha_session
@@ -200,9 +203,11 @@ async def _handle_ban_command(remote: str, command: str, message_id: str, body: 
         # Check only after the DB has ruled out an existing vote/ban/cooldown.
         await ensure_ban_webhooks()
         # A phone number and a LID represent the same member; use the v2 member ID.
-        name = (await db.execute(text('''SELECT name FROM base."user"
+        name = (await db.execute(typed_text('''SELECT name FROM base."user"
             WHERE src_id = ANY(:ids) OR phone_number = ANY(:ids)
-            ORDER BY updated_at DESC NULLS LAST LIMIT 1'''),
+            ORDER BY updated_at DESC NULLS LAST LIMIT 1''',
+            binds={'ids': ARRAY(EncryptedText('identity', True))},
+            columns={'name': EncryptedText('user.name', True)}),
             {'ids': [jid.split('@')[0] for jid in target_ids]})).scalar_one_or_none()
         name = name or target.get('name')
         if not name:
@@ -221,8 +226,8 @@ async def _handle_ban_command(remote: str, command: str, message_id: str, body: 
                     clock_timestamp() + :expiration * INTERVAL '1 minute')
             ON CONFLICT DO NOTHING RETURNING id'''), {
                 'session': waha_session, 'chat': remote, 'command': message_id,
-                'target': chat_id(target['id']), 'aliases': json.dumps(target_ids),
-                'name': name, 'electorate': json.dumps(voters),
+                'target': chat_id(target['id']), 'aliases': target_ids,
+                'name': name, 'electorate': voters,
                 'total': len(set(voters.values())), 'duration': duration,
                 'expiration': expiration,
             })).scalar_one_or_none()

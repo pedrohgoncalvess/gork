@@ -12,9 +12,9 @@ def prepare(root: Path):
     content = target.read_text(encoding="utf-8") if target.exists() else (root / ".env.example").read_text(encoding="utf-8")
     values = dotenv_values(stream=io.StringIO(content))
     generated = {}
-    for name in ("WAHA_API_KEY", "WAHA_WEBHOOK_TOKEN", "ADMIN_PASSWORD", "ADMIN_SESSION_SECRET", "MCP_ENCRYPTION_KEY"):
+    for name in ("WAHA_API_KEY", "WAHA_WEBHOOK_TOKEN", "ADMIN_PASSWORD", "ADMIN_SESSION_SECRET", "MCP_ENCRYPTION_KEY", "DATA_ENCRYPTION_KEY"):
         if not values.get(name):
-            generated[name] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() if name == "MCP_ENCRYPTION_KEY" else secrets.token_urlsafe(36)
+            generated[name] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode() if name in ("MCP_ENCRYPTION_KEY", "DATA_ENCRYPTION_KEY") else secrets.token_urlsafe(36)
     lines = content.splitlines()
     for name, value in generated.items():
         lines = [line for line in lines if line.split("=", 1)[0].strip() != name]

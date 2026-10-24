@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import yaml
 from PIL import Image
 
-from api.routes.webhook.waha.handles.image.generate import (
+from agents.modify_image.agent import (
     ImageGenerationResult,
     ImageGenerationError,
     _build_image_prompt,
@@ -37,7 +37,7 @@ def _encoded_image(image_format: str) -> str:
 
 class ImageGenerationPipelineTests(unittest.TestCase):
     def test_conversation_schema_exposes_generated_sticker_action(self):
-        schema_path = Path(__file__).parents[1] / "agents" / "schemas" / "conversation.json"
+        schema_path = Path(__file__).parents[1] / "agents" / "conversation_group" / "schema.json"
         schema = json.loads(schema_path.read_text(encoding="utf-8"))
         action_enum = schema["properties"]["actions"]["items"]["properties"]["action"]["enum"]
 
@@ -52,7 +52,7 @@ class ImageGenerationPipelineTests(unittest.TestCase):
         self.assertIn("modify-image", agents)
         self.assertEqual(
             agents["modify-image"]["prompt_path"],
-            "agents/prompts/modify-image.md",
+            "agents/modify_image/prompt.md",
         )
 
     def test_resize_agent_uses_the_configured_image_editor(self):
@@ -67,7 +67,7 @@ class ImageGenerationPipelineTests(unittest.TestCase):
         )
 
     def test_resize_prompt_forbids_creative_changes(self):
-        prompt_path = Path(__file__).parents[1] / "agents" / "prompts" / "resize-image.md"
+        prompt_path = Path(__file__).parents[1] / "agents" / "resize_image" / "prompt.md"
         prompt = prompt_path.read_text(encoding="utf-8").lower()
 
         self.assertIn("scale every visible element proportionally", prompt)
@@ -265,7 +265,7 @@ class ImageModelFallbackTests(unittest.IsolatedAsyncioTestCase):
 
 class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-        self.module = "api.routes.webhook.waha.handles.image.generate"
+        self.module = "agents.modify_image.agent"
         self.current_image = _encoded_image("PNG")
         self.quoted_image = _encoded_image("WEBP")
         self.profile_image = _encoded_image("JPEG")
@@ -280,6 +280,7 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.user_repo = AsyncMock()
         self.user_repo.find_by_phone_or_id.return_value = None
+        self.enterContext(patch(f"{self.module}.get_instance_number", new=AsyncMock(return_value="5511888888888")))
         self.message_repo = AsyncMock()
         self.message_repo.find_by_id.return_value = self.quote
         self.model = SimpleNamespace(id=1, openrouter_id="test/image", metadata_={})

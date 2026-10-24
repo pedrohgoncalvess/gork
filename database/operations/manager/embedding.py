@@ -21,7 +21,7 @@ class EmbeddingRepository(BaseRepository[Embedding]):
 
         result = await self.db.execute(
             select(Embedding)
-            .filter(func.lower(Embedding.term) == normalized_term)
+            .filter(Embedding.term == normalized_term)
             .order_by(desc(Embedding.inserted_at), desc(Embedding.id))
             .limit(1)
         )

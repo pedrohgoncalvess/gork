@@ -61,6 +61,7 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
         _engine = create_async_engine(
             _database_url(),
             echo=False,
+            hide_parameters=True,
             pool_size=pool_size,
             max_overflow=max_overflow,
             pool_timeout=15,

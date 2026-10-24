@@ -32,7 +32,7 @@ class AdminBanTests(unittest.IsolatedAsyncioTestCase):
         row = {'id': 1, 'target_name': 'Ana', 'group_name': 'Equipe', 'status': 'active',
                'yes_votes': 6, 'no_votes': 1, 'opened_at': now, 'closes_at': now,
                'ban_started_at': now, 'ban_until': now, 'next_vote_at': now}
-        db = self.database([self.result(scalar=1), self.result(rows=[row])])
+        db = self.database([self.result(scalar=31), self.result(rows=[dict(row, id=i) for i in range(31)])])
         response = await self.client.get('/admin/api/bans?view=active&q=Ana&offset=30&limit=30')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers['cache-control'], 'no-store')

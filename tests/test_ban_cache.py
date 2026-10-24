@@ -1,3 +1,4 @@
+from security.crypto import encrypt, decrypt
 import json
 import time
 import unittest
@@ -23,7 +24,7 @@ class BanCacheTests(unittest.IsolatedAsyncioTestCase):
                 'messageTimestamp': int(time.time())}
 
     async def test_warm_cache_checks_members_without_database(self):
-        redis = SimpleNamespace(get=AsyncMock(return_value=json.dumps(self.snapshot())))
+        redis = SimpleNamespace(get=AsyncMock(return_value=encrypt(json.dumps(self.snapshot()), "ban.cache")))
         with (patch.object(cache, 'client', return_value=redis), patch.object(cache, 'PgConnection') as db):
             self.assertTrue(await cache.decision(self.data(), '123@g.us'))
             self.assertFalse(await cache.decision(self.data(), '456@g.us'))
@@ -122,4 +123,6 @@ class BanCacheTests(unittest.IsolatedAsyncioTestCase):
             state = await cache.snapshot()
         self.assertEqual(state['bans'][0]['until'], 1800001800)
         self.assertEqual(state['bans'][0]['aliases'], ['222@lid'])
-        self.assertEqual(json.loads(redis.eval.await_args.args[-1]), state)
+        sealed = redis.eval.await_args.args[-1]
+        self.assertNotIn('5522@c.us', sealed)
+        self.assertEqual(json.loads(decrypt(sealed, 'ban.cache')), state)

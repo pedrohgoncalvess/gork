@@ -138,7 +138,11 @@ class SetupAsyncTests(unittest.IsolatedAsyncioTestCase):
         db = SimpleNamespace(execute=AsyncMock(), commit=AsyncMock())
         with patch.object(setup, "settings", new=AsyncMock(return_value={})):
             await setup.save_test_settings(True, "+5511999999999", db)
-        self.assertEqual(db.execute.await_args.args[1], {"mode": True, "number": "5511999999999"})
+        from security.crypto import decrypt
+        saved = db.execute.await_args.args[1]
+        self.assertTrue(saved['mode'])
+        self.assertNotEqual(saved['number'], '5511999999999')
+        self.assertEqual(decrypt(saved['number'], 'identity'), '5511999999999')
 
     async def test_test_mode_dispatches_only_the_selected_private_contact(self):
         from api.routes.webhook.waha import services

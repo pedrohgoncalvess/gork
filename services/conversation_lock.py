@@ -5,6 +5,7 @@ from redis.exceptions import LockError
 
 from log import logger
 from utils import get_env_var
+from security.crypto import encrypt
 
 
 _REDIS_CLIENT: redis.Redis | None = None
@@ -43,7 +44,7 @@ async def _serialize_conversation(lock_key: str, label: str):
 async def serialize_direct_message(contact_id: str):
     """Prevent concurrent DM processing across all Gunicorn workers."""
     async with _serialize_conversation(
-        f"dm:{contact_id}:conversation-lock",
+        f"dm:{encrypt(contact_id, 'redis.scope', True)}:conversation-lock",
         f"dm:{contact_id}",
     ):
         yield

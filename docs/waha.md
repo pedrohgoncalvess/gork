@@ -1,5 +1,10 @@
 # WhatsApp com WAHA / GOWS
 
+Este guia cobre a conexão do WhatsApp. A autorização para responder é separada:
+depois de parear, habilite os contatos/grupos no [painel](admin-panel.md). Uma
+sessão `WORKING` confirma a conexão do provedor, mas não valida modelos de IA,
+whitelist ou permissões de comandos.
+
 O Gork usa a imagem base:
 `devlikeapro/waha:gows-2026.9.1@sha256:d2056b8dec41b218b54f431b8b4eb7d148346d530bb3658295ecb882944e9a18`.
 O Dockerfile em `docker/waha` prepara as permissões dos volumes de sessão e mídia.
@@ -24,15 +29,15 @@ a imagem Core; use outra sessão somente se a sua edição WAHA permitir.
 
 ```sh
 # Desenvolvimento (Postgres, MinIO e Redis já estão no compose)
-docker compose -f docker-compose.dev.yaml up -d --build
+docker compose --env-file .env -f docker/compose.dev.yaml up -d --build
 
 # A inicialização do Gork aplica a migração de referências WAHA automaticamente.
-docker compose -f docker-compose.dev.yaml exec webhook-fastapi python -m scripts.waha_session configure
+docker compose --env-file .env -f docker/compose.dev.yaml exec webhook-fastapi python -m scripts.waha_session configure
 
 # Aguarde SCAN_QR_CODE, gere o QR e copie para a máquina local.
-docker compose -f docker-compose.dev.yaml exec webhook-fastapi python -m scripts.waha_session status
-docker compose -f docker-compose.dev.yaml exec webhook-fastapi python -m scripts.waha_session qr --output /tmp/waha-qr.png
-docker compose -f docker-compose.dev.yaml cp webhook-fastapi:/tmp/waha-qr.png ./waha-qr.png
+docker compose --env-file .env -f docker/compose.dev.yaml exec webhook-fastapi python -m scripts.waha_session status
+docker compose --env-file .env -f docker/compose.dev.yaml exec webhook-fastapi python -m scripts.waha_session qr --output /tmp/waha-qr.png
+docker compose --env-file .env -f docker/compose.dev.yaml cp webhook-fastapi:/tmp/waha-qr.png ./waha-qr.png
 ```
 
 Leia o QR com **WhatsApp → Aparelhos conectados** e confirme o estado `WORKING`.
@@ -85,3 +90,23 @@ Referências do contrato WAHA: [envio](https://waha.devlike.pro/docs/how-to/send
 [recebimento](https://waha.devlike.pro/docs/how-to/receive-messages/),
 [webhooks](https://waha.devlike.pro/docs/how-to/events/),
 [LIDs](https://waha.devlike.pro/docs/how-to/contacts/).
+
+## Diagnóstico por etapa
+
+| Sintoma | Verificação |
+| --- | --- |
+| Painel não abre | Logs do serviço Gork e migrações; a API usa a porta 9001 |
+| QR não aparece | Logs do WAHA, chave compartilhada e estado da sessão |
+| Sessão conectada, sem resposta | Whitelist, modo de teste, blacklist e modelo configurado |
+| Texto funciona, respostas citadas falham | Referências WAHA no PostgreSQL e disponibilidade da mensagem no provedor |
+| Mídia antiga indisponível | Existência do arquivo no MinIO; uma referência no banco não recria o binário |
+
+Para desenvolvimento, o Compose agora fica em `docker/compose.dev.yaml`; os
+comandos acima usam `--env-file .env` para ler as chaves da raiz. O nome do
+projeto continua `gork`. Quem usava um nome de projeto personalizado deve mantê-lo
+para reutilizar os mesmos volumes. A imagem da aplicação fica em
+`docker/Dockerfile`; a imagem do provedor continua em `docker/waha/Dockerfile`.
+
+Preserve o PostgreSQL, os objetos MinIO, os volumes WAHA e o `.env` nos backups.
+Evite remover volumes para tentar corrigir pareamento: isso pode perder a sessão
+ou arquivos arquivados. Veja [desenvolvimento e recuperação](development.md).

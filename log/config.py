@@ -1,3 +1,4 @@
+from security.crypto import encrypt
 """ Asynchronous Relational Logger Module
 
 This module provides a structured logging system that writes logs in a relational format,
@@ -73,22 +74,13 @@ class StructuredLogger:
     def debug(func):
         @functools.wraps(func)
         async def wrapper(self, *args, **kwargs):
-            if self._env_.lower() == "dev":
-                string_f = reduce(lambda acc, x: f"{acc} {x}", args, "")
-                colors_set = {"error": ("\033[91m", "\033[0m"), "warn": ("\033[93m", "\033[0m"),}
-                colors = colors_set.get(func.__name__)
-
-                message = f"[LOGGER DEBUG]: {func.__name__.upper()} {self.sep} {string_f[0:80]} {self.sep} {datetime.now().strftime(self.time_format)}"
-                final_message = f"""{colors[0]}{message}{colors[1]}""" if colors else message
-
-                print(final_message)
             return await func(self, *args, **kwargs)
         return wrapper
 
     async def _write_log_(self, log_message: str):
         await self.init()
         async with aiofiles.open(self._log_path_, "a", encoding="utf-8") as f:
-            await f.write(f"{log_message} {self.row_sep}")
+            await f.write(encrypt(log_message, "log") + "\n")
 
     @debug
     async def error(self, module:str, error_type:str, exception: str | None = None):

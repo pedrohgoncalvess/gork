@@ -4,7 +4,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.execution.describe_image import describe_image_agent
+from agents.describe_image.agent import describe_image_agent
 from database.models.content import Media
 from database.operations.content import MediaRepository, MessageRepository
 from embeddings import generate_text_embeddings

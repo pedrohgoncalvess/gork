@@ -5,7 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 from fastapi import HTTPException
-from sqlalchemy import text
+from security.sql import typed_text
+from security.types import EncryptedText
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 
@@ -17,6 +18,11 @@ from database.operations.base import GroupRepository, UserRepository
 from external.waha.base import request, segment, waha_session
 from external.waha.identifiers import save_reference
 from services.setup import address_part, discover_principal
+
+
+def text(sql):
+    return typed_text(sql, binds={'error': EncryptedText('sync.error')},
+                      columns={'error': EncryptedText('sync.error')} if sql.lstrip().upper().startswith('SELECT') or 'RETURNING *' in sql else None)
 
 
 tasks = set()
@@ -47,8 +53,8 @@ async def latest():
 
 async def expire_jobs(db):
     await db.execute(text("""UPDATE base.sync_job SET status='failed',
-        error='Sincronização interrompida. Inicie novamente para continuar sem duplicar mensagens.', updated_at=now()
-        WHERE status='running' AND updated_at < now() - interval '5 minutes'"""))
+        error=:error, updated_at=now()
+        WHERE status='running' AND updated_at < now() - interval '5 minutes'"""), {'error': 'Sincronização interrompida. Inicie novamente para continuar sem duplicar mensagens.'})
     await db.commit()
 
 

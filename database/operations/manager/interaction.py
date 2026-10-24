@@ -1,3 +1,4 @@
+from security.search import matching_user_ids
 from datetime import datetime, timedelta
 from typing import List, Optional
 
@@ -61,7 +62,7 @@ class InteractionRepository(BaseRepository[Interaction]):
             filters.append(Interaction.user_id == user_id)
 
         if user_name:
-            filters.append(User.name.ilike(f"%{user_name.strip()}%"))
+            filters.append(User.id.in_(await matching_user_ids(self.db, user_name.strip())))
 
         if end_date:
             filters.append(Interaction.inserted_at < end_date)

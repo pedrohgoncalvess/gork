@@ -6,8 +6,8 @@ from typing import Any, Optional
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.execution.conversation import conversation_agent
-from agents.parser.conversation import parse_gork_response
+from agents.web_search.agent import _run_web_search
+from agents.conversation import conversation_agent, parse_gork_response
 from api.routes.webhook.waha.handles.audio import handle_transcribe_command
 from api.routes.webhook.waha.handles.image import (
     handle_describe_image_command,
@@ -17,7 +17,7 @@ from api.routes.webhook.waha.handles.image import (
     handle_sticker_command,
 )
 from api.routes.webhook.waha.handles.reminder import handle_remember_command
-from api.routes.webhook.waha.handles.video import handle_video_command
+from agents.video_generation.agent import handle_video_command
 from api.routes.webhook.waha.handles.social import handle_instagram_command, handle_twitter_command
 from api.routes.webhook.waha.handles.utility import (
     handle_help_command,
@@ -29,16 +29,8 @@ from api.routes.webhook.waha.handles.favorite import handle_favorite_message
 from api.routes.webhook.waha.handles.image import handle_list_images_command
 from database.models.base import User
 from database.models.content import Message
-from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MessageRepository
-from database.operations.manager import (
-    AgentRepository,
-    InteractionRepository,
-    ModelConversationRepository,
-    ModelRepository,
-)
-from external import completions
 from external.waha import send_audio, send_message
 from llm_access import (
     save_observation,
@@ -59,7 +51,7 @@ from services import (
 )
 from services.action_rate_limiter import reserve_audio_action
 from services.outgoing_mentions import resolve_outgoing_mentions
-from tts import text_to_speech
+from agents.audio_generation.agent import text_to_speech
 from utils import get_instance_number
 
 
@@ -199,7 +191,7 @@ async def _dispatch_gork_response(
         parse_retry_count: int = 0,
 ):
     try:
-        parsed = await parse_gork_response(raw_response)
+        parsed = await parse_gork_response(raw_response, group_id=group_id)
     except ValueError as e:
         await logger.error("ConversationHandle", "ParseError", f"Failed to parse raw_response: '{raw_response}'. Error: {str(e)}")
 
@@ -539,82 +531,6 @@ def _format_database_query_context(
         "[DATABASE QUERY RESULTS]\n"
         f"{json.dumps(query_results, ensure_ascii=False, default=str)}"
     )
-
-
-async def _run_web_search(
-        db: AsyncSession,
-        user: User,
-        query: str,
-        group_id: Optional[int],
-) -> str:
-    model_repo = ModelRepository(db)
-    agent_repo = AgentRepository(db)
-    model_conv_repo = ModelConversationRepository(db)
-    web_agent = await agent_repo.find_by_name("web-search")
-
-    model = None
-    if web_agent:
-        model = await model_conv_repo.resolve_agent_model(
-            web_agent,
-            user_id=user.id,
-            group_id=group_id
-        )
-
-    if not model:
-        model = await model_repo.get_default_model()
-
-    if web_agent and web_agent.prompt:
-        system_prompt = web_agent.prompt
-    else:
-        system_prompt = (
-            "Use web search to answer the query with current, source-backed information. "
-            "Return a concise summary in the query language. Include source names and URLs when available."
-        )
-
-    payload = {
-        "model": model.openrouter_id,
-        "messages": [
-            {
-                "role": "system",
-                "content": system_prompt,
-            },
-            {
-                "role": "user",
-                "content": query,
-            }
-        ]
-    }
-
-    if web_agent and web_agent.response_format:
-        try:
-            payload["response_format"] = json.loads(web_agent.response_format)
-        except Exception:
-            pass
-
-    req = await completions(payload, is_online=True)
-    result = req["choices"][0]["message"]["content"]
-
-    if web_agent and web_agent.response_format:
-        try:
-            parsed_json = json.loads(result)
-            if isinstance(parsed_json, dict) and "summary" in parsed_json:
-                result = parsed_json["summary"]
-        except Exception:
-            pass
-
-    interaction_repo = InteractionRepository(Interaction, db)
-    _ = await interaction_repo.create_interaction(
-        model_id=model.id,
-        user_id=user.id,
-        group_id=group_id,
-        user_prompt=query,
-        response=result,
-        input_tokens=req["usage"]["prompt_tokens"],
-        output_tokens=req["usage"]["completion_tokens"],
-        system_behavior=system_prompt
-    )
-
-    return result
 
 
 async def _dispatch_action(

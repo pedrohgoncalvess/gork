@@ -1,3 +1,5 @@
+from security.crypto import encrypt, decrypt
+from security.sql import ban_text as text
 """Shared moderation snapshot. Cache failures fall back to PostgreSQL."""
 import asyncio
 import json
@@ -5,7 +7,6 @@ import time
 
 import redis.asyncio as redis
 from redis.exceptions import RedisError
-from sqlalchemy import text
 
 from database import PgConnection
 from external.waha.base import chat_id, waha_session
@@ -41,7 +42,7 @@ async def snapshot():
         async with asyncio.timeout(0.2):
             cached = await client().get(KEY)
             if cached:
-                return json.loads(cached)
+                return json.loads(decrypt(cached, "ban.cache"))
             version = await client().get(VERSION) or '0'
         async with PgConnection() as db:
             mode = (await db.execute(text('SELECT test_mode FROM base.app_settings WHERE id=1'))).scalar_one()
@@ -53,7 +54,7 @@ async def snapshot():
                 started=int(row['started']), until=float(row['expires_at'])) for row in rows]}
         async with asyncio.timeout(0.2):
             # A revoke during the SQL read must prevent publishing a stale snapshot.
-            if not await client().eval(PUBLISH, 2, KEY, VERSION, version, json.dumps(result)):
+            if not await client().eval(PUBLISH, 2, KEY, VERSION, version, encrypt(json.dumps(result), "ban.cache")):
                 return None
         return result
     except (RedisError, OSError, TimeoutError, ValueError, TypeError):

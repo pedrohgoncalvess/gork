@@ -77,7 +77,7 @@ class ObservationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("user_id =", _sql(session.statements[0]))
 
     async def test_duplicate_does_not_generate_embedding_or_insert(self):
-        session = _Session(_Result([_note(1)]))
+        session = _Session(_Result([_note(1, content="literal 100%_piada"), _note(2, content="100 outra piada")]))
         with patch("llm_access.observations._embedding", new=AsyncMock()) as embed:
             result = await save_observation(session, 30, 10, "piada interna")
         self.assertTrue(result["already_saved"])
@@ -110,13 +110,13 @@ class ObservationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["mode"], "recent")
 
     async def test_term_search_is_bound_and_escapes_wildcards(self):
-        session = _Session(_Result([_note(1)]))
+        session = _Session(_Result([_note(1, content="literal 100%_piada"), _note(2, content="100 outra piada")]))
         with patch("llm_access.observations._embedding", new=AsyncMock()) as embed:
             result = await search_observations(session, 30, 10, "100%_piada", mode="term")
         stmt = session.statements[0]
-        self.assertIn("search_document @@ websearch_to_tsquery", _sql(stmt))
+        self.assertNotIn("search_document", _sql(stmt))
         self.assertIn("observation.group_id =", _sql(stmt))
-        self.assertIn("100/%/_piada", stmt.compile().params.values())
+        self.assertNotIn("100%_piada", stmt.compile().params.values())
         self.assertEqual([n["id"] for n in result["observations"]], [1])
         embed.assert_not_awaited()
 

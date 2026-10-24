@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.dialects import postgresql
 
-from agents.execution.conversation import (
+from agents._shared.conversation import (
     _build_group_request_messages,
     _load_group_reply_chain,
     _format_direct_message_content,

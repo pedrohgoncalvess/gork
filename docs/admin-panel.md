@@ -1,5 +1,18 @@
 # Painel de administração
 
+## Primeiro uso
+
+1. Execute `uv run python -m scripts.setup` e guarde a senha inicial exibida.
+2. Suba a infraestrutura e a aplicação seguindo o [README](../README.md).
+3. Faça login, conecte o WhatsApp e aguarde `WORKING`.
+4. Sincronize os contatos/grupos desejados. Importação não concede autorização.
+5. Autorize explicitamente um usuário ou configure um número de teste.
+6. Confira os modelos dos agentes e envie `!status` e uma mensagem de conversa.
+
+Essa ordem separa problemas de infraestrutura, pareamento, acesso e provedor de
+IA. O login do painel usa a senha do `.env`; o indicador de administrador na
+whitelist controla comandos e não substitui esse login.
+
 O painel é servido pelo próprio FastAPI em **`/admin`**, na mesma porta 9001.
 Não há novo serviço no Compose, runtime de frontend, CDN ou etapa de build.
 Os arquivos ficam em `api/admin/static`; em desenvolvimento, o bind mount de
@@ -121,3 +134,19 @@ Mensagens sem texto aparecem na listagem cronológica, mas não na busca semânt
 Antes de executar esta versão, aplique a migração
 `20261020_02_MessageSearch.sql` pelo fluxo normal do projeto para adicionar
 `content.message.content_embedding` (a inicialização aplica migrações pendentes).
+
+## Verificar uma alteração
+
+Uma edição de whitelist ou permissão deve ser testada na próxima mensagem do
+contato afetado. Para agentes, confira se existe uma exceção por conversa antes
+de concluir que o modelo global não foi aplicado. Prompts editados no painel
+permanecem gerenciados após reiniciar: use **Restaurar configuração original**
+para voltar ao prompt do pacote do agente.
+
+Na sincronização, acompanhe o estado e a janela escolhida antes de iniciar outra
+execução. Na busca semântica, diferencie ausência de resultados de indexação
+parcial; **Continuar indexação** processa outro lote e pode consumir embeddings.
+
+Para investigar uma falha de conexão consulte [WAHA](waha.md); para problemas de
+ferramentas, consulte [MCP](mcp.md). Estrutura de agentes e persistência dos
+padrões estão em [pacotes de agentes](agents.md).

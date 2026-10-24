@@ -1,3 +1,4 @@
+from security.types import EncryptedText
 from sqlalchemy import Column, ForeignKey, Integer, Text, TIMESTAMP
 from sqlalchemy.orm import relationship
 
@@ -12,7 +13,7 @@ class Remember(Base):
     user_id = Column(Integer, ForeignKey("base.user.id"), nullable=True)
     group_id = Column(Integer, ForeignKey("base.group.id"), nullable=True)
     remember_at = Column(TIMESTAMP, nullable=False)
-    message = Column(Text, nullable=True)
+    message = Column(EncryptedText('remember.message', False), nullable=True)
     inserted_at = Column(
         nullable=False,
         server_default="timezone('America/Sao_Paulo', now())"

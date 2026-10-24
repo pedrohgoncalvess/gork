@@ -48,13 +48,20 @@ async def directory(db, kind: str, q: str, offset: int, limit: int) -> dict:
         columns += [User.phone_number, blocked.label("blocked")]
     else:
         columns += [Group.auto_message]
-    filters = []
+    if not q:
+        total = await db.scalar(select(func.count()).select_from(model))
+        result = await db.execute(select(*columns).order_by(model.id).offset(offset).limit(limit))
+        return {'items': [dict(row) for row in result.mappings()], 'total': total, 'offset': offset, 'limit': limit}
+    # Identity names cannot be sorted or substring-searched as ciphertext.
+    result = await db.execute(select(*columns).order_by(model.id))
+    items = [dict(row) for row in result.mappings()]
     if q:
-        fields = [model.name, model.src_id] + ([User.phone_number] if kind == "user" else [])
-        filters.append(or_(*(field.ilike(f"%{q}%") for field in fields)))
-    total = await db.scalar(select(func.count()).select_from(model).where(*filters))
-    result = await db.execute(select(*columns).where(*filters).order_by(model.name.asc().nullslast(), model.id).offset(offset).limit(limit))
-    return {"items": [dict(row) for row in result.mappings()], "total": total, "offset": offset, "limit": limit}
+        needle = q.casefold()
+        items = [item for item in items if any(needle in str(item.get(key) or '').casefold()
+                 for key in ('name', 'src_id', 'phone_number'))]
+    items.sort(key=lambda item: (item['name'] is None, (item['name'] or '').casefold(), item['id']))
+    return {'items': items[offset:offset + limit], 'total': len(items), 'offset': offset, 'limit': limit}
+
 
 
 async def set_whitelist(db, kind: str, identifier: int, allowed: bool, is_admin: bool):

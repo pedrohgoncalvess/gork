@@ -45,7 +45,7 @@ class AdminDataTests(unittest.IsolatedAsyncioTestCase):
     async def test_messages_index_pending_text_then_rank_and_report_remaining(self):
         db = self.database()
         pending = Mock()
-        pending.all.return_value = [SimpleNamespace(id=9, content="Vamos viajar")]
+        pending.all.return_value = [SimpleNamespace(id=9, content="Vamos viajar", updated_at=None)]
         result = Mock()
         result.mappings.return_value = []
         db.execute.side_effect = [pending, Mock(), result]
@@ -80,7 +80,7 @@ class AdminDataTests(unittest.IsolatedAsyncioTestCase):
         db.scalar.return_value = SimpleNamespace(name="arquivo.html", bucket="whatsapp", path="folder/file.html")
         storage_response = Mock()
         storage_response.stream.return_value = iter([b"<script>example</script>"])
-        storage = SimpleNamespace(connect=AsyncMock(), client=SimpleNamespace(get_object=Mock(return_value=storage_response)))
+        storage = SimpleNamespace(decrypt_object=lambda response, bucket, path: response.stream(64 * 1024), connect=AsyncMock(), client=SimpleNamespace(get_object=Mock(return_value=storage_response)))
         with patch.object(data, "S3Client", return_value=storage):
             response = await data.media(1, False, db)
             chunks = [chunk async for chunk in response.body_iterator]

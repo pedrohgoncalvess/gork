@@ -1,3 +1,4 @@
+from security.types import EncryptedText
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import BigInteger, Column, DECIMAL, func, Integer, LargeBinary, String, text, Text, TIMESTAMP, UUID
 
@@ -11,13 +12,13 @@ class Media(Base):
     id = Column(Integer, primary_key=True)
     ext_id = Column(UUID, unique=True, nullable=False, server_default=text("uuid_generate_v4()"))
 
-    name = Column(String(150), nullable=False)
+    name = Column(EncryptedText('media.name', False), nullable=False)
     bucket = Column(String(30), nullable=False)
     path = Column(String(200), nullable=False)
     type = Column(String(20))
 
     size = Column(DECIMAL)
-    description = Column(Text)
+    description = Column(EncryptedText('media.description', False))
     description_embedding = Column(Vector(2560))
     hash = Column(LargeBinary, nullable=False, unique=True)
     phash = Column(BigInteger)

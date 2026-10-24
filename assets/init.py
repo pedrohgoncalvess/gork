@@ -73,12 +73,10 @@ async def init_assets() -> None:
 
                     await loop.run_in_executor(
                         None,
-                        s3.client.put_object,
+                        s3.put_encrypted,
                         BUCKET,
                         s3_sub_path,
                         buffer,
-                        len(file_bytes),
-                        content_type,
                     )
 
                     await logger.info(

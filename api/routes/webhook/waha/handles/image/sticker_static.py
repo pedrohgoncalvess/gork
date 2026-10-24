@@ -185,7 +185,7 @@ async def static_sticker(
             img = await _random_image()
 
     if resize:
-        from agents.execution.resize_image import resize_image_agent
+        from agents.resize_image.agent import resize_image_agent
         from log import logger as sticker_logger
         await sticker_logger.info(
             'Sticker', 'Resize', f'Resize requested. Image size: {img.size}'

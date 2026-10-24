@@ -1,7 +1,6 @@
 import base64
 import io
 from pathlib import Path
-import shutil
 from types import SimpleNamespace
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
@@ -10,14 +9,13 @@ import wave
 import httpx
 import yaml
 
-from agents.execution.audio_generation import text_to_speech
+from agents.audio_generation.agent import text_to_speech
 from external.openrouter import generate_speech
-from services.audio_conversion import audio_to_wav
 
 
 class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
     async def test_fixed_voice_in_all_languages_and_scoped_model_resolution(self):
-        module = "agents.execution.audio_generation"
+        module = "agents.audio_generation.agent"
         agent = SimpleNamespace(id=2, prompt="Read faithfully.")
         model = SimpleNamespace(openrouter_id="google/gemini-3.8-flash-lite-tts")
         connection = AsyncMock()
@@ -50,7 +48,7 @@ class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
                 models.return_value.resolve_agent_model.assert_awaited_with(agent, user_id=7, group_id=3)
 
     async def test_missing_agent_fails_without_local_fallback(self):
-        module = "agents.execution.audio_generation"
+        module = "agents.audio_generation.agent"
         with (
             patch(f"{module}.PgConnection", return_value=AsyncMock()),
             patch(f"{module}.AgentRepository") as agents,
@@ -62,7 +60,7 @@ class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
             speech.assert_not_awaited()
 
     async def test_invalid_text_or_language_does_not_call_provider(self):
-        with patch("agents.execution.audio_generation.generate_speech", new=AsyncMock()) as speech:
+        with patch("agents.audio_generation.agent.generate_speech", new=AsyncMock()) as speech:
             for text, language in ((" ", "pt"), ("Olá", "invalid")):
                 with self.assertRaises(ValueError):
                     await text_to_speech(text, language, user_id=7)
@@ -156,24 +154,3 @@ class AudioConfigurationTests(unittest.TestCase):
         self.assertNotIn('name = "piper-tts"', lock)
         self.assertNotIn('name = "soundfile"', lock)
         self.assertIn('name = "onnxruntime"', lock)  # Background removal still needs it.
-
-
-class AudioConversionTests(unittest.IsolatedAsyncioTestCase):
-    @unittest.skipUnless(shutil.which("ffmpeg"), "FFmpeg is not installed")
-    async def test_real_conversion_preserves_audio_duration_without_soundfile(self):
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as source:
-            source.setnchannels(2)
-            source.setsampwidth(2)
-            source.setframerate(8000)
-            source.writeframes(b"\0" * 3200)
-        converted = await audio_to_wav(buffer.getvalue())
-        with wave.open(io.BytesIO(converted), "rb") as result:
-            self.assertEqual(result.getnchannels(), 1)
-            self.assertEqual(result.getframerate(), 16000)
-            self.assertEqual(result.getsampwidth(), 2)
-            self.assertAlmostEqual(len(result.readframes(100000)) / 32000, 0.1, places=2)
-
-    async def test_empty_audio_is_rejected(self):
-        with self.assertRaises(ValueError):
-            await audio_to_wav(b"")

@@ -70,14 +70,14 @@ async def browse(kind: str, group_id: int | None = Query(None, gt=0),
     if q:
         query_vector = (await vectors(db, [q]))[0]
         if kind == "messages":
-            missing = [*filters, Message.content.is_not(None), func.length(func.trim(Message.content)) > 0,
+            missing = [*filters, Message.content.is_not(None),
                        Message.content_embedding.is_(None)]
-            pending = (await db.execute(select(Message.id, Message.content).outerjoin(Media, Media.id == Message.media_id)
+            pending = (await db.execute(select(Message.id, Message.content, Message.updated_at).outerjoin(Media, Media.id == Message.media_id)
                        .where(*missing).order_by(Message.id).limit(100))).all() if index_messages else []
             if pending:
                 indexed = await vectors(db, [row.content for row in pending])
                 for row, vector in zip(pending, indexed):
-                    await db.execute(update(Message).where(Message.id == row.id, Message.content == row.content)
+                    await db.execute(update(Message).where(Message.id == row.id, Message.updated_at.is_not_distinct_from(row.updated_at))
                                      .values(content_embedding=vector))
                 await db.commit()
             remaining = await db.scalar(select(func.count()).select_from(Message)
@@ -130,7 +130,7 @@ async def media(identifier: int, download: bool = False, db=Depends(get_db)):
 
     def chunks():
         try:
-            yield from response.stream(64 * 1024)
+            yield from client.decrypt_object(response, item.bucket, item.path)
         finally:
             response.close()
             response.release_conn()

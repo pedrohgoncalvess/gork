@@ -197,6 +197,8 @@ async def conversation_agent(
         last_message_id: int,
         group_id: Optional[int] = None,
         additional_context: str = "",
+        *,
+        agent_name: str,
 ) -> str:
     agent_repo = AgentRepository(db)
     model_conversation_repo = ModelConversationRepository(db)
@@ -324,7 +326,6 @@ async def conversation_agent(
         f"{last_msg_id_str}{sender_display_name} - [{datetime.now().strftime('%H:%M')}]: {last_content}"
     )
 
-    agent_name = "conversation-group" if group_id else "conversation-dm"
     agent = await agent_repo.find_by_name(agent_name)
     if not agent:
         await logger.error("Agent", "Conversation", f"Agent {agent_name} not found.")
