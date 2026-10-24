@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import psycopg
 from sqlalchemy.engine import URL
 from yoyo import get_backend, read_migrations
 
@@ -13,6 +14,9 @@ _REQUIRED_DATABASE_VARIABLES = (
     "PG_PORT",
     "PG_NAME",
 )
+
+# Stable across workers and containers; released when the connection closes.
+_MIGRATION_LOCK_ID = 0x676F726B6D696772
 
 
 def _migration_database_url() -> str:
@@ -41,15 +45,26 @@ def apply_pending_migrations() -> int:
     if not migrations_path.is_dir():
         raise RuntimeError(f"Migration directory not found: {migrations_path}")
 
-    backend = get_backend(_migration_database_url())
     migrations = read_migrations(str(migrations_path))
     if not migrations:
         raise RuntimeError(f"No migrations found in: {migrations_path}")
 
-    # Gunicorn starts more than one worker. Yoyo's database lock serializes
-    # workers so only the first one applies changes and the rest see no work.
-    with backend.lock():
-        pending = backend.to_apply(migrations)
-        backend.apply_migrations(pending)
+    database_url = _migration_database_url()
+    conninfo = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
+    # Yoyo's lock depends on a table that may not exist on the first startup.
+    # Serialize bootstrap as well as migrations, including across containers.
+    with psycopg.connect(conninfo, autocommit=True) as connection:
+        connection.execute("SELECT pg_advisory_lock(%s)", (_MIGRATION_LOCK_ID,))
+        # Yoyo suppresses every DatabaseError while creating this table. Create
+        # it explicitly so permission/schema errors reach the startup log.
+        connection.execute(
+            'CREATE TABLE IF NOT EXISTS "yoyo_lock" ('
+            '"locked" INT DEFAULT 1 PRIMARY KEY, '
+            '"ctime" TIMESTAMP, "pid" INT NOT NULL)'
+        )
+        with get_backend(database_url) as backend:
+            with backend.lock():
+                pending = backend.to_apply(migrations)
+                backend.apply_migrations(pending)
 
     return len(pending)
