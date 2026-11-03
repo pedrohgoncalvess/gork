@@ -65,6 +65,11 @@ survive restarts: editing `prompt.md` alone does not overwrite them. Use
 **Restore original configuration** in the panel to return to repository defaults.
 Response schemas remain code-owned and must match parsing and dispatch.
 
+The model picker groups repeated OpenRouter IDs and only offers models with
+the agent's output modality, using cached catalog metadata. Audio/image input
+support alone does not qualify a model for audio/image generation. Unknown
+capabilities remain unavailable until catalog discovery supplies metadata.
+
 ## Add an agent
 
 1. Create `agents/<agent_name>/agent.py` and `prompt.md`; add a parser and schema

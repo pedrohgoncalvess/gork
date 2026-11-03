@@ -12,6 +12,7 @@ from api.admin import synchronization
 from api.admin.dependencies import get_db
 from api.admin.schemas import SyncInput, TestSettings
 from services.setup import settings, save_test_settings
+from services.model_capabilities import agent_output, model_catalog
 from api.admin.auth import COOKIE_NAME, SESSION_SECONDS, create_session, csrf_token, password, require_admin
 from api.admin.schemas import (AgentInput, BlacklistInput, CommandInput, GroupInput, GroupSettings,
                                Login, ModelInput, OverrideInput, PairingCode, UserInput, WhitelistInput)
@@ -192,7 +193,7 @@ async def agents(db=Depends(get_db)):
     result = await db.execute(select(Agent.id, Agent.name, Agent.prompt, Agent.model_id,
                                     Agent.model_managed, Agent.prompt_managed, Model.name.label("model_name"),
                                     Model.openrouter_id).join(Model, Model.id == Agent.model_id).order_by(Agent.name))
-    return [dict(row) for row in result.mappings()]
+    return [dict(row, output_modality=agent_output(row["name"])) for row in result.mappings()]
 
 
 @api.patch("/agents/{identifier}")
@@ -211,8 +212,8 @@ async def reset_agent(identifier: int, db=Depends(get_db)):
 
 @api.get("/models")
 async def models(db=Depends(get_db)):
-    result = await db.execute(select(Model.id, Model.name, Model.openrouter_id).order_by(Model.name, Model.id))
-    return [dict(row) for row in result.mappings()]
+    result = await db.execute(select(Model).order_by(Model.name, Model.id))
+    return model_catalog(result.scalars().all())
 
 
 @api.post("/models", status_code=201)
