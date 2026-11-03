@@ -161,10 +161,15 @@ def _exclude_gork_user(
 
 
 def _build_image_prompt(
-        system_prompt: str,
+        system_prompt: str | None,
         user_request: str,
-        references: list[ImageInputReference],
+        references: list[ImageInputReference] | None = None,
 ) -> str:
+    clean_system = (system_prompt or "").strip()
+    clean_request = (user_request or "").strip()
+    if not clean_system:
+        return clean_request
+
     if references:
         manifest_lines = [
             f"Reference [{index}]: role={reference.role}; label={reference.label}"
@@ -175,9 +180,9 @@ def _build_image_prompt(
 
     manifest = "\n".join(manifest_lines)
     return (
-        f"{system_prompt.strip()}\n\n"
+        f"{clean_system}\n\n"
         f"INPUT REFERENCE MANIFEST:\n{manifest}\n\n"
-        f"USER REQUEST:\n{user_request.strip()}"
+        f"USER REQUEST:\n{clean_request}"
     )
 
 

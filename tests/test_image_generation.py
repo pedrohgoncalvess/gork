@@ -115,6 +115,18 @@ class ImageGenerationPipelineTests(unittest.TestCase):
         self.assertIn("Reference [2]: role=identity; label=Pedro", prompt)
         self.assertTrue(prompt.endswith("USER REQUEST:\ncoloque Pedro na praia"))
 
+    def test_prompt_without_system_prompt_returns_only_user_request(self):
+        references = [
+            _image_reference(_encoded_image("PNG"), "primary", "base"),
+            _image_reference(_encoded_image("JPEG"), "identity", "Pedro"),
+        ]
+
+        prompt = _build_image_prompt("", "coloque Pedro na praia", references)
+        self.assertEqual(prompt, "coloque Pedro na praia")
+
+        prompt_none = _build_image_prompt(None, "coloque Pedro na praia", references)
+        self.assertEqual(prompt_none, "coloque Pedro na praia")
+
     def test_more_than_three_references_compacts_identities_without_dropping_people(self):
         references = [
             _image_reference(_encoded_image("PNG"), "primary", "imagem principal"),
@@ -287,7 +299,7 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.enterContext(patch(f"{self.module}.PgConnection", return_value=AsyncMock()))
         for name, repository in {
             "AgentRepository": SimpleNamespace(find_by_name=AsyncMock(
-                return_value=SimpleNamespace(prompt="EDIT SYSTEM"))),
+                return_value=SimpleNamespace(prompt=""))),
             "UserRepository": self.user_repo,
             "MessageRepository": self.message_repo,
             "ModelConversationRepository": SimpleNamespace(
@@ -334,7 +346,7 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
 
         payload = self.provider.await_args.args[0]
         self.assertEqual(set(payload), {"model", "prompt", "input_references"})
-        self.assertTrue(payload["prompt"].endswith("USER REQUEST:\ncoloque Ana nessa foto"))
+        self.assertEqual(payload["prompt"], "coloque Ana nessa foto")
         self.assertEqual(payload["input_references"], [
             _image_reference(self.current_image, "primary", "").payload_item(),
             _image_reference(self.quoted_image, "context", "").payload_item(),
@@ -362,7 +374,7 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.message.media_id = None
         await _generate_image(1, self.message)
         payload = self.provider.await_args.args[0]
-        self.assertIn("role=primary; label=imagem da mensagem citada", payload["prompt"])
+        self.assertEqual(payload["prompt"], "troque o rosto mantendo o resto da foto")
         self.assertEqual(len(payload["input_references"]), 1)
         self.download.assert_awaited_once_with("quote")
         self.s3.connect.assert_not_awaited()
