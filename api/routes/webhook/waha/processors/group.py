@@ -248,7 +248,7 @@ async def process_group_message(
     # which may outlive a restarted worker.
     command_context = (
         nullcontext()
-        if requested_feature in ("sticker", "ban")
+        if requested_feature in ("sticker", "ban", "unban")
         else serialize_group_conversation(group.id)
     )
     async with command_context:

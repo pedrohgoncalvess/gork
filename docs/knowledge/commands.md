@@ -111,6 +111,12 @@ pode falhar. A ferramenta de conhecimento explica a função, mas não faz downl
 mínimo 1 e máximo 180 minutos. `:expiration` é o prazo da enquete em minutos,
 mínimo 5, padrão 10 e máximo 20. São durações diferentes.
 
+`!unban @usuário :expiration 5` (ou `!unban @me :expiration 5` quando enviado pela
+própria pessoa banida) abre votação para remover um banimento ativo. Só funciona
+para quem está banido, pode ser usado 1 vez durante o banimento, segue as mesmas
+regras de votação e quórum do `!ban`, e aceita apenas `:expiration` (mínimo 3,
+padrão 5 e máximo 10 minutos).
+
 Exige Gork admin. Quórum: ao menos um terço dos membros sem Gork, arredondado
 para cima, e mínimo de três votantes. Com quórum, maioria aprova; empate não.
 O ban apaga mensagens novas enquanto ativo; não expulsa o membro nem bloqueia

@@ -10,6 +10,9 @@ COMMANDS = [
         (":time", "Duração do banimento; padrão 30 minutos, máximo 3 horas.", [("3hr", "3 horas"), ("30min", "30 minutos"), ("120", "120 minutos"), ("1:30", "1 hora e 30 minutos")]),
         (":expiration", "Prazo da votação em minutos; mínimo 5, padrão 10, máximo 20.", [("5", "5 minutos"), ("10", "10 minutos"), ("20", "20 minutos")]),
     ]),
+    ("!unban", "Abre votação para remover um banimento ativo (1 vez por banimento). Outros membros usam !unban @usuário; a própria pessoa banida usa !unban @me. Exige Gork admin, ao menos 1/3 dos membros sem o Gork e mínimo de 3 votantes; maioria decide. Empate não aprova. Encerra antes se todos votarem.", "utility", [
+        (":expiration", "Prazo da votação em minutos; mínimo 3, padrão 5, máximo 10.", [("3", "3 minutos"), ("5", "5 minutos"), ("10", "10 minutos")]),
+    ]),
     ("!audio", "Envia áudio como forma de resposta. _[Adicione !english para voz em inglês]_", "audio", []),
     ("!resume", "Faz um resumo das últimas 30 mensagens. _[Ignora o restante da mensagem]_", "utility", []),
     ("!search", "Faz uma pesquisa por termo na internet e retorna um resumo.", "search", []),

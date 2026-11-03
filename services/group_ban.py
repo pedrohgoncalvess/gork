@@ -20,6 +20,7 @@ from services.ban_cache import invalidate as invalidate_ban_cache
 
 ADMIN_REQUIRED = 'Preciso ser administrador do grupo para abrir a votação e excluir mensagens.'
 USAGE = 'Use !ban @usuário :time 30min :expiration 10. :time aceita 3hr, 30min, 120 ou 1:30; padrão 30 minutos, máximo 3 horas. :expiration é o prazo da votação em minutos: de 5 a 20, padrão 10.'
+UNBAN_USAGE = 'Use !unban @usuário (ou !unban @me se você estiver banido) :expiration 5. :expiration é o prazo da votação em minutos: de 3 a 10, padrão 5.'
 
 
 def duration_minutes(command: str) -> int:
@@ -56,6 +57,28 @@ def expiration_minutes(command: str) -> int:
     if not 5 <= expiration <= 20:
         raise ValueError(error)
     return expiration
+
+
+def unban_expiration_minutes(command: str) -> int:
+    tokens = re.findall(r'(?<!\S):([^\s=]+)', command)
+    if any(token.lower() != 'expiration' for token in tokens):
+        raise ValueError(UNBAN_USAGE)
+    parameters = re.findall(r'(?<!\S):expiration\b', command, re.I)
+    if not parameters:
+        return 5
+    matches = list(re.finditer(r'(?<!\S):expiration(?:=|\s+)(\S+)', command, re.I))
+    error = 'Use :expiration de 3 a 10 minutos (padrão: 5).'
+    if len(parameters) != 1 or len(matches) != 1 or not re.fullmatch(r'[0-9]+', matches[0][1]):
+        raise ValueError(error)
+    expiration = int(matches[0][1])
+    if not 3 <= expiration <= 10:
+        raise ValueError(error)
+    return expiration
+
+
+def is_unban_command(data: dict) -> bool:
+    conversation = (data.get('message') or {}).get('conversation') or ''
+    return bool(re.search(r'(?<!\S)!unban(?=\s|$)', conversation, re.I))
 
 
 def aliases(member: dict) -> list[str]:
@@ -116,6 +139,8 @@ async def bot_aliases() -> set[str]:
 def cooldown_message(row: dict, now: datetime) -> str | None:
     if row['status'] in ('creating', 'open'):
         return 'Já existe uma votação em andamento para esse usuário. Aguarde o encerramento e mais 1 hora.'
+    if row.get('poll_type', 'ban') == 'unban':
+        return None
     if row['status'] in ('approved', 'revoked'):
         end = row['ban_until']
         if row['status'] == 'approved' and end and end > now:
@@ -147,6 +172,28 @@ async def check_ban_availability(db, remote: str, target_ids: list[str]) -> str 
         if reason:
             return reason
     return None
+
+
+async def check_unban_availability(db, remote: str, target_ids: list[str]) -> tuple[int | None, str | None]:
+    for alias in sorted(target_ids):
+        await db.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))'),
+                         {'key': f'group-ban:{waha_session}:{remote}:{alias}'})
+    row = (await db.execute(text('''SELECT b.id,
+        EXISTS (
+            SELECT 1 FROM manager.group_ban_poll u
+            WHERE u.ban_poll_id = b.id AND u.status <> 'failed'
+        ) AS unban_used
+        FROM manager.group_ban_poll b
+        WHERE b.session=:session AND b.chat_id=:chat AND b.poll_type='ban'
+        AND b.status='approved' AND b.ban_until > clock_timestamp()
+        AND b.target_aliases ?| CAST(:aliases AS text[])
+        ORDER BY b.opened_at DESC LIMIT 1'''),
+        {'session': waha_session, 'chat': remote, 'aliases': target_ids})).mappings().first()
+    if not row:
+        return None, 'Esse usuário não está banido no momento.'
+    if row['unban_used']:
+        return None, 'O comando !unban só pode ser usado 1 vez durante o banimento.'
+    return row['id'], None
 
 
 async def handle_ban_command(remote: str, command: str, message_id: str, body: dict):
@@ -262,6 +309,121 @@ async def _handle_ban_command(remote: str, command: str, message_id: str, body: 
         simulate_typing=False, mentioned=mentions)
 
 
+async def handle_unban_command(remote: str, command: str, message_id: str, body: dict):
+    try:
+        async with asyncio.timeout(25):
+            await _handle_unban_command(remote, command, message_id, body)
+    except Exception as error:
+        await logger.error('GroupBan', 'UnbanCommandFailed', f'{type(error).__name__}: {error}')
+        message = (str(error) if isinstance(error, BanUnavailableError) else
+                   'Não consegui concluir o !unban agora. Confira o painel e tente novamente em instantes.')
+        await request('POST', '/api/sendText', payload={
+            'session': waha_session, 'chatId': remote, 'text': message}, timeout=10)
+
+
+async def _handle_unban_command(remote: str, command: str, message_id: str, body: dict):
+    async def reply(value):
+        await send_message(remote, value, message_id, simulate_typing=False)
+
+    if not remote.endswith('@g.us'):
+        await reply('O comando !unban só funciona em grupos.')
+        return
+    members = await participants(remote)
+    own_ids = await bot_aliases()
+    own = next((m for m in members if own_ids.intersection(aliases(m))), None)
+    if not own or not is_admin(own):
+        await reply(ADMIN_REQUIRED)
+        return
+    try:
+        expiration = unban_expiration_minutes(command)
+    except ValueError as error:
+        await reply(str(error))
+        return
+    key = (body.get('data') or {}).get('key') or {}
+    sender_ids = {chat_id(key[k]) for k in ('participant', 'participantAlt') if key.get(k)}
+    mentioned = {chat_id(jid) for jid in (body.get('data') or {}).get('contextInfo', {}).get('mentionedJid', [])}
+    has_me = bool(re.search(r'(?<!\w)@me\b', command, re.I))
+    if has_me:
+        mentioned |= sender_ids
+    targets = [m for m in members if mentioned.intersection(aliases(m))
+               and not own_ids.intersection(aliases(m))]
+    if len(targets) != 1:
+        await reply('Mencione exatamente um membro do grupo (ou use @me se você estiver banido). ' + UNBAN_USAGE)
+        return
+    target = targets[0]
+    target_ids = aliases(target)
+    if not has_me and sender_ids.intersection(target_ids):
+        await reply('Para pedir seu próprio desbanimento, use !unban @me. ' + UNBAN_USAGE)
+        return
+    if own_ids.intersection(target_ids):
+        await reply('Não posso aplicar esse comando a mim mesmo.')
+        return
+    voters = electorate([member for member in members if not own_ids.intersection(aliases(member))])
+    async with PgConnection() as db:
+        ban_id, blocked = await check_unban_availability(db, remote, target_ids)
+        if blocked:
+            await db.commit()
+            await reply(blocked)
+            return
+        await ensure_ban_webhooks()
+        name = (await db.execute(typed_text('''SELECT name FROM base."user"
+            WHERE src_id = ANY(:ids) OR phone_number = ANY(:ids)
+            ORDER BY updated_at DESC NULLS LAST LIMIT 1''',
+            binds={'ids': ARRAY(EncryptedText('identity', True))},
+            columns={'name': EncryptedText('user.name', True)}),
+            {'ids': [jid.split('@')[0] for jid in target_ids]})).scalar_one_or_none()
+        name = name or target.get('name')
+        if not name:
+            try:
+                contact = await request('GET',
+                    f'/api/{segment(waha_session)}/contacts/{segment(target["id"])}')
+                name = contact.get('name') or contact.get('pushname') or contact.get('pushName')
+            except httpx.HTTPError:
+                pass
+        name = name or target['id'].split('@')[0]
+        row = (await db.execute(text('''INSERT INTO manager.group_ban_poll
+            (session, chat_id, command_id, target_id, target_aliases, target_name,
+             electorate, member_count, duration_minutes, poll_type, ban_poll_id, closes_at)
+            VALUES (:session, :chat, :command, :target, CAST(:aliases AS jsonb), :name,
+                    CAST(:electorate AS jsonb), :total, 0, 'unban', :ban_poll_id,
+                    clock_timestamp() + :expiration * INTERVAL '1 minute')
+            ON CONFLICT DO NOTHING RETURNING id'''), {
+                'session': waha_session, 'chat': remote, 'command': message_id,
+                'target': chat_id(target['id']), 'aliases': target_ids,
+                'name': name, 'electorate': voters,
+                'total': len(set(voters.values())), 'ban_poll_id': ban_id,
+                'expiration': expiration,
+            })).scalar_one_or_none()
+        await db.commit()
+    if row is None:
+        await reply('Esse comando já foi processado ou o !unban já foi utilizado neste banimento.')
+        return
+    try:
+        poll = await request('POST', '/api/sendPoll', payload={
+            'session': waha_session, 'chatId': remote,
+            'poll': {'name': f'Desbanimento {name}', 'options': ['Sim', 'Não'], 'multipleAnswers': False},
+        })
+        async with PgConnection() as db:
+            published = (await db.execute(text('''UPDATE manager.group_ban_poll SET poll_id=:poll, status='open',
+                opened_at=clock_timestamp(), closes_at=clock_timestamp() + :expiration * INTERVAL '1 minute'
+                WHERE id=:id AND status='creating' RETURNING id'''),
+                {'poll': stanza_id(poll['id']), 'id': row, 'expiration': expiration})).scalar_one_or_none()
+            await db.commit()
+        if published is None:
+            await reply('A votação foi cancelada no painel e não será apurada.')
+            return
+    except Exception:
+        async with PgConnection() as db:
+            await db.execute(text("UPDATE manager.group_ban_poll SET status='failed' WHERE id=:id AND status='creating'"), {'id': row})
+            await db.commit()
+        raise
+    mentions = sorted(set(voters.values()))
+    tags = ' '.join('@' + identifier.split('@')[0] for identifier in mentions)
+    await send_message(remote,
+        f'Votação para desbanimento de {name}.\nExpira em {expiration} minutos.\n\n{tags}',
+        simulate_typing=False, mentioned=mentions)
+
+
 async def record_vote(body: dict):
     payload = body.get('payload') or {}
     poll, vote = payload.get('poll') or {}, payload.get('vote') or {}
@@ -320,6 +482,18 @@ async def decide_poll(db, row, *, require_everyone=False) -> bool:
     if require_everyone and tally['voted'] < row['member_count']:
         return False
     passed = approved(tally['yes'], row['member_count'], tally['voted'])
+    if row.get('poll_type') == 'unban' or row.get('ban_poll_id') is not None:
+        await db.execute(text('''UPDATE manager.group_ban_poll SET status=:status, finished_at=clock_timestamp(),
+            ban_started_at=NULL, ban_until=NULL
+            WHERE id=:id AND status='open' '''),
+            {'id': row['id'], 'status': 'approved' if passed else 'rejected'})
+        if passed and row.get('ban_poll_id') is not None:
+            await db.execute(text('''UPDATE manager.group_ban_poll
+                SET status='revoked', ban_until=clock_timestamp(),
+                    finished_at=COALESCE(finished_at, clock_timestamp())
+                WHERE id=:ban_id AND status='approved' AND ban_until > clock_timestamp()'''),
+                {'ban_id': row['ban_poll_id']})
+        return True
     await db.execute(text('''UPDATE manager.group_ban_poll SET status=:status, finished_at=clock_timestamp(),
         ban_started_at=CASE WHEN :passed THEN clock_timestamp() ELSE NULL END,
         ban_until=CASE WHEN :passed THEN clock_timestamp() + duration_minutes * INTERVAL '1 minute' ELSE NULL END
@@ -389,7 +563,17 @@ async def send_results():
                     FROM manager.group_ban_vote WHERE poll_id=:id'''), {'id': row['id']})).mappings().one()
                 no = tally['voted'] - tally['yes']
                 summary = f'{tally["yes"]} Sim · {no} Não · {tally["voted"]}/{row["member_count"]} votantes.'
-                if row['status'] == 'approved':
+                is_unban = row.get('poll_type') == 'unban' or row.get('ban_poll_id') is not None
+                if is_unban:
+                    if row['status'] == 'approved':
+                        result = f'Desbanimento de {row["target_name"]} aprovado. Banimento removido. {summary}'
+                    elif row['status'] == 'rejected':
+                        reason = ('quórum insuficiente' if tally['voted'] < quorum(row['member_count'])
+                                  else 'empate' if tally['yes'] == no else 'maioria votou Não')
+                        result = f'Desbanimento de {row["target_name"]} não aprovado: {reason}. {summary}'
+                    else:
+                        result = f'Votação de desbanimento de {row["target_name"]} cancelada: não consegui ler todos os votos. O banimento continua ativo.'
+                elif row['status'] == 'approved':
                     result = f'Banimento de {row["target_name"]} aprovado por {row["duration_minutes"]} minutos. {summary}'
                 elif row['status'] == 'rejected':
                     reason = ('quórum insuficiente' if tally['voted'] < quorum(row['member_count'])
@@ -410,7 +594,7 @@ async def send_results():
 
 async def enforce_ban(data: dict, remote: str, *, known_active=False) -> bool:
     key = data['key']
-    if key.get('fromMe') or not remote.endswith('@g.us'):
+    if key.get('fromMe') or not remote.endswith('@g.us') or is_unban_command(data):
         return False
     sender = [chat_id(key[k]) for k in ('participant', 'participantAlt') if key.get(k)]
     if not sender:

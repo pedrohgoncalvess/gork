@@ -94,6 +94,10 @@ async def process_explicit_commands(
         from services.group_ban import handle_ban_command
         await handle_ban_command(remote_id, conversation, message_id, body)
         return
+    if re.search(r"(?<!\S)!unban(?=\s|$)", lw_conversation):
+        from services.group_ban import handle_unban_command
+        await handle_unban_command(remote_id, conversation, message_id, body)
+        return
     if "!status" in lw_conversation:
         await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
         return

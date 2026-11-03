@@ -568,5 +568,119 @@ class BanWebhookTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(send.await_args.kwargs['payload']['text'], notice)
 
 
+class UnbanTests(unittest.IsolatedAsyncioTestCase):
+    result = BanFlowTests.result
+    database = BanFlowTests.database
+
+    def test_unban_expiration_defaults_limits_and_rejects_other_parameters(self):
+        self.assertEqual(ban.unban_expiration_minutes('!unban @123'), 5)
+        for minutes in (3, 5, 10):
+            for separator in (' ', '='):
+                self.assertEqual(ban.unban_expiration_minutes(f'!unban @123 :expiration{separator}{minutes}'), minutes)
+        for value in ('', '0', '2', '11', '-3', '5.5', 'abc', '5min'):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ban.unban_expiration_minutes('!unban @123 :expiration ' + value)
+        for invalid in ('!unban @123 :time 30min', '!unban @123 :time=30 :expiration=5',
+                        '!unban @123 :expiration 3 :expiration 5', '!unban @123 :other 1'):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                ban.unban_expiration_minutes(invalid)
+
+    async def test_unban_requires_active_ban_and_allows_only_once_per_ban(self):
+        db = SimpleNamespace(execute=AsyncMock(side_effect=[self.result(), self.result(row=None)]))
+        ban_id, blocked = await ban.check_unban_availability(db, '123@g.us', ['222@lid'])
+        self.assertIsNone(ban_id)
+        self.assertIn('não está banido', blocked)
+
+        db = SimpleNamespace(execute=AsyncMock(side_effect=[
+            self.result(), self.result(row={'id': 42, 'unban_used': True})]))
+        ban_id, blocked = await ban.check_unban_availability(db, '123@g.us', ['222@lid'])
+        self.assertIsNone(ban_id)
+        self.assertIn('1 vez durante o banimento', blocked)
+
+        db = SimpleNamespace(execute=AsyncMock(side_effect=[
+            self.result(), self.result(row={'id': 42, 'unban_used': False})]))
+        ban_id, blocked = await ban.check_unban_availability(db, '123@g.us', ['222@lid'])
+        self.assertEqual(ban_id, 42)
+        self.assertIsNone(blocked)
+
+    async def test_banned_member_can_invoke_unban_without_message_being_deleted(self):
+        from api.routes.webhook.waha import services
+        from services import ban_cache as cache
+        body = waha_tests.event(body='!unban @me :expiration 5')
+        normalized = services.normalize_webhook(body)
+        with (patch.object(cache, 'snapshot', AsyncMock()) as snap,
+              patch.object(ban, 'request', AsyncMock()) as request):
+            self.assertFalse(await cache.decision(normalized['data'], '120363123456789012@g.us'))
+            self.assertFalse(await ban.enforce_ban(normalized['data'], '120363123456789012@g.us', known_active=True))
+            self.assertFalse(await services.moderate_group_message(normalized))
+        snap.assert_not_awaited()
+        request.assert_not_awaited()
+
+    async def test_unban_opens_poll_for_self_with_me_and_for_other_members_with_mention(self):
+        members = [{'id': '111@lid', 'pn': '5511@c.us', 'role': 'admin'},
+                   {'id': '222@lid', 'pn': '5522@c.us', 'role': 'participant'},
+                   {'id': '333@lid', 'pn': '5533@c.us', 'role': 'participant'}]
+        for command, body in [
+            ('!unban @me', {'data': {'key': {'participant': '222@lid'}, 'contextInfo': {'mentionedJid': []}}}),
+            ('@Gork !unban @222', {'data': {'key': {'participant': '333@lid'}, 'contextInfo': {'mentionedJid': ['111@lid', '222@lid']}}}),
+        ]:
+            with self.subTest(command=command):
+                db = SimpleNamespace(execute=AsyncMock(side_effect=[
+                    self.result(scalar='Ana'), self.result(scalar=9), self.result(scalar=9)]), commit=AsyncMock())
+                with (patch.object(ban, 'participants', AsyncMock(return_value=members)),
+                      patch.object(ban, 'bot_aliases', AsyncMock(return_value={'5511@c.us'})),
+                      patch.object(ban, 'check_unban_availability', AsyncMock(return_value=(42, None))),
+                      patch.object(ban, 'ensure_ban_webhooks', AsyncMock()),
+                      patch.object(ban, 'PgConnection', self.database(db)),
+                      patch.object(ban, 'send_message', AsyncMock()) as send,
+                      patch.object(ban, 'request', AsyncMock(return_value={'id': 'true_123@g.us_UNBAN_POLL'})) as request):
+                    await ban.handle_unban_command('123@g.us', command, 'CMD_UNBAN', body)
+                poll = request.await_args.kwargs['payload']['poll']
+                self.assertEqual(poll, {'name': 'Desbanimento Ana', 'options': ['Sim', 'Não'], 'multipleAnswers': False})
+                self.assertEqual(db.execute.await_args_list[1].args[1]['ban_poll_id'], 42)
+                self.assertEqual(db.execute.await_args_list[1].args[1]['expiration'], 5)
+                self.assertEqual(send.await_args.args[1],
+                                 'Votação para desbanimento de Ana.\nExpira em 5 minutos.\n\n@222 @333')
+
+        body_self_without_me = {'data': {'key': {'participant': '222@lid'}, 'contextInfo': {'mentionedJid': ['222@lid']}}}
+        with (patch.object(ban, 'participants', AsyncMock(return_value=members)),
+              patch.object(ban, 'bot_aliases', AsyncMock(return_value={'5511@c.us'})),
+              patch.object(ban, 'send_message', AsyncMock()) as send,
+              patch.object(ban, 'request', AsyncMock()) as request):
+            await ban.handle_unban_command('123@g.us', '!unban @222', 'CMD_UNBAN', body_self_without_me)
+        request.assert_not_awaited()
+        self.assertIn('!unban @me', send.await_args.args[1])
+
+    async def test_approved_unban_revokes_active_ban_and_notifies_group(self):
+        unban_row = {'id': 9, 'poll_type': 'unban', 'ban_poll_id': 42, 'member_count': 10,
+                     'status': 'approved', 'chat_id': '123@g.us', 'target_name': 'Ana', 'duration_minutes': 0}
+        db = SimpleNamespace(execute=AsyncMock(side_effect=[
+            self.result(tally={'yes': 3, 'voted': 4}), self.result(), self.result()]), commit=AsyncMock())
+        self.assertTrue(await ban.decide_poll(db, unban_row))
+        self.assertEqual(db.execute.await_args_list[1].args[1]['status'], 'approved')
+        revoke_sql, revoke_args = db.execute.await_args_list[2].args
+        self.assertIn("SET status='revoked', ban_until=clock_timestamp()", str(revoke_sql))
+        self.assertEqual(revoke_args['ban_id'], 42)
+
+        db_notice = SimpleNamespace(execute=AsyncMock(side_effect=[
+            self.result(rows=[unban_row]), self.result(tally={'yes': 3, 'voted': 4}), self.result()]),
+            commit=AsyncMock())
+        with (patch.object(ban, 'PgConnection', self.database(db_notice)),
+              patch.object(ban, 'request', AsyncMock()) as send):
+            await ban.send_results()
+        self.assertIn('Desbanimento de Ana aprovado. Banimento removido.', send.await_args.kwargs['payload']['text'])
+
+    async def test_plain_and_bot_prefixed_unban_use_handler_instead_of_agent(self):
+        from api.routes.webhook.waha.processors import common
+        for command in ('!unban @andre', '@Gork !unban @andre :expiration=3', '@5511 !UNBAN @5522 :expiration 10'):
+            with (patch.object(common, 'get_disabled_command_message', AsyncMock(return_value=None)),
+                  patch.object(common, 'handle_conversation_agent', AsyncMock()) as agent,
+                  patch.object(ban, 'handle_unban_command', AsyncMock()) as handler):
+                await common.process_commands(command, '123@g.us', 'CMD', SimpleNamespace(id=1),
+                                              {}, 2, Mock(), Mock(), {}, Mock())
+            handler.assert_awaited_once_with('123@g.us', command, 'CMD', {})
+            agent.assert_not_awaited()
+
+
 if __name__ == '__main__':
     unittest.main()

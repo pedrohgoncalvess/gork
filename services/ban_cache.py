@@ -3,6 +3,7 @@ from security.sql import ban_text as text
 """Shared moderation snapshot. Cache failures fall back to PostgreSQL."""
 import asyncio
 import json
+import re
 import time
 
 import redis.asyncio as redis
@@ -62,6 +63,8 @@ async def snapshot():
 
 
 async def decision(data: dict, remote: str) -> bool | None:
+    if re.search(r'(?<!\S)!unban(?=\s|$)', (data.get('message') or {}).get('conversation') or '', re.I):
+        return False
     state = await snapshot()
     if state is None:
         return None
