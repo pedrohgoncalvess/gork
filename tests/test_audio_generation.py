@@ -59,6 +59,22 @@ class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
                 await text_to_speech("Olá", user_id=7)
             speech.assert_not_awaited()
 
+    async def test_disabled_prompt_sends_only_user_text_without_speech_instructions(self):
+        module = "agents.audio_generation.agent"
+        agent = SimpleNamespace(id=2, prompt="Read faithfully.", disable_system_prompt=True)
+        with (
+            patch(f"{module}.PgConnection", return_value=AsyncMock()),
+            patch(f"{module}.AgentRepository") as agents,
+            patch(f"{module}.ModelConversationRepository") as models,
+            patch(f"{module}.generate_speech", new=AsyncMock(return_value=b"\0" * 480)) as speech,
+        ):
+            agents.return_value.find_by_name = AsyncMock(return_value=agent)
+            models.return_value.resolve_agent_model = AsyncMock(return_value=SimpleNamespace(openrouter_id="test/audio"))
+            await text_to_speech("Olá", user_id=7, tone="calmo")
+        payload = speech.await_args.args[0]
+        self.assertEqual(payload["input"], "Olá")
+        self.assertNotIn("provider", payload)
+
     async def test_invalid_text_or_language_does_not_call_provider(self):
         with patch("agents.audio_generation.agent.generate_speech", new=AsyncMock()) as speech:
             for text, language in ((" ", "pt"), ("Olá", "invalid")):

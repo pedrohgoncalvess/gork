@@ -3,6 +3,7 @@ import json
 from typing import Optional
 
 from agents.transcriber.parser import audio_format, parse_transcription
+from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database import PgConnection
 from database.models.manager import Command, Interaction
 from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelConversationRepository
@@ -53,7 +54,7 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": transcriber_agent.prompt},
+                        *([] if prompt_disabled(transcriber_agent) else [{"type": "text", "text": transcriber_agent.prompt}]),
                         {
                             "type": "input_audio",
                             "input_audio": {
@@ -72,6 +73,7 @@ async def transcribe_audio(webhook_data:dict, user_id: int, group_id: Optional[i
             except Exception:
                 pass
 
+        apply_prompt_setting(payload, transcriber_agent)
         req = await completions(payload)
         resp = req["choices"][0]["message"]["content"]
         resp = parse_transcription(resp, bool(transcriber_agent.response_format))

@@ -10,6 +10,7 @@ from typing import Optional
 import httpx
 from PIL import Image, ImageOps
 
+from services.agent_settings import prompt_disabled
 from database import PgConnection
 from database.models.base import User
 from database.models.manager import Command, Interaction
@@ -587,7 +588,7 @@ async def _generate_image(
                 "O agente de geração de imagens não está configurado.",
             )
 
-        image_system_prompt = modify_image_agent.prompt
+        image_system_prompt = "" if prompt_disabled(modify_image_agent) else modify_image_agent.prompt
 
         gork_user = await user_repo.find_by_phone_or_id((await get_instance_number()))
 

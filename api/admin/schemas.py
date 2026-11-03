@@ -82,10 +82,11 @@ class BlacklistInput(Input):
 class AgentInput(Input):
     model_id: int | None = Field(default=None, gt=0)
     prompt: str | None = Field(default=None, min_length=1, max_length=100000)
+    disable_system_prompt: bool | None = None
 
     @model_validator(mode="after")
     def has_change(self):
-        if self.model_id is None and self.prompt is None:
+        if self.model_id is None and self.prompt is None and self.disable_system_prompt is None:
             raise ValueError("Informe um modelo ou instruções.")
         return self
 

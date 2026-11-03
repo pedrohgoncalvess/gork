@@ -70,6 +70,13 @@ the agent's output modality, using cached catalog metadata. Audio/image input
 support alone does not qualify a model for audio/image generation. Unknown
 capabilities remain unavailable until catalog discovery supplies metadata.
 
+**Desativar envio do prompt** is unchecked by default. Checking it persists
+`disable_system_prompt` for the agent and omits instructions while retaining
+user content and attachments. Conversation agents send only the current message
+and bypass the tool runtime, which normally adds its own system instructions.
+Restoring the original configuration unchecks this option; response schemas
+remain active for application parsing.
+
 ## Add an agent
 
 1. Create `agents/<agent_name>/agent.py` and `prompt.md`; add a parser and schema

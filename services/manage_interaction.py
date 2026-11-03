@@ -3,6 +3,7 @@ from datetime import datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database.models.manager import Agent, Command, Interaction, Model
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository, ModelRepository
 from external import completions
@@ -36,6 +37,8 @@ async def manage_interaction(
     if system_prompt is None and agent_name is not None:
         system_prompt = agent.prompt
 
+    system_prompt = "" if prompt_disabled(agent) else (system_prompt or "")
+
     now = datetime.now(ZoneInfo("America/Sao_Paulo"))
 
     system_prompt = system_prompt.replace("{CURRENT_DATETIME}", now.strftime("%Y-%m-%d %H:%M:%S (%A)"))
@@ -63,6 +66,7 @@ async def manage_interaction(
         except Exception:
             pass
 
+    apply_prompt_setting(payload_term_formatter, agent)
     req = await completions(payload_term_formatter)
     resp = req["choices"][0]["message"]["content"]
 

@@ -191,7 +191,7 @@ async def remove_blacklist(user_id: int, db=Depends(get_db)):
 @api.get("/agents")
 async def agents(db=Depends(get_db)):
     result = await db.execute(select(Agent.id, Agent.name, Agent.prompt, Agent.model_id,
-                                    Agent.model_managed, Agent.prompt_managed, Model.name.label("model_name"),
+                                    Agent.model_managed, Agent.prompt_managed, Agent.disable_system_prompt, Model.name.label("model_name"),
                                     Model.openrouter_id).join(Model, Model.id == Agent.model_id).order_by(Agent.name))
     return [dict(row, output_modality=agent_output(row["name"])) for row in result.mappings()]
 
@@ -205,6 +205,7 @@ async def save_agent(identifier: int, data: AgentInput, db=Depends(get_db)):
 async def reset_agent(identifier: int, db=Depends(get_db)):
     agent = await store.get_entity(db, Agent, identifier, lock=True)
     agent.model_managed, agent.prompt_managed = False, False
+    agent.disable_system_prompt = False
     await db.commit()
     await init_agents()
     return {"ok": True}

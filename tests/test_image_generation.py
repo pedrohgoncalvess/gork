@@ -325,6 +325,15 @@ class ImageRequestIsolationTests(unittest.IsolatedAsyncioTestCase):
                 "data": [{"b64_json": self.current_image}],
             })))
 
+    async def test_disabled_prompt_preserves_reference_images_and_user_request(self):
+        agent = SimpleNamespace(prompt="Instructions that must not be sent", disable_system_prompt=True)
+        with patch(f"{self.module}.AgentRepository", return_value=SimpleNamespace(
+                find_by_name=AsyncMock(return_value=agent))):
+            await _generate_image(user_id=1, db_message=self.message)
+        payload = self.provider.await_args.args[0]
+        self.assertEqual(payload["prompt"], "troque o rosto mantendo o resto da foto")
+        self.assertEqual(len(payload["input_references"]), 2)
+
     async def test_only_current_request_photos_and_explicit_identity_reach_provider(self):
         person = SimpleNamespace(
             id=3, name="Ana", profile_pic_path="ana.jpg",

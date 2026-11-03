@@ -103,6 +103,8 @@ async def save_agent(db, identifier: int, data):
         agent.model_id, agent.model_managed = data.model_id, True
     if data.prompt is not None:
         agent.prompt, agent.prompt_managed = data.prompt, True
+    if data.disable_system_prompt is not None:
+        agent.disable_system_prompt = data.disable_system_prompt
     await db.commit()
     return {"id": agent.id, "model_id": agent.model_id}
 

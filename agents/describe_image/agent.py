@@ -4,6 +4,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
@@ -166,6 +167,9 @@ async def describe_image_agent(
         except Exception as e:
             await logger.error("Agent", "DescribeImage", f"Error parsing response_format: {e}")
 
+    apply_prompt_setting(payload, agent)
+    if prompt_disabled(agent):
+        system_prompt = ""
     req = await completions(payload)
     resp = req["choices"][0]["message"]["content"]
     if agent.response_format:

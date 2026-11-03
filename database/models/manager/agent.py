@@ -15,5 +15,6 @@ class Agent(Base):
     response_format = Column(Text, nullable=True)
     model_managed = Column(Boolean, nullable=False, default=False, server_default="false")
     prompt_managed = Column(Boolean, nullable=False, default=False, server_default="false")
+    disable_system_prompt = Column(Boolean, nullable=False, default=False, server_default="false")
 
     inserted_at = Column(TIMESTAMP, server_default=func.now())

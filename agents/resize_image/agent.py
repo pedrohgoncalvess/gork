@@ -1,8 +1,10 @@
 import base64
+
 from typing import Tuple
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.agent_settings import prompt_disabled
 from database.models.content import Message
 from database.operations.manager import AgentRepository, ModelConversationRepository
 from external.openrouter import generate_images
@@ -41,7 +43,7 @@ async def resize_image_agent(
 
     width, height = sizes
     prompt = f'Resize this image to {width}x{height}.'
-    if agent.prompt:
+    if agent.prompt and not prompt_disabled(agent):
         prompt = agent.prompt + ' ' + prompt
 
     await logger.info('Agent', 'ResizeImage', f'Calling model={model.openrouter_id} for resize to {width}x{height}')

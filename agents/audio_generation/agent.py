@@ -3,6 +3,7 @@ import io
 import json
 import wave
 
+from services.agent_settings import prompt_disabled
 from database import PgConnection
 from database.operations.manager import AgentRepository, ModelConversationRepository
 from external.openrouter import generate_speech
@@ -55,6 +56,9 @@ async def text_to_speech(
                 "speech_metadata": {"style": instructions},
             }}},
         }
+
+        if prompt_disabled(agent):
+            payload.pop("provider", None)
 
     audio_bytes = await generate_speech(payload)
     # Gemini TTS emits 24 kHz mono PCM16. A WAV header makes it playable by

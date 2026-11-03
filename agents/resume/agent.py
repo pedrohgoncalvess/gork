@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta
 
+from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database import PgConnection
 from database.models.manager import Command, Interaction
 from database.operations.content import MessageRepository
@@ -119,6 +120,9 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
             except Exception:
                 pass
 
+        apply_prompt_setting(payload, resume_agent)
+        if prompt_disabled(resume_agent):
+            system_prompt = ""
         req = await completions(payload)
         conversation_resume = req["choices"][0]["message"]["content"]
         if resume_agent and resume_agent.response_format:

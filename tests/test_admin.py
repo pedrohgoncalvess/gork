@@ -215,6 +215,15 @@ class AdminStorageTests(unittest.IsolatedAsyncioTestCase):
             await repo.upsert_by_name("conversation-dm","file prompt",99,"schema")
         update.assert_awaited_once_with(4,{"response_format":"schema"})
 
+    async def test_prompt_can_be_disabled_and_reenabled_without_changing_instructions(self):
+        agent = SimpleNamespace(id=4, model_id=2, prompt="Original instructions", disable_system_prompt=False)
+        db = SimpleNamespace(commit=AsyncMock())
+        with patch("api.admin.store.get_entity", new=AsyncMock(return_value=agent)):
+            for disabled in (True, False):
+                await store.save_agent(db, 4, AgentInput(disable_system_prompt=disabled))
+                self.assertEqual(agent.disable_system_prompt, disabled)
+                self.assertEqual(agent.prompt, "Original instructions")
+
     async def test_unmanaged_agents_still_follow_project_configuration(self):
         repo=AgentRepository(Mock())
         existing=SimpleNamespace(id=4,model_managed=False,prompt_managed=False)

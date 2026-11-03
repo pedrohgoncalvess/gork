@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.agent_settings import prompt_disabled
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
 from database.operations.content import MediaRepository, MessageRepository
@@ -373,7 +374,10 @@ async def conversation_agent(
     system_prompt = system_prompt.replace("$$ADDITIONAL_CONTEXT$$", additional_context)
     system_prompt = system_prompt.replace("$$CURRENT_DATE$$", now.strftime("%B %d, %Y"))
 
-    if group_id is not None:
+    if prompt_disabled(agent):
+        system_prompt = ""
+        request_messages = [{"role": "user", "content": _format_direct_message_content(last_message, messages_rel, media_by_id)}]
+    elif group_id is not None:
         request_messages = _build_group_request_messages(
             system_prompt, last_message, history_messages, reply_chain,
             messages_rel, media_by_id, users_map, user_gork.id,
@@ -418,8 +422,12 @@ async def conversation_agent(
             system_behavior=system_prompt, actual_cost=req["usage"].get("cost"),
         )
 
-    req = await complete_with_mcp(
-        payload_term_formatter, db, user_id=user_id, group_id=group_id,
-        message_id=last_message_id, completion=completions, record_response=record_response,
-    )
+    if prompt_disabled(agent):
+        req = await completions(payload_term_formatter)
+        await record_response(req)
+    else:
+        req = await complete_with_mcp(
+            payload_term_formatter, db, user_id=user_id, group_id=group_id,
+            message_id=last_message_id, completion=completions, record_response=record_response,
+        )
     return req["choices"][0]["message"]["content"]

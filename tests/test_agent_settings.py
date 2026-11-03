@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 import unittest
 
+from services.agent_settings import apply_prompt_setting
 from services.model_capabilities import agent_output, model_catalog, output_modalities
 
 
@@ -33,3 +34,18 @@ class ModelCapabilitiesTests(unittest.TestCase):
                                 ("resize-image", "image"), ("video-generation", "video"),
                                 ("transcriber", "text"), ("describe-image", "text")):
             self.assertEqual(agent_output(agent), expected)
+
+
+class AgentPromptSettingTests(unittest.TestCase):
+    def test_disabled_setting_removes_instructions_and_preserves_attachment(self):
+        user = {"role": "user", "content": [{"type": "image_url", "image_url": {"url": "image"}}]}
+        payload = {"messages": [{"role": "system", "content": "secret"},
+                                {"role": "developer", "content": "instructions"}, user]}
+        apply_prompt_setting(payload, SimpleNamespace(disable_system_prompt=True))
+        self.assertEqual(payload["messages"], [user])
+
+    def test_default_keeps_instructions(self):
+        for agent in (None, SimpleNamespace(), SimpleNamespace(disable_system_prompt=False)):
+            payload = {"messages": [{"role": "system", "content": "instructions"}]}
+            apply_prompt_setting(payload, agent)
+            self.assertEqual(len(payload["messages"]), 1)

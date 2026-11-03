@@ -3,6 +3,7 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database.models.base import User
 from database.models.manager import Interaction
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository, ModelRepository
@@ -58,6 +59,9 @@ async def _run_web_search(
         except Exception:
             pass
 
+    apply_prompt_setting(payload, web_agent)
+    if prompt_disabled(web_agent):
+        system_prompt = ""
     req = await completions(payload, is_online=True)
     result = req["choices"][0]["message"]["content"]
 
