@@ -5,14 +5,13 @@ from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database import PgConnection
 from database.models.manager import Command, Interaction
 from database.operations.content import MessageRepository
-from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelConversationRepository, ModelRepository
+from database.operations.manager import AgentRepository, CommandRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 
 async def get_resume_conversation(user_id: int, contact_id: int = None, group_id: int = None) -> str:
 
     async with PgConnection() as db:
 
-        model_repo = ModelRepository(db)
         command_repo = CommandRepository(Command, db)
         agent_repo = AgentRepository(db)
         model_conv_repo = ModelConversationRepository(db)
@@ -58,7 +57,7 @@ async def get_resume_conversation(user_id: int, contact_id: int = None, group_id
             )
 
         if not model:
-            model = await model_repo.get_default_model()
+            raise ValueError("Model not configured for agent: resume")
 
         message_repo = MessageRepository(db)
         if group_id:

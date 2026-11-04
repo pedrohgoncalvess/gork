@@ -107,7 +107,7 @@ async def process_explicit_commands(
         return
 
     if "!model" in lw_conversation:
-        await handle_model_command(remote_id, message_id, db)
+        await handle_model_command(remote_id, message_id, db, user_id=user.id, group_id=group_id)
         return
 
     if "!resume" in lw_conversation:

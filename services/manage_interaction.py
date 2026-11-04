@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 
 from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database.models.manager import Agent, Command, Interaction, Model
-from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository, ModelRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 
 
@@ -19,17 +19,17 @@ async def manage_interaction(
         command: Optional[Command] = None,
 ) -> str:
 
-    model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
     model_conversation_repo = ModelConversationRepository(db)
 
-    default_model = await model_repo.get_default_model()
     agent = await agent_repo.find_by_name(agent_name) if agent_name else None
-    model = (
-        await model_conversation_repo.resolve_agent_model(agent, user_id=user_id, group_id=group_id)
-        if agent
-        else default_model
+    if not agent:
+        raise ValueError(f"Agent not configured: {agent_name}")
+    model = await model_conversation_repo.resolve_agent_model(
+        agent, user_id=user_id, group_id=group_id
     )
+    if not model:
+        raise ValueError(f"Model not configured for agent: {agent_name}")
 
     if system_prompt is not None and agent_name is not None:
         system_prompt = f"{agent.prompt}\n\n{system_prompt}"

@@ -897,7 +897,7 @@ async def _dispatch_action(
         return True
 
     elif action_type == "model":
-        await handle_model_command(remote_id, db_message.message_id, db)
+        await handle_model_command(remote_id, db_message.message_id, db, user_id=user.id, group_id=group_id)
         return True
 
     elif action_type in ("usage", "consumption"):

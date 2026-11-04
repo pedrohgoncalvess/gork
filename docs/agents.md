@@ -65,6 +65,11 @@ survive restarts: editing `prompt.md` alone does not overwrite them. Use
 **Restore original configuration** in the panel to return to repository defaults.
 Response schemas remain code-owned and must match parsing and dispatch.
 
+`!model` reports the resolved conversation (DM or group), audio-generation, and
+modify-image agent models, including user/group overrides. Text, audio, and
+image models have no global default flags; embeddings retain their separate
+default configuration.
+
 The model picker groups repeated OpenRouter IDs and only offers models with
 the agent's output modality, using cached catalog metadata. Audio/image input
 support alone does not qualify a model for audio/image generation. Unknown
