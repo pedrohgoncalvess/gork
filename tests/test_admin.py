@@ -208,12 +208,18 @@ class AdminStorageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(agent.prompt,"old")
 
     async def test_startup_preserves_admin_model_and_prompt_but_refreshes_schema(self):
-        repo=AgentRepository(Mock())
+        db=SimpleNamespace(execute=AsyncMock(),commit=AsyncMock())
+        repo=AgentRepository(db)
         existing=SimpleNamespace(id=4,model_managed=True,prompt_managed=True)
-        with (patch.object(repo,"find_by_name",new=AsyncMock(return_value=existing)),
-              patch.object(repo,"update",new=AsyncMock()) as update):
-            await repo.upsert_by_name("conversation-dm","file prompt",99,"schema")
-        update.assert_awaited_once_with(4,{"response_format":"schema"})
+        db.execute.return_value=Mock(scalar_one=Mock(return_value=existing))
+        result=await repo.upsert_by_name("conversation-dm","file prompt",99,"schema")
+        sql=str(db.execute.await_args.args[0].compile(dialect=postgresql.dialect()))
+        self.assertIn("ON CONFLICT (name) DO UPDATE",sql)
+        self.assertIn("CASE WHEN ai.agent.prompt_managed THEN ai.agent.prompt ELSE excluded.prompt END",sql)
+        self.assertIn("CASE WHEN ai.agent.model_managed THEN ai.agent.model_id ELSE excluded.model_id END",sql)
+        self.assertIn("response_format = excluded.response_format",sql)
+        self.assertIs(result,existing)
+        db.commit.assert_awaited_once()
 
     async def test_prompt_can_be_disabled_and_reenabled_without_changing_instructions(self):
         agent = SimpleNamespace(id=4, model_id=2, prompt="Original instructions", disable_system_prompt=False)
@@ -225,12 +231,18 @@ class AdminStorageTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(agent.prompt, "Original instructions")
 
     async def test_unmanaged_agents_still_follow_project_configuration(self):
-        repo=AgentRepository(Mock())
+        db=SimpleNamespace(execute=AsyncMock(),commit=AsyncMock())
+        repo=AgentRepository(db)
         existing=SimpleNamespace(id=4,model_managed=False,prompt_managed=False)
-        with (patch.object(repo,"find_by_name",new=AsyncMock(return_value=existing)),
-              patch.object(repo,"update",new=AsyncMock()) as update):
+        db.execute.return_value=Mock(scalar_one=Mock(return_value=existing))
+        with patch.object(repo,"find_by_name",new=AsyncMock()) as lookup:
             await repo.upsert_by_name("conversation-dm","new prompt",99,"schema")
-        update.assert_awaited_once_with(4,{"response_format":"schema","prompt":"new prompt","model_id":99})
+        lookup.assert_not_awaited()
+        compiled=db.execute.await_args.args[0].compile(dialect=postgresql.dialect())
+        self.assertEqual(compiled.params["prompt"],"new prompt")
+        self.assertEqual(compiled.params["model_id"],99)
+        self.assertEqual(compiled.params["response_format"],"schema")
+        db.commit.assert_awaited_once()
 
     async def test_remove_override_cannot_resurrect_older_rows_or_affect_other_scopes(self):
         item=SimpleNamespace(agent_id=2,user_id=4,group_id=None)
