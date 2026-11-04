@@ -603,17 +603,60 @@ class UnbanTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ban_id, 42)
         self.assertIsNone(blocked)
 
-    async def test_banned_member_can_invoke_unban_without_message_being_deleted(self):
+    async def test_unban_cache_defers_to_database(self):
         from api.routes.webhook.waha import services
         from services import ban_cache as cache
         body = waha_tests.event(body='!unban @me :expiration 5')
         normalized = services.normalize_webhook(body)
         with (patch.object(cache, 'snapshot', AsyncMock()) as snap,
               patch.object(ban, 'request', AsyncMock()) as request):
-            self.assertFalse(await cache.decision(normalized['data'], '120363123456789012@g.us'))
-            self.assertFalse(await ban.enforce_ban(normalized['data'], '120363123456789012@g.us', known_active=True))
-            self.assertFalse(await services.moderate_group_message(normalized))
+            self.assertIsNone(await cache.decision(normalized['data'], '120363123456789012@g.us'))
         snap.assert_not_awaited()
+        request.assert_not_awaited()
+
+    async def test_banned_member_unban_is_preserved_only_before_any_member_requested_it(self):
+        from api.routes.webhook.waha import services
+        for command, used, deleted in [
+            ('!unban @me :expiration 5', False, False),
+            ('@Gork !UNBAN @ME', False, False),
+            ('!unban @me', True, True),
+            ('!unban @222', False, True),
+            ('!unban', False, True),
+        ]:
+            with self.subTest(command=command, used=used):
+                normalized = services.normalize_webhook(waha_tests.event(body=command))
+                db = SimpleNamespace(execute=AsyncMock(side_effect=[
+                    self.result(row=(42,)), self.result(scalar=used)]))
+                with (patch.object(ban, 'PgConnection', self.database(db)),
+                      patch.object(services, 'settings', AsyncMock(return_value={'test_mode': False})),
+                      patch.object(ban, 'request', AsyncMock()) as request):
+                    self.assertEqual(await services.moderate_group_message(normalized), deleted)
+                self.assertEqual(request.await_count, int(deleted))
+                if '@me' in command.lower():
+                    sql, params = db.execute.await_args.args
+                    self.assertEqual(params, {'ban_id': 42})
+                    # Count polls for this ban, without restricting the requester.
+                    self.assertIn("status <> 'failed'", str(sql))
+                    self.assertNotIn('sender', str(sql))
+
+    async def test_unban_still_checks_database_when_active_ban_is_known(self):
+        data = {'key': {'id': 'MSG', 'participant': '222@lid'},
+                'message': {'conversation': '!unban @me'}, 'messageTimestamp': 1800000000}
+        db = SimpleNamespace(execute=AsyncMock(side_effect=[
+            self.result(row=(42,)), self.result(scalar=True)]))
+        with (patch.object(ban, 'PgConnection', self.database(db)),
+              patch.object(ban, 'request', AsyncMock()) as request):
+            self.assertTrue(await ban.enforce_ban(data, '123@g.us', known_active=True))
+        request.assert_awaited_once()
+
+    async def test_unban_from_non_banned_member_is_not_deleted(self):
+        from api.routes.webhook.waha import services
+        normalized = services.normalize_webhook(waha_tests.event(body='!unban @222'))
+        db = SimpleNamespace(execute=AsyncMock(return_value=self.result()))
+        with (patch.object(ban, 'PgConnection', self.database(db)),
+              patch.object(services, 'settings', AsyncMock(return_value={'test_mode': False})),
+              patch.object(ban, 'request', AsyncMock()) as request):
+            self.assertFalse(await services.moderate_group_message(normalized))
         request.assert_not_awaited()
 
     async def test_unban_opens_poll_for_self_with_me_and_for_other_members_with_mention(self):

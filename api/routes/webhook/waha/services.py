@@ -24,9 +24,7 @@ async def moderate_group_message(body: dict) -> bool:
     remote = data["key"]["remoteJid"]
     if data["key"].get("fromMe") or not remote.endswith("@g.us"):
         return False
-    from services.group_ban import enforce_ban, is_unban_command
-    if is_unban_command(data):
-        return False
+    from services.group_ban import enforce_ban
     cached = await cached_ban_decision(data, remote)
     if cached is False:
         return False

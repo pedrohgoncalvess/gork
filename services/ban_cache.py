@@ -64,7 +64,8 @@ async def snapshot():
 
 async def decision(data: dict, remote: str) -> bool | None:
     if re.search(r'(?<!\S)!unban(?=\s|$)', (data.get('message') or {}).get('conversation') or '', re.I):
-        return False
+        # The snapshot does not track unban attempts; consult PostgreSQL.
+        return None
     state = await snapshot()
     if state is None:
         return None

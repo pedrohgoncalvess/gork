@@ -42,6 +42,11 @@ banido no momento, pode ser usado apenas 1 vez durante cada banimento e segue as
 mesmas regras de quórum e maioria do `!ban`. Se aprovado, o banimento é encerrado
 imediatamente.
 
+A mensagem `!unban @me` da pessoa banida é preservada somente enquanto nenhum
+pedido de desbanimento tiver sido aberto para aquele banimento, incluindo pedidos
+feitos por outros membros. Depois disso, suas mensagens com `!unban` também são
+excluídas normalmente. Falhas no envio da enquete permitem uma nova tentativa.
+
 Cada membro tem um controle separado por grupo. Uma votação aberta ou ban ativo
 impede outra votação para o mesmo alvo. Após rejeição, cancelamento ou voto ilegível,
 é preciso aguardar 1 hora desde o encerramento real da votação (inclusive antecipado).

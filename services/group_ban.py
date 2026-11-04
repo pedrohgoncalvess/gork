@@ -594,12 +594,13 @@ async def send_results():
 
 async def enforce_ban(data: dict, remote: str, *, known_active=False) -> bool:
     key = data['key']
-    if key.get('fromMe') or not remote.endswith('@g.us') or is_unban_command(data):
+    if key.get('fromMe') or not remote.endswith('@g.us'):
         return False
     sender = [chat_id(key[k]) for k in ('participant', 'participantAlt') if key.get(k)]
     if not sender:
         return False
-    if not known_active:
+    unban = is_unban_command(data)
+    if not known_active or unban:
         async with PgConnection() as db:
             row = (await db.execute(text('''SELECT id FROM manager.group_ban_poll
             WHERE session=:session AND chat_id=:chat AND status='approved'
@@ -607,6 +608,16 @@ async def enforce_ban(data: dict, remote: str, *, known_active=False) -> bool:
             AND to_timestamp(:timestamp) >= date_trunc('second', ban_started_at)
             LIMIT 1'''), {'session': waha_session, 'chat': remote, 'aliases': sender,
                           'timestamp': data['messageTimestamp']})).first()
+            if row and unban:
+                command = data['message']['conversation']
+                if re.search(r'(?<!\w)@me\b', command, re.I):
+                    # One chance per ban, regardless of who requested the poll.
+                    used = (await db.execute(text('''SELECT EXISTS (
+                        SELECT 1 FROM manager.group_ban_poll
+                        WHERE ban_poll_id=:ban_id AND status <> 'failed'
+                    )'''), {'ban_id': row[0]})).scalar_one()
+                    if not used:
+                        return False
         if not row:
             return False
     # Include the original sender in the complete group message reference.
