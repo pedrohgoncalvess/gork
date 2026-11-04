@@ -10,8 +10,10 @@ class StartupPricingTests(unittest.IsolatedAsyncioTestCase):
         scheduler = Mock()
         before = datetime.now(timezone.utc)
         with (patch('main.apply_pending_migrations', return_value=0),
+              patch('security.crypto.master_key'),
               patch('main.logger.info', AsyncMock()),
               patch('main.init_agents', AsyncMock()), patch('main.init_assets', AsyncMock()),
+              patch('main.init_voices', AsyncMock()),
               patch('main.set_model_price_refresh', AsyncMock()), patch('main.set_remembers', AsyncMock()),
               patch('main.scheduler', scheduler)):
             await main.startup_event()
@@ -33,10 +35,12 @@ class StartupPricingTests(unittest.IsolatedAsyncioTestCase):
 
         with (
             patch("main.apply_pending_migrations", return_value=0),
+            patch("security.crypto.master_key"),
             patch("main.logger.info", new=AsyncMock()),
             patch("main.init_agents", new=AsyncMock(side_effect=agents)),
             patch("main.set_model_price_refresh", new=AsyncMock(side_effect=prices)),
             patch("main.init_assets", new=AsyncMock()),
+            patch("main.init_voices", new=AsyncMock()),
             patch("main.set_remembers", new=AsyncMock()),
             patch("main.scheduler", new=Mock()),
         ):

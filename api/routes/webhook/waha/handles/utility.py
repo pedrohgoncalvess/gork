@@ -11,6 +11,7 @@ from database import PgConnection
 from database.models.manager.interaction import Interaction
 from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external.waha import send_message
+from voices.catalog import available_voices
 
 
 # ── Token consumption ────────────────────────────────────────────────────────
@@ -258,6 +259,7 @@ async def token_consumption(
 # ── Handles ──────────────────────────────────────────────────────────────────
 
 async def handle_help_command(remote_id: str, message_id: str):
+    voices = await available_voices()
     category_info = {
         "interaction": ("💬 *INTERAÇÃO*", []),
         "search": ("🔍 *BUSCA & INFORMAÇÃO*", []),
@@ -292,6 +294,13 @@ async def handle_help_command(remote_id: str, message_id: str):
                         if param_options:
                             options_str = "\n".join([f"        - _{opt}_ ({desc})" for opt, desc in param_options])
                             help_parts.append(f"    Opções:\n {options_str}")
+
+                if cmd == "!audio":
+                    help_parts.append("  _Vozes disponíveis (áudio sintético):_")
+                    for voice in voices:
+                        help_parts.append(f"  • :voice={voice.name} — {voice.display_name}")
+                    if not voices:
+                        help_parts.append("  Nenhuma voz de clonagem cadastrada.")
 
             help_parts.append("")
 

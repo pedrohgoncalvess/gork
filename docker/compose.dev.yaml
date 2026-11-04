@@ -73,6 +73,7 @@ services:
       - ../main.py:/app/main.py:ro
 
       - ../agents:/app/agents:ro
+      - ../voices:/app/voices:ro
       - ../api:/app/api:ro
       - ../external:/app/external:ro
       - ../services:/app/services:ro

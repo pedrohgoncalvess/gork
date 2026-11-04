@@ -15,8 +15,9 @@ class ProjectLayoutTests(unittest.TestCase):
             directory = ROOT / "agents" / agent["name"].replace("-", "_")
             with self.subTest(agent=agent["name"]):
                 self.assertTrue((directory / "agent.py").is_file())
-                self.assertEqual(ROOT / agent["prompt_path"], directory / "prompt.md")
-                self.assertTrue((directory / "prompt.md").is_file())
+                if agent.get("prompt_path"):
+                    self.assertEqual(ROOT / agent["prompt_path"], directory / "prompt.md")
+                    self.assertTrue((directory / "prompt.md").is_file())
                 if agent.get("schema_path"):
                     self.assertEqual(ROOT / agent["schema_path"], directory / "schema.json")
                     json.loads((directory / "schema.json").read_text(encoding="utf-8"))

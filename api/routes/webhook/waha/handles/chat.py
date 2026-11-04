@@ -52,6 +52,8 @@ from services import (
 from services.action_rate_limiter import reserve_audio_action
 from services.outgoing_mentions import resolve_outgoing_mentions
 from agents.audio_generation.agent import text_to_speech
+from agents.voice_cloning.agent import clone_voice
+from voices.catalog import VoiceSelectionError
 from utils import get_instance_number
 
 
@@ -585,7 +587,7 @@ async def _dispatch_action(
             await logger.info(
                 "ConversationHandle",
                 "AudioCooldown",
-                f"Skipped '{action_type}' in {scope}: audio sent in the last 3 minutes.",
+                f"Skipped '{action_type}' in {scope}: audio cooldown is active.",
             )
             return True
 
@@ -621,10 +623,19 @@ async def _dispatch_action(
         if params.get("tone") is not None:
             speech_options["tone"] = params["tone"]
         try:
-            audio_b64 = await text_to_speech(
-                text, language=language, user_id=user.id, group_id=group_id,
-                **speech_options,
-            )
+            if params.get("voice") is not None:
+                audio_b64 = await clone_voice(
+                    text, params["voice"], language=language,
+                    user_id=user.id, group_id=group_id,
+                )
+            else:
+                audio_b64 = await text_to_speech(
+                    text, language=language, user_id=user.id, group_id=group_id,
+                    **speech_options,
+                )
+        except VoiceSelectionError as error:
+            await send_message(remote_id, str(error), db_message.message_id)
+            return True
         except Exception as error:
             await logger.error("ConversationHandle", "SpeechGenerationError", str(error))
             await send_message(

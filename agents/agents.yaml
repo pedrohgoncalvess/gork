@@ -44,6 +44,10 @@ agents:
     prompt_path: agents/transcriber/prompt.md
     schema_path: agents/transcriber/schema.json
 
+  - name: voice-cloning
+    description: Agent responsible for reference-based voice cloning through HeyGen on OpenRouter.
+    model: heygen/heygen-voice-1
+
   - name: describe-image
     description: Agent responsible for describing images with WhatsApp conversation context.
     model: google/gemini-2.5-flash-lite

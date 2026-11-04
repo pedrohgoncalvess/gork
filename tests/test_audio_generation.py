@@ -11,6 +11,62 @@ import yaml
 
 from agents.audio_generation.agent import text_to_speech
 from external.openrouter import generate_speech
+from api.routes.webhook.waha.handles.audio import clean_audio_text
+
+
+class AudioCommandTests(unittest.IsolatedAsyncioTestCase):
+    def test_removes_commands_mentions_and_parameter_values(self):
+        cases = [
+            ('@5511999999999 !AUDIO !english Olá mundo! :voice="outra voz" :speed=2', 'Olá mundo!'),
+            ("!audio @Gork @me :user 'Maria Silva' Bom dia :random t :duration 5", 'Bom dia'),
+            ('!audio :user="Maria Silva" :random Olá !search :quality 720', 'Olá'),
+            ('!audio Bom dia :tone "voz calma" :time 30min', 'Bom dia'),
+            ('!audio Escreva para pessoa@example.com às 10:30! https://example.com/a',
+             'Escreva para pessoa@example.com às 10:30! https://example.com/a'),
+            ('!audio @5511999999999 !english :speed=2 :random', ''),
+        ]
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(clean_audio_text(raw), expected)
+
+    async def test_command_synthesizes_clean_text_without_conversation_agent(self):
+        from api.routes.webhook.waha.processors.common import process_commands
+
+        module = 'api.routes.webhook.waha.handles.chat'
+        for group_id, language, modifier in ((None, 'pt', ''), (3, 'en', '!ENGLISH')):
+            with (
+                self.subTest(group_id=group_id),
+                patch('api.routes.webhook.waha.processors.common.get_disabled_command_message', new=AsyncMock(return_value=None)),
+                patch('api.routes.webhook.waha.processors.common.handle_conversation_agent', new=AsyncMock()) as conversation,
+                patch(f'{module}.get_disabled_command_message', new=AsyncMock(return_value=None)),
+                patch(f'{module}.is_feature_blocked', new=AsyncMock(return_value=False)),
+                patch(f'{module}.reserve_audio_action', new=AsyncMock(return_value=True)) as reserve,
+                patch(f'{module}.text_to_speech', new=AsyncMock(return_value='encoded')) as speech,
+                patch(f'{module}.send_audio', new=AsyncMock()) as send,
+            ):
+                await process_commands(
+                    f'@5511999999999 !AUDIO {modifier} Olá mundo! :user="Maria Silva" :speed 2',
+                    'chat', 'request', SimpleNamespace(id=7), {}, group_id, Mock(), None, {},
+                    SimpleNamespace(message_id='request'),
+                )
+                speech.assert_awaited_once_with('Olá mundo!', language=language, user_id=7, group_id=group_id)
+                send.assert_awaited_once_with('chat', 'encoded', 'request')
+                reserve.assert_awaited_once_with('user:7' if group_id is None else 'group:3')
+                conversation.assert_not_awaited()
+
+    async def test_empty_text_does_not_consume_cooldown_or_synthesize(self):
+        from api.routes.webhook.waha.handles.audio import handle_audio_command
+
+        with (
+            patch('api.routes.webhook.waha.handles.chat._dispatch_action', new=AsyncMock()) as dispatch,
+            patch('api.routes.webhook.waha.handles.audio.send_message', new=AsyncMock()) as send,
+        ):
+            await handle_audio_command(
+                '!audio @5511999999999 :speed=2 !english', 'chat', SimpleNamespace(id=7),
+                SimpleNamespace(message_id='request'), Mock(), None, {},
+            )
+        dispatch.assert_not_awaited()
+        self.assertIn('Informe o texto', send.await_args.args[1])
 
 
 class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
@@ -85,14 +141,14 @@ class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
                     await text_to_speech("Olá", user_id=7, tone=tone)
             speech.assert_not_awaited()
 
-    async def test_dispatch_passes_scope_and_ignores_action_voice(self):
+    async def test_dispatch_passes_scope_to_voice_cloning(self):
         from api.routes.webhook.waha.handles.chat import _dispatch_action
         module = "api.routes.webhook.waha.handles.chat"
         with (
             patch(f"{module}.get_disabled_command_message", new=AsyncMock(return_value=None)),
             patch(f"{module}.is_feature_blocked", new=AsyncMock(return_value=False)),
             patch(f"{module}.reserve_audio_action", new=AsyncMock(return_value=True)),
-            patch(f"{module}.text_to_speech", new=AsyncMock(return_value="encoded")) as speech,
+            patch(f"{module}.clone_voice", new=AsyncMock(return_value="encoded")) as speech,
             patch(f"{module}.send_audio", new=AsyncMock()) as send,
         ):
             await _dispatch_action(
@@ -100,7 +156,7 @@ class AudioGenerationTests(unittest.IsolatedAsyncioTestCase):
                 remote_id="group", user=SimpleNamespace(id=7), db=Mock(),
                 db_message=SimpleNamespace(message_id="request"), scheduler=None, context={}, group_id=3,
             )
-        speech.assert_awaited_once_with("Oi", language="pt", user_id=7, group_id=3, tone="brincalhão")
+        speech.assert_awaited_once_with("Oi", "other", language="pt", user_id=7, group_id=3)
         send.assert_awaited_once_with("group", "encoded", "request")
 
     async def test_speech_failure_delivers_text_instead_of_silence(self):

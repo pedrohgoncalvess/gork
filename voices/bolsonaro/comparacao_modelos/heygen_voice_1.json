@@ -1,0 +1,14 @@
+{
+  "synthetic": true,
+  "model": "heygen/heygen-voice-1",
+  "text": "Eu amo o fan clube da Dua Lipa, tá ok?",
+  "reference": "../referencia_video_30s.wav",
+  "requested_format": "pcm",
+  "content_type": "audio/pcm;rate=44100;channels=1",
+  "generation_id": "gen-tts-1793812341-zXJuWMKpqpd5DKvuVbnc",
+  "pcm_sample_rate": 44100,
+  "status": "success",
+  "output": "heygen_voice_1.wav",
+  "bytes": 272796,
+  "elapsed_seconds": 11.94
+}

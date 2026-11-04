@@ -4,6 +4,7 @@
 def agent_output(name: str) -> str:
     return {
         "audio-generation": "audio",
+        "voice-cloning": "audio",
         "modify-image": "image",
         "image-generation": "image",
         "resize-image": "image",
@@ -21,6 +22,9 @@ def output_modalities(metadata: dict | None) -> list[str]:
         modality = architecture.get("modality", "")
         outputs = modality.split("->", 1)[1].split("+") if "->" in modality else []
     result = set(outputs) if isinstance(outputs, list) else set()
+    if "speech" in result:
+        result.remove("speech")
+        result.add("audio")
     for kind in ("image", "video"):
         if metadata.get(kind):
             result.add(kind)

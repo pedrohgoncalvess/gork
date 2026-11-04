@@ -28,6 +28,7 @@ PARAMS = (
     "audio",
     "quality",
     "resize",
+    "voice",
 )
 
 PARAM_DEFAULTS = {

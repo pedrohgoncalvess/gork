@@ -5,7 +5,7 @@ from utils import get_env_var
 from security.crypto import encrypt
 
 
-AUDIO_ACTION_COOLDOWN_SECONDS = 180
+AUDIO_ACTION_COOLDOWN_SECONDS = 0
 _REDIS_CLIENT: redis.Redis | None = None
 
 
@@ -19,6 +19,8 @@ def _client() -> redis.Redis:
 
 async def reserve_audio_action(scope: str) -> bool:
     """Reserve the audio slot for a chat, returning False during its cooldown."""
+    if AUDIO_ACTION_COOLDOWN_SECONDS <= 0:
+        return True
     try:
         key = f"gork:audio-action:cooldown:{encrypt(scope, 'redis.scope', True)}"
         return bool(

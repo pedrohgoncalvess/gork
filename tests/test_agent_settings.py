@@ -13,6 +13,8 @@ class ModelCapabilitiesTests(unittest.TestCase):
         }}}
         self.assertEqual(output_modalities(metadata), ["text"])
         self.assertEqual(output_modalities({}), [])
+        self.assertEqual(output_modalities({"catalog": {"architecture": {
+            "output_modalities": ["speech"]}}}), ["audio"])
 
     def test_specialized_catalogs_and_legacy_architecture(self):
         self.assertEqual(output_modalities({"catalog": {"architecture": {
@@ -30,7 +32,7 @@ class ModelCapabilitiesTests(unittest.TestCase):
         self.assertEqual(catalog[0]["output_modalities"], ["audio"])
 
     def test_agents_require_their_response_type(self):
-        for agent, expected in (("audio-generation", "audio"), ("modify-image", "image"),
+        for agent, expected in (("audio-generation", "audio"), ("voice-cloning", "audio"), ("modify-image", "image"),
                                 ("resize-image", "image"), ("video-generation", "video"),
                                 ("transcriber", "text"), ("describe-image", "text")):
             self.assertEqual(agent_output(agent), expected)

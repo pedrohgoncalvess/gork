@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.waha.handles import (
     clean_text,
+    handle_audio_command,
     handle_consumption_command,
     handle_deactivate_command,
     handle_conversation_agent,
@@ -116,6 +117,12 @@ async def process_explicit_commands(
 
     if "!transcribe" in lw_conversation:
         await handle_transcribe_command(remote_id, message_id, body, user.id, group_id)
+        return
+
+    if re.search(r"(?<!\S)!audio(?=\s|$)", lw_conversation):
+        await handle_audio_command(
+            conversation, remote_id, user, db_message, db, scheduler, context, group_id,
+        )
         return
 
     if "!image" in lw_conversation:

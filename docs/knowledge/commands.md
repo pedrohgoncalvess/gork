@@ -40,11 +40,16 @@ do Gork e estimativas por preços registrados, não uma fatura do provedor.
 
 ## Áudio e transcrição
 
-`!audio <pedido>` solicita resposta falada. `!english` é modificador para voz
+`!audio <texto>` gera áudio diretamente com o texto informado, removendo comandos,
+parâmetros e seus valores e menções antes da síntese. `!english` é modificador para voz
 em inglês. `!transcribe` respondendo um áudio transcreve o conteúdo; áudios
 recebidos também podem entrar no fluxo de conversa. Voz suporta pt/en/es,
-usa modelo OpenRouter e uma voz fixa do adaptador. Ações de áudio têm cooldown
-de três minutos. Falha de síntese pode retornar texto. Veja o tópico `audio`.
+usa modelo OpenRouter. Sem `:voice`, usa a voz padrão. Com `:voice=bolsonaro`
+(ou outra opção listada em `!help`), usa o agente `voice-cloning` com HeyGen
+e a referência cadastrada em `voices/metadata.yaml`. O catálogo é sincronizado
+com `content.voice` na inicialização, inclusive para referências MP4.
+O cooldown de áudio está zerado. Falha de síntese pode retornar texto.
+Veja o tópico `audio`.
 
 ## Fotos e criação visual
 

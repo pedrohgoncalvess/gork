@@ -149,6 +149,7 @@ waha-test-results.txt
 admin-test-results.txt
 mcp-test-results.txt
 artifacts/admin/
+artifacts/audio/
 .venv
 # env/
 # venv/

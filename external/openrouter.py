@@ -1,6 +1,8 @@
 import asyncio
 import json
+from dataclasses import dataclass
 from datetime import datetime
+from email.message import Message
 
 import httpx
 
@@ -181,8 +183,15 @@ def _payload_for_log(payload: dict) -> dict:
     return metadata
 
 
-async def generate_speech(payload: dict) -> bytes:
-    """Call the speech endpoint, which returns audio bytes rather than JSON."""
+@dataclass(frozen=True)
+class SpeechAudio:
+    data: bytes
+    sample_rate: int = 24000
+    channels: int = 1
+
+
+async def generate_speech_audio(payload: dict) -> SpeechAudio:
+    """Preserve PCM stream metadata; HeyGen may return 44.1 kHz rather than 24 kHz."""
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {get_env_var('OPENROUTER_KEY')}",
@@ -196,7 +205,18 @@ async def generate_speech(payload: dict) -> bytes:
         expected_type = {"mp3": "audio/mpeg", "pcm": "audio/pcm"}.get(payload.get("response_format"))
         if not expected_type or content_type != expected_type or not response.content:
             raise RuntimeError("OpenRouter returned no valid speech audio.")
-        return response.content
+        content_header = Message()
+        content_header["content-type"] = response.headers.get("content-type", "")
+        sample_rate = int(content_header.get_param("rate") or 24000)
+        channels = int(content_header.get_param("channels") or 1)
+        if not 8000 <= sample_rate <= 192000 or channels not in (1, 2):
+            raise RuntimeError("OpenRouter returned invalid PCM stream metadata.")
+        return SpeechAudio(response.content, sample_rate=sample_rate, channels=channels)
+
+
+async def generate_speech(payload: dict) -> bytes:
+    """Call the speech endpoint, returning audio bytes for existing adapters."""
+    return (await generate_speech_audio(payload)).data
 
 
 async def completions(payload: dict, is_online: bool = False) -> dict:

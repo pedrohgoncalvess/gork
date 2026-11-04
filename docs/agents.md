@@ -43,6 +43,7 @@ duplicating the conversation engine, while each owns its prompt and contract.
 | `resize_image` | AI-assisted resizing for sticker flows |
 | `video_generation` | Validate options, submit/poll jobs, and deliver video |
 | `audio_generation` | Synthesize speech through OpenRouter |
+| `voice_cloning` | Clone a catalog reference through the configured HeyGen model, without a prompt file |
 | `transcriber` | Send original audio to OpenRouter and extract text |
 | `web_search` | Online search and summarization |
 | `resume` | Summarize recent stored messages |
