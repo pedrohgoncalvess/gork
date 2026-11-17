@@ -23,6 +23,14 @@ one request. Missing references or provider failures produce a failure message.
 | `!deactivate` replying to a photo | Apply that treatment to the photo |
 | `!deactivate` alone | Use a random photo; mentions of Gork are ignored |
 | `!philo :quote socrates` | Render a quote on a philosopher image |
+| `!trapo <phrase> :time=gremio` | Render a two-band fan banner (“trapo”) in a team's colors |
+
+`!trapo` splits the phrase between the top and bottom bands automatically; use
+`|` to choose the break. `:time=<team>` (or just `:<team>`) accepts the team's
+name or nickname and defaults to Grêmio. Replying to a message with only
+`!trapo :inter` uses the quoted text. Images are rendered by the
+[trapo generator API](https://github.com/anddreluis2/trapo-generator); set
+`TRAPO_API_URL` to use another instance.
 
 Profile-based commands need a saved photo. Privacy settings or a missing local
 record can make it unavailable even when the person is known to WhatsApp.

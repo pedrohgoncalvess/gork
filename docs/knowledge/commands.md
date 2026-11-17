@@ -61,6 +61,11 @@ de três minutos. Falha de síntese pode retornar texto. Veja o tópico `audio`.
 - `!philo :quote socrates`: compõe uma frase com imagem de filósofo. As opções
   do catálogo são socrates, platao, aristoteles, nietzsche e tales_mileto;
   omitir a opção permite seleção aleatória.
+- `!trapo <frase> :time=gremio`: gera um trapo de torcida (duas faixas nas cores
+  do time). A frase é quebrada sozinha entre cima e baixo; `|` força a quebra.
+  `:time` aceita nome ou apelido (`:inter`, `:timao`, `:time="sao paulo"`) e o
+  padrão é Grêmio. Citando uma mensagem só com `!trapo`, usa o texto citado.
+  A imagem vem da API externa trapo-generator (`TRAPO_API_URL`).
 
 Arquivos inexistentes, perfis privados e capacidades do modelo podem impedir
 uma ação. Um pedido sobre foto antiga deve citar/anexar a foto correta;
