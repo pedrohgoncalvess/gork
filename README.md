@@ -78,6 +78,7 @@ Send `!help` in an authorized chat for the full command list. In groups, mention
 | `!sticker` | Create a sticker from attached or quoted media |
 | `!sticker :tweet <url>` | Turn an X/Twitter post into a sticker |
 | `!deactivate @user` | Create a “Deactivated account” image from a saved profile photo |
+| `!trapo <phrase> :time=<team>` | Render a football fan banner (“trapo”) in a team's colors |
 | `!transcribe` | Transcribe a quoted audio message |
 | `!remember <request>` | Schedule a reminder using natural language |
 | `!gallery` / `!favorite` | Browse saved images or favorite a message |

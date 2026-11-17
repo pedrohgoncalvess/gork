@@ -81,6 +81,20 @@ COMMANDS = [
     ("!twitter", "Baixa e envia o vídeo ou a primeira imagem de um link do X/Twitter. _[Ex: !twitter https://x.com/usuario/status/12345]_", "media", []),
     ("!instagram", "Baixa reels do Instagram e envia. _[Ex: !instagram https://www.instagram.com/reel/XXXXXXXX]_", "media", []),
     (
+        "!trapo",
+        "Gera um trapo de torcida com a frase nas cores do time. A frase é quebrada sozinha entre as faixas de cima e de baixo. _[Use | para escolher onde quebra. Também funciona citando uma mensagem]_",
+        "image",
+        [
+            (":time", "Escolhe o time; padrão Grêmio. Aceita nome ou apelido, e :<time> direto também funciona.", [
+                ("gremio", "Grêmio"),
+                ("inter", "Internacional"),
+                ("corinthians", "Corinthians"),
+                ("flamengo", "Flamengo"),
+                ("\"sao paulo\"", "São Paulo"),
+            ]),
+        ],
+    ),
+    (
         "!philo",
         "Gera uma imagem filosófica com a frase quotada (ou texto da mensagem) sobreposta à foto do filósofo escolhido.",
         "image",
