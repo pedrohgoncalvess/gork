@@ -1,4 +1,5 @@
 import base64
+import json
 import shutil
 import subprocess
 import tempfile
@@ -113,16 +114,13 @@ class SoundStickerCommandTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_transport_preserves_static_webp_and_audio_metadata(self):
         root = "external.waha.sound_sticker"
-        client = MagicMock()
-        client.return_value.__aenter__.return_value.post = AsyncMock(return_value=MagicMock())
-        settings = {"SOUND_STICKER_URL": "http://sound-sticker:8080/", "SOUND_STICKER_TOKEN": "test-token"}
         webp = make_webp()
-        with patch(root + ".get_env_var", side_effect=settings.get), patch(root + ".httpx.AsyncClient", client):
+        with patch(root + ".send_file", new_callable=AsyncMock) as send_file:
             await send_sound_sticker("12345@lid", webp, b"audio", 2.25)
-        call = client.return_value.__aenter__.return_value.post.await_args
-        self.assertEqual(call.args[0], "http://sound-sticker:8080/sticker")
-        payload = call.kwargs["json"]
-        self.assertEqual(payload["chat"], "12345@lid")
+        destination, endpoint, content, filename, mimetype = send_file.await_args.args
+        self.assertEqual((destination, endpoint), ("12345@lid", "/api/sendSticker"))
+        self.assertEqual((filename, mimetype), ("sticker.json", "application/vnd.gork.sound-sticker+json"))
+        payload = json.loads(base64.b64decode(content))
         self.assertFalse(payload["animated"])
         self.assertEqual((payload["width"], payload["height"], payload["seconds"]), (16, 16, 3))
         self.assertEqual(base64.b64decode(payload["webp"]), webp)
