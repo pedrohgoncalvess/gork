@@ -58,9 +58,11 @@ may need FFmpeg; provider calls should be mocked in unit tests.
 
 ## CI and releases
 
-GitHub Actions runs the Python, JavaScript and Go suites on pull requests and
-pushes to `main` and `master`. On version tags it also checks the project version
-and publishes the API image to GitHub Container Registry after the suites pass.
+GitHub Actions runs the Python and JavaScript suites and builds the WAHA image,
+including tests for its GOWS extension, on pull requests and pushes to `main`
+and `master`. On version tags it also checks the project version
+and publishes the API and WAHA images to GitHub Container Registry after the
+suites and image builds pass.
 See the [versioning and changelog guide](releases.md).
 
 ## Deployment
