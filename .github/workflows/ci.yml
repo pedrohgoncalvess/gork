@@ -88,25 +88,21 @@ jobs:
           node-version: '24'
       - run: node --test tests/test_admin_models.js
 
-  sound-sticker:
+  waha:
+    if: needs.target.outputs.release_tag == ''
     needs: target
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.target.outputs.ref }}
           persist-credentials: false
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: docker/sound-sticker/go.mod
-          cache-dependency-path: docker/sound-sticker/go.sum
-      - run: go test ./...
-        working-directory: docker/sound-sticker
+      - run: docker build --tag gork-waha:ci docker/waha
 
   publish:
     if: github.event_name == 'push' && !github.event.deleted && needs.target.outputs.release_tag != ''
-    needs: [target, python, javascript, sound-sticker]
+    needs: [target, python, javascript]
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     permissions:
@@ -117,15 +113,25 @@ jobs:
         with:
           ref: ${{ needs.target.outputs.ref }}
           persist-credentials: false
-      - name: Build and publish the API image
+      - name: Build and test the release images
+        env:
+          RELEASE_TAG: ${{ needs.target.outputs.release_tag }}
+        run: |
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
+          revision="$(git rev-parse HEAD)"
+          labels=(
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+            --label "org.opencontainers.image.revision=$revision"
+            --label "org.opencontainers.image.version=${RELEASE_TAG#v}"
+          )
+          docker build --file docker/Dockerfile --tag "$repository:$RELEASE_TAG" "${labels[@]}" .
+          docker build --tag "$repository-waha:$RELEASE_TAG" "${labels[@]}" docker/waha
+      - name: Publish the API and WAHA images
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ needs.target.outputs.release_tag }}
         run: |
-          image="ghcr.io/${GITHUB_REPOSITORY,,}:$RELEASE_TAG"
-          docker build --file docker/Dockerfile --tag "$image" \
-            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
-            --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
-            --label "org.opencontainers.image.version=${RELEASE_TAG#v}" .
+          repository="ghcr.io/${GITHUB_REPOSITORY,,}"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker push "$image"
+          docker push "$repository:$RELEASE_TAG"
+          docker push "$repository-waha:$RELEASE_TAG"
