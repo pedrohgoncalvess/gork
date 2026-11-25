@@ -1,0 +1,98 @@
+name: CI e publicação
+
+'on':
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .python-version
+      - name: Install dependencies and FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-noto-color-emoji
+          python -m pip install uv==0.11.16
+          uv sync --locked
+      - name: Validate release tag
+        if: github.ref_type == 'tag'
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import tomllib
+
+          with open('pyproject.toml', 'rb') as metadata:
+              version = tomllib.load(metadata)['project']['version']
+          tag = os.environ['GITHUB_REF_NAME']
+          if not re.fullmatch(r'v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)', tag) or tag != f'v{version}':
+              raise SystemExit(f'Tag {tag!r} does not match project version {version!r}')
+          PY
+      - name: Run Python tests
+        env:
+          DATA_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          PYTHON_DOTENV_DISABLED: '1'
+        run: uv run --locked python -m unittest discover -s tests
+
+  javascript:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - run: node --test tests/test_admin_models.js
+
+  sound-sticker:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: docker/sound-sticker/go.mod
+          cache-dependency-path: docker/sound-sticker/go.sum
+      - run: go test ./...
+        working-directory: docker/sound-sticker
+
+  publish:
+    if: github.event_name == 'push' && github.ref_type == 'tag' && !github.event.deleted
+    needs: [python, javascript, sound-sticker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build and publish the API image
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:$GITHUB_REF_NAME"
+          docker build --file docker/Dockerfile --tag "$image" \
+            --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=${GITHUB_REF_NAME#v}" .
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$image"
