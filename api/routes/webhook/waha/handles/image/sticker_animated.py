@@ -1227,7 +1227,9 @@ async def animated_sticker_from_bytes(
         direction: str | None = None,
         effect_size: float = 1.0,
         duration: float | None = None,
-) -> str:
+        *,
+        return_webp: bool = False,
+) -> str | bytes:
     output_webp_path, temp_paths = await asyncio.to_thread(
         _build_animated_sticker_webp,
         media_bytes,
@@ -1245,6 +1247,9 @@ async def animated_sticker_from_bytes(
         duration,
     )
     try:
+        if return_webp:
+            with open(output_webp_path, "rb") as file:
+                return file.read()
         gif_url = await _upload_to_tmpfile(output_webp_path)
         return gif_url
 

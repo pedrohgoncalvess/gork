@@ -54,6 +54,11 @@ agents:
     prompt_path: agents/describe_image/prompt.md
     schema_path: agents/describe_image/schema.json
 
+  - name: describe-video
+    description: Agent responsible for describing videos and animations up to one minute for semantic search.
+    model: google/gemini-2.5-flash-lite
+    prompt_path: agents/describe_video/prompt.md
+
   - name: web-search
     description: Agent responsible for summarizing web search results.
     model: qwen/qwen3.6-flash

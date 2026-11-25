@@ -293,6 +293,32 @@ async def handle_sticker_command(
             norm_key = k.replace("_", "-")
             if norm_key not in params and k not in params:
                 params[norm_key] = str(v).lower() if isinstance(v, bool) else str(v)
+    audio_enabled = _param_enabled(params.get("audio", False))
+    video_cut = params.get("cut-video", params.get("cut"))
+    if audio_enabled and video_cut is None:
+        video_cut = "0-"
+
+    async def deliver(sticker, *, animated=False, video=None):
+        if not audio_enabled:
+            sender = send_animated_sticker if animated else send_sticker
+            await sender(remote_id, sticker)
+            return
+        from api.routes.webhook.waha.handles.image.sticker_sound import (
+            StickerAudioUnavailable,
+            deliver_sound_sticker,
+        )
+        from services.media_tags import MediaTagBusy
+        try:
+            webp = sticker if animated else base64.b64decode(sticker)
+            await deliver_sound_sticker(
+                remote_id, db_message, db, webp, video, params, _load_source_media_bytes,
+            )
+        except (StickerAudioUnavailable, MediaTagBusy) as error:
+            await send_message(remote_id, str(error), db_message.message_id)
+        except Exception as error:
+            await logger.error("Sticker", "SoundDeliveryFailed", type(error).__name__)
+            await send_message(remote_id, "Não consegui enviar a figurinha com áudio.", db_message.message_id)
+
     quoted_message = (
         await message_repo.find_by_id(db_message.quoted_message_id)
         if db_message.quoted_message_id
@@ -337,7 +363,7 @@ async def handle_sticker_command(
             await send_message(remote_id, "Não foi possível montar a figurinha do tweet. Tente novamente.")
             return
         try:
-            await send_sticker(remote_id, webp_base64)
+            await deliver(webp_base64)
         except Exception as error:
             await _log_image_command_error("tweet_sticker_send_failed", f"message_id={db_message.message_id} {type(error).__name__}: {error}")
             await send_message(remote_id, "A figurinha do tweet foi criada, mas não consegui enviá-la. Tente novamente.")
@@ -356,7 +382,6 @@ async def handle_sticker_command(
         font_size = params.get("font-size", "l")
         remove_background = _remove_background_enabled(params)
         speed = float(params.get("speed", 1.0))
-        cut_spec = params.get("cut")
         blur = _parse_blur(params)
         no_color = _param_enabled(params.get("no-color", "false"))
         use_tweet_text = _param_enabled(params.get("text", "false"))
@@ -378,14 +403,16 @@ async def handle_sticker_command(
                 font_size,
                 remove_background=remove_background,
                 speed=speed,
-                cut_spec=cut_spec,
+                cut_spec=video_cut,
                 blur=blur,
                 no_color=no_color,
                 direction=params.get("direction"),
                 effect_size=params.get("size", 1.0),
                 duration=params.get("duration"),
+                **({"return_webp": True} if audio_enabled else {}),
             )
-            await send_animated_sticker(remote_id, sticker_url)
+            video = result.media_bytes if result.media_type == "video" else None
+            await deliver(sticker_url, animated=True, video=video)
         else:
             from api.routes.webhook.waha.handles.image.sticker_static import static_sticker
 
@@ -406,7 +433,7 @@ async def handle_sticker_command(
                 direction=params.get("direction"),
                 resize=resize,
             )
-            await send_sticker(remote_id, webp_base64)
+            await deliver(webp_base64)
         return
 
     source_message = db_message
@@ -480,7 +507,6 @@ async def handle_sticker_command(
         font_size = params.get("font-size", "l")
         remove_background = _remove_background_enabled(params)
         speed = float(params.get("speed", 1.0))
-        cut_spec = params.get("cut")
         blur = _parse_blur(params)
         no_color = _param_enabled(params.get("no-color", "false"))
 
@@ -510,12 +536,13 @@ async def handle_sticker_command(
                 font_size,
                 remove_background=remove_background,
                 speed=speed,
-                cut_spec=cut_spec,
+                cut_spec=video_cut,
                 blur=blur,
                 no_color=no_color,
                 direction=params.get("direction"),
                 effect_size=params.get("size", 1.0),
                 duration=params.get("duration"),
+                **({"return_webp": True} if audio_enabled else {}),
             )
         except Exception as error:
             await logger.error(
@@ -529,7 +556,9 @@ async def handle_sticker_command(
                 db_message.message_id,
             )
             return
-        await send_animated_sticker(remote_id, gif_url)
+        await deliver(
+            gif_url, animated=True, video=source_bytes if source_kind == "video" else None,
+        )
         return
 
     is_random = _param_enabled(params.get("random", "false"))
@@ -574,7 +603,7 @@ async def handle_sticker_command(
             db_message.message_id,
         )
         return
-    await send_sticker(remote_id, webp_base64)
+    await deliver(webp_base64)
 
 
 async def handle_describe_image_command(

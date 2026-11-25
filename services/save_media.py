@@ -12,6 +12,9 @@ from database.operations.base import GroupRepository, UserRepository
 from database.operations.content import MediaRepository, MessageRepository
 from external.waha import download_media
 from s3 import S3Client
+from embeddings import generate_text_embeddings
+from log import logger
+from agents.describe_video.agent import describe_video, is_animation
 
 
 MEDIA_DEFAULTS = {
@@ -76,6 +79,19 @@ async def save_media_if_new(
         if message_id_db and message_media_id != existing_media.id:
             await message_repo.update(message_id_db, {"media_id": existing_media.id})
         return existing_media
+
+    if description is None and (media_type == "video" or (
+        media_type in {"image", "sticker"} and is_animation(decoded)
+    )):
+        try:
+            description = await describe_video(db, user_id, message_id, decoded, group_id)
+            if description:
+                description_embedding = await generate_text_embeddings(
+                    text=description, message_id=message_id, db=db,
+                    user_id=user_id, group_id=group_id,
+                ) or None
+        except Exception as error:
+            await logger.warning("Media", "DescribeVideo", f"Failed to describe/embed {message_id}: {error}")
 
     if group_id is not None:
         group_repo = GroupRepository(db)

@@ -14,10 +14,7 @@ from database.operations.manager import AgentRepository, InteractionRepository, 
 from database.operations.manager.interaction import MissingModelPriceError
 from external import completions
 from log import logger
-from utils import get_instance_number, project_root
-from database.operations.content.sup_media import SupMediaRepository
-import yaml
-from pathlib import Path
+from utils import get_instance_number
 
 
 MAX_REPLY_CHAIN_LENGTH = 8
@@ -351,23 +348,7 @@ async def conversation_agent(
 
     conversation_history = "\n".join(formatted_messages)
     
-    sup_media_repo = SupMediaRepository(db)
-    all_media = await sup_media_repo.find_all(limit=1000)
-    
-    metadata_path = Path(project_root) / "assets" / "metadata.yaml"
-    descriptions = {}
-    if metadata_path.exists():
-        with open(metadata_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f) or {}
-            for m_type in ("audio", "video", "image"):
-                for item in config.get(m_type) or []:
-                    descriptions[item.get("name")] = item.get("description", "").strip()
-
-    media_lines = []
-    for media in all_media:
-        desc = descriptions.get(media.name, "Nenhuma descrição.")
-        media_lines.append(f"[{media.id}] - {media.type} - {media.name} - {desc}")
-    available_media_str = "\n".join(media_lines) if media_lines else "Nenhuma mídia disponível no momento."
+    available_media_str = "Use the search_media tool to find media by name, description or spoken words."
 
     system_prompt = agent.prompt.replace("$$CONVERSATION_HISTORY$$", conversation_history)
     system_prompt = system_prompt.replace("$$AVAILABLE_MEDIA$$", available_media_str)

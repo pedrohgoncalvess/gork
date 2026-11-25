@@ -647,31 +647,17 @@ async def _dispatch_action(
         return True
 
     elif action_type in ("send_audio", "send_video", "send_image"):
-        media_id = params.get("media_id")
-        if media_id is not None:
-            from database.operations.content.sup_media import SupMediaRepository
-            from s3.connection import S3Client
-            from external.waha import send_video, send_image
-            
-            media_repo = SupMediaRepository(db)
-            try:
-                media_id_val = int(media_id)
-            except (ValueError, TypeError):
-                media_id_val = media_id
-
-            media = await media_repo.find_by_id(media_id_val)
-            if media:
-                s3_client = S3Client()
-                await s3_client.connect()
-                # get_image_base64 gets any object as base64
-                media_b64 = await s3_client.get_image_base64(media.bucket, media.path)
-                
-                if action_type == "send_audio":
-                    await send_audio(remote_id, media_b64, db_message.message_id)
-                elif action_type == "send_video":
-                    await send_video(remote_id, media_b64)
-                elif action_type == "send_image":
-                    await send_image(remote_id, media_b64)
+        from services.media_delivery import deliver_media
+        try:
+            await deliver_media(
+                db, remote_id=remote_id, user_id=user.id, group_id=group_id,
+                action_type=action_type, parameters=params, quoted_message_id=db_message.message_id,
+            )
+        except (ValueError, TypeError):
+            await send_message(remote_id, "Não encontrei essa mídia nesta conversa ou o tipo não corresponde ao pedido.", db_message.message_id)
+        except Exception as error:
+            await logger.error("ConversationHandle", "MediaDelivery", type(error).__name__)
+            await send_message(remote_id, "Não consegui enviar essa mídia. Tente novamente.", db_message.message_id)
         return True
 
     elif action_type == "sticker":

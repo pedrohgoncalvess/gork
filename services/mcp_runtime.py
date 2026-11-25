@@ -12,6 +12,10 @@ from database.models.manager import McpServer
 from external.mcp_client import call_tool
 from services.mcp_config import decrypt_settings, fixed_merge, public_schema
 from services.gork_knowledge import INSTRUCTION, TOOL_DEFINITION, TOOL_NAME, consult
+from services.media_search import (
+    TOOL_NAME as MEDIA_TOOL_NAME, TOOL_DEFINITION as MEDIA_TOOL_DEFINITION,
+    INSTRUCTION as MEDIA_INSTRUCTION, search_media,
+)
 
 
 MAX_TOOL_ROUNDS = 6
@@ -41,7 +45,7 @@ def bindings_for(servers) -> dict:
         for tool in server.tools or []:
             if server.tool_names and tool["name"] not in server.tool_names:
                 continue
-            if len(bindings) >= MAX_TOOLS - 1:  # Reserve one slot for local knowledge.
+            if len(bindings) >= MAX_TOOLS - 2:  # Reserve local knowledge and media search.
                 break
             alias = tool_alias(server.id, tool["name"])
             fixed = settings.get("fixed_arguments", {}).get(tool["name"], {})
@@ -125,9 +129,11 @@ async def complete_with_mcp(payload: dict, db, *, user_id: int, group_id: int | 
                             message_id: int, completion, record_response):
     bindings, unavailable = await available_bindings(db, user_id, group_id)
     has_remote_tools = bool(bindings)
-    bindings = {**bindings, TOOL_NAME: {"definition": TOOL_DEFINITION, "local": True}}
+    bindings = {**bindings, TOOL_NAME: {"definition": TOOL_DEFINITION, "local": True},
+                MEDIA_TOOL_NAME: {"definition": MEDIA_TOOL_DEFINITION, "media_search": True}}
     request = deepcopy(payload)
     request["messages"].insert(1, {"role": "system", "content": INSTRUCTION})
+    request["messages"].insert(1, {"role": "system", "content": MEDIA_INSTRUCTION})
     if has_remote_tools or unavailable:
         instruction = (
             "Configured MCP tools supply external data. Use native tool_calls when relevant, not JSON actions or invented calls. "
@@ -178,7 +184,14 @@ async def complete_with_mcp(payload: dict, db, *, user_id: int, group_id: int | 
                         started = time.monotonic()
                         try:
                             async with asyncio.timeout(MAX_TOOL_SECONDS - elapsed):
-                                if binding.get("local"):
+                                if binding.get("media_search"):
+                                    try:
+                                        cache[key] = json.dumps(await search_media(
+                                            db, arguments, user_id=user_id, group_id=group_id,
+                                        ), ensure_ascii=False)
+                                    except Exception:
+                                        cache[key] = json.dumps({"is_error": True, "error": "A busca de mídias falhou. Não invente resultados."})
+                                elif binding.get("local"):
                                     from jsonschema.exceptions import ValidationError
                                     try:
                                         cache[key] = json.dumps(consult(arguments), ensure_ascii=False)

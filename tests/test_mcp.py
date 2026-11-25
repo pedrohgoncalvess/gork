@@ -174,7 +174,7 @@ class McpInvocationTests(KeyMixin,unittest.IsolatedAsyncioTestCase):
         request=completion.await_args.args[0]
         self.assertEqual(request["response_format"],payload["response_format"])
         self.assertEqual(request["messages"][0],payload["messages"][0])
-        self.assertEqual([tool["function"]["name"] for tool in request["tools"]],["consult_gork_knowledge"])
+        self.assertEqual([tool["function"]["name"] for tool in request["tools"]],["consult_gork_knowledge", "search_media"])
         self.assertNotIn("tools",payload)
 
     async def test_tool_loop_is_bounded_even_when_model_ignores_stop(self):

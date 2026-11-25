@@ -31,6 +31,7 @@ from api.routes.webhook.waha.handles import (
     has_explicit_command,
 )
 from database.models.base import User
+from api.routes.webhook.waha.handles.media_tag import handle_tag_command
 from database.models.content import Message
 from external.waha import send_message
 from services import get_disabled_command_message, get_mentions_from_content, parse_params
@@ -144,6 +145,10 @@ async def process_explicit_commands(
 
     if "!sticker" in lw_conversation:
         await handle_sticker_command(remote_id, db_message, db, context)
+        return
+
+    if re.search(r"(?<!\S)!tag(?=\s|$)", lw_conversation):
+        await handle_tag_command(remote_id, db_message, context)
         return
 
     if "!video" in lw_conversation:

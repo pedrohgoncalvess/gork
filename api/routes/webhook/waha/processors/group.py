@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.waha.handles.audio import transcribe_audio
 from api.routes.webhook.waha.handles.core import (
-    COMMANDS,
+    get_explicit_command_feature,
     has_explicit_command,
     is_message_too_old,
 )
@@ -30,15 +30,7 @@ from services.conversation_lock import serialize_group_conversation
 from utils import get_instance_number
 
 
-def _explicit_command_feature(text: str | None) -> str | None:
-    if not text:
-        return None
-
-    lowered_text = text.lower()
-    for command, _, _, _ in COMMANDS:
-        if command.startswith("!") and command.lower() in lowered_text:
-            return command.removeprefix("!").lower()
-    return None
+_explicit_command_feature = get_explicit_command_feature
 
 
 async def process_group_message(
@@ -235,7 +227,7 @@ async def process_group_message(
         await send_message(remote_id, BLACK_LIST_MESSAGE, message_id)
         return
 
-    if "audio_message" in context_message.keys():
+    if "audio_message" in context_message and requested_feature != "tag":
         conversation = await transcribe_audio(body, user.id, group.id)
         if conversation:
             db_message = await message_repo.update(
@@ -243,12 +235,14 @@ async def process_group_message(
                 {"content": conversation},
             )
             context_message["text_message"] = conversation
+            from services.media_search import index_audio_transcript
+            await index_audio_transcript(db, user.id, db_message, conversation, group.id)
 
     # Sticker and moderation commands do not need the agent's conversation lock,
     # which may outlive a restarted worker.
     command_context = (
         nullcontext()
-        if requested_feature in ("sticker", "ban", "unban")
+        if requested_feature in ("sticker", "tag", "ban", "unban")
         else serialize_group_conversation(group.id)
     )
     async with command_context:

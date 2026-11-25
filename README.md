@@ -76,6 +76,8 @@ Send `!help` in an authorized chat for the full command list. In groups, mention
 | `!resume` | Summarize recent messages |
 | `!image <prompt>` / `!video <prompt>` | Generate images or short videos |
 | `!sticker` | Create a sticker from attached or quoted media |
+| `!sticker :audio` | Create a sound sticker from a video track or a tagged audio clip |
+| `!tag` | Mark a quoted audio clip for your next sound sticker |
 | `!sticker :tweet <url>` | Turn an X/Twitter post into a sticker |
 | `!deactivate @user` | Create a “Deactivated account” image from a saved profile photo |
 | `!transcribe` | Transcribe a quoted audio message |
