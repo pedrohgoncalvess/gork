@@ -43,6 +43,7 @@ duplicating the conversation engine, while each owns its prompt and contract.
 | `resize_image` | AI-assisted resizing for sticker flows |
 | `video_generation` | Validate options, submit/poll jobs, and deliver video |
 | `audio_generation` | Synthesize speech through OpenRouter |
+| `voice_cloning` | Clone a catalog reference through the configured HeyGen model, without a prompt file |
 | `transcriber` | Send original audio to OpenRouter and extract text |
 | `web_search` | Online search and summarization |
 | `resume` | Summarize recent stored messages |
@@ -64,6 +65,23 @@ model in the current conversation scope. Panel-managed prompts and model values
 survive restarts: editing `prompt.md` alone does not overwrite them. Use
 **Restore original configuration** in the panel to return to repository defaults.
 Response schemas remain code-owned and must match parsing and dispatch.
+
+`!model` reports the resolved conversation (DM or group), audio-generation, and
+modify-image agent models, including user/group overrides. Text, audio, and
+image models have no global default flags; embeddings retain their separate
+default configuration.
+
+The model picker groups repeated OpenRouter IDs and only offers models with
+the agent's output modality, using cached catalog metadata. Audio/image input
+support alone does not qualify a model for audio/image generation. Unknown
+capabilities remain unavailable until catalog discovery supplies metadata.
+
+**Desativar envio do prompt** is unchecked by default. Checking it persists
+`disable_system_prompt` for the agent and omits instructions while retaining
+user content and attachments. Conversation agents send only the current message
+and bypass the tool runtime, which normally adds its own system instructions.
+Restoring the original configuration unchecks this option; response schemas
+remain active for application parsing.
 
 ## Add an agent
 

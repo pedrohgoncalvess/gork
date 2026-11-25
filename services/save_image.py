@@ -12,6 +12,7 @@ from external.waha import download_media
 from log import logger
 from services.save_media import save_media_if_new
 from utils import get_phash
+from agents.describe_video.agent import is_animation
 
 
 PHASH_MAX_DISTANCE = 8
@@ -30,6 +31,12 @@ async def save_image_if_new(
         return None
 
     decoded = base64.b64decode(media_base64)
+    if is_animation(decoded):
+        return await save_media_if_new(
+            db=db, user_id=user_id, message_id=message_id,
+            media_message_id=image_message_id, media_type=media_type,
+            group_id=group_id, media_base64=media_base64, media_name=name,
+        )
     media_hash = hashlib.sha256(decoded).digest()
 
     media_repo = MediaRepository(db)
@@ -95,4 +102,3 @@ async def save_image_if_new(
         media_base64=media_base64,
         media_name=name,
     )
-

@@ -1,4 +1,5 @@
 import re
+from services.params import SPACED_CUT_PATTERN
 from datetime import datetime, timedelta
 
 
@@ -10,12 +11,18 @@ COMMANDS = [
         (":time", "Duração do banimento; padrão 30 minutos, máximo 3 horas.", [("3hr", "3 horas"), ("30min", "30 minutos"), ("120", "120 minutos"), ("1:30", "1 hora e 30 minutos")]),
         (":expiration", "Prazo da votação em minutos; mínimo 5, padrão 10, máximo 20.", [("5", "5 minutos"), ("10", "10 minutos"), ("20", "20 minutos")]),
     ]),
-    ("!audio", "Envia áudio como forma de resposta. _[Adicione !english para voz em inglês]_", "audio", []),
+    ("!unban", "Abre votação para remover um banimento ativo (1 vez por banimento). Outros membros usam !unban @usuário; a própria pessoa banida usa !unban @me. Exige Gork admin, ao menos 1/3 dos membros sem o Gork e mínimo de 3 votantes; maioria decide. Empate não aprova. Encerra antes se todos votarem.", "utility", [
+        (":expiration", "Prazo da votação em minutos; mínimo 3, padrão 5, máximo 10.", [("3", "3 minutos"), ("5", "5 minutos"), ("10", "10 minutos")]),
+    ]),
+    ("!audio", "Gera áudio com o texto informado. Use :voice=nome para clonar uma voz do catálogo. _[Adicione !english para falar em inglês]_", "audio", [
+        (":voice", "Voz do catálogo. Ex: !audio :voice=bolsonaro Olá, tá ok? Sem o parâmetro, usa a voz padrão.", []),
+    ]),
     ("!resume", "Faz um resumo das últimas 30 mensagens. _[Ignora o restante da mensagem]_", "utility", []),
     ("!search", "Faz uma pesquisa por termo na internet e retorna um resumo.", "search", []),
     ("!model", "Mostra o modelo sendo utilizado.", "search", []),
     ("!picture", "Envia a foto dos usuários mencionados", "image", []),
     ("!deactivate", "Deixa a foto em preto e branco com o rodapé Deactivated account. Responda a uma foto ou use !deactivate @usuário. Sem foto ou menção, usa uma foto aleatória.", "image", []),
+    ("!tag", "Marque um áudio para usar na sua próxima figurinha com :audio. Responda ao áudio com !tag.", "audio", []),
     (
         "!sticker",
         "Cria um sticker com base em uma imagem e texto fornecido. _[Use | como separador de top/bottom]_ \n_(Obs: Mensagens quotadas com !sticker será criado um sticker da mensagem com a foto de perfil de quem enviou)_",
@@ -40,7 +47,10 @@ COMMANDS = [
                 ("wave", "Efeito de ondas"),
                 ("fisheye", "Efeito olho de peixe"),
             ]),
-            (":cut", "Recorta o video da figurinha animada. Use segundos ou minuto:segundo, com inicio-fim.", [("43-46", "Corta de 43s a 46s"), ("1:00-1:05", "Corta de 1min a 1min05s"), ("43-", "Corta a partir de 43s ate o limite"), ("-46", "Corta os segundos anteriores a 46s")]),
+            (":audio", "Usa seu áudio marcado ou a faixa do vídeo. Desligado por padrão.", [("true", "Cria uma figurinha com som")]),
+            (":cut", "Aplica o mesmo recorte ao vídeo e ao áudio. Aceita segundos ou minuto:segundo.", [("43-46", "Corta de 43s a 46s"), ("1:00-1:05", "Corta de 1min a 1min05s"), ("43-", "Corta a partir de 43s até o limite"), ("-46", "Corta os segundos anteriores a 46s")]),
+            (":cut-video", "Recorta só o vídeo, com os mesmos formatos de :cut.", [("2-5", "Recorta o vídeo")]),
+            (":cut-audio", "Recorta só o áudio, com os mesmos formatos de :cut.", [("0:12-0:15", "Recorta o áudio")]),
             (":speed", "Altera a velocidade da figurinha animada. Com rotation, define a quantidade de voltas; com explosion, define quantas vezes a explosão se repete.", [("2.0", "2 voltas com rotation ou 2 explosões com explosion"), ("10", "10 explosões durante o sticker com explosion"), ("0.5", "Metade da velocidade nos demais efeitos")]),
             (":size", "Multiplica o tamanho da área do bulge ou da explosão; padrão 1, de 0.1 a 3.", [("0.5", "Metade do tamanho"), ("2", "Dobro do tamanho")]),
             (":duration", "Duração da figurinha com explosion em segundos (0.1 a 7); padrão 3 para imagem e até 6 para vídeo. Com :cut, respeita o limite do recorte e a duração da mídia.", [("2", "Dois segundos"), ("5", "Cinco segundos")]),
@@ -114,6 +124,7 @@ def clean_text(text: str | None, remove_mentions: bool = True) -> str:
 
     if remove_mentions:
         treated_text = re.compile(r'@\d{6,15}').sub('', treated_text)
+    treated_text = re.sub(SPACED_CUT_PATTERN, '', treated_text, flags=re.IGNORECASE)
     treated_text = re.compile(r'\s*:[a-zA-Z-]+(?:=\S+)?').sub('', treated_text)
     return treated_text.strip()
 
@@ -121,7 +132,7 @@ def clean_text(text: str | None, remove_mentions: bool = True) -> str:
 def has_explicit_command(text: str | None) -> bool:
     if not text:
         return False
-    return any(cmd in text.lower() for cmd, _, _, _ in COMMANDS if cmd.startswith("!"))
+    return get_explicit_command_feature(text) is not None
 
 
 def get_explicit_command_feature(text: str | None) -> str | None:
@@ -129,6 +140,8 @@ def get_explicit_command_feature(text: str | None) -> str | None:
         return None
     lowered_text = text.lower()
     for command, _, _, _ in COMMANDS:
+        if command == "!tag" and not re.search(r"(?<!\S)!tag(?=\s|$)", lowered_text):
+            continue
         if command.startswith("!") and command.lower() in lowered_text:
             return command.removeprefix("!").lower()
     return None

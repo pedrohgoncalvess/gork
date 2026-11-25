@@ -1,0 +1,13 @@
+{
+  "synthetic": true,
+  "model": "bytedance-seed/seed-audio-1-0",
+  "text": "Eu amo o fan clube da Dua Lipa, tá ok?",
+  "reference": "../referencia_video_30s.wav",
+  "requested_format": "mp3",
+  "content_type": "audio/mpeg",
+  "generation_id": "gen-tts-1793812341-OXu6oqBDZwP24LIXhBCx",
+  "status": "success",
+  "output": "seed_audio_1_0.mp3",
+  "bytes": 76530,
+  "elapsed_seconds": 37.15
+}

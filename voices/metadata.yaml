@@ -1,0 +1,89 @@
+# Local paths are relative to voices/. See README.md for adding references.
+# Keep longer originals on disk; HeyGen accepts at most 180 seconds per call.
+voices:
+  - name: bolsonaro
+    display_name: Jair Bolsonaro
+    path: bolsonaro/fonte_video_2022-11-01.ogg
+    language: pt
+    start_seconds: 15
+    duration_seconds: 118
+    source_url: https://commons.wikimedia.org/wiki/File:Pronunciamento_do_presidente_Jair_Bolsonaro_ap%C3%B3s_a_derrota_nas_elei%C3%A7%C3%B5es_de_2022.webm
+    attribution: TV Brasil / CanalGov
+    license: CC BY 3.0
+
+  - name: luciano_huck
+    display_name: Luciano Huck
+    path: luciano_huck/reference_long.m4a
+    language: pt
+    duration_seconds: 180
+    source_url: https://archive.org/details/jo-huck-ceni-7-5-2001
+    attribution: Programa do Jo / TV Globo (2001)
+    license: Not established by the archive listing
+    notes: Interview reference; may contain host speech and background sound.
+
+  - name: donald_trump
+    display_name: Donald Trump
+    path: donald_trump/reference_long.m4a
+    language: en
+    duration_seconds: 180
+    source_url: https://commons.wikimedia.org/wiki/File:President_Donald_Trump_2025_Inaugural_Address_FULL_SPEECH.webm
+    attribution: United States presidential inauguration (2025)
+    license: Public domain as listed on Commons
+
+  - name: bob_sponja
+    display_name: Bob Esponja
+    path: bob_sponja/reference_long.m4a
+    language: pt
+    duration_seconds: 180
+    source_url: https://archive.org/details/bob-esponja.-1x-09
+    attribution: Nickelodeon / Brazilian Portuguese dub
+    license: Copyrighted program; uploader license claim not verified
+    notes: Scene audio contains other characters and background soundtrack.
+
+  - name: goku
+    display_name: Goku
+    path: goku/reference_long.m4a
+    language: pt
+    duration_seconds: 180
+    source_url: https://archive.org/details/DragonBallSuperCartoonNetworkBR
+    attribution: Dragon Ball Super / Brazilian Portuguese dub
+    license: Copyrighted program; uploader license claim not verified
+    notes: Scene audio contains other characters and background soundtrack.
+
+  - name: lula
+    display_name: Luiz Inácio Lula da Silva
+    path: lula/reference_long.m4a
+    language: pt
+    duration_seconds: 180
+    source_url: https://commons.wikimedia.org/wiki/File:Pronunciamento_de_Lula_para_o_Dia_do_Trabalhador.webm
+    attribution: TV Brasil / CanalGov
+    license: CC BY 3.0
+
+  - name: faustao
+    display_name: Faustão
+    path: faustao/reference_long.m4a
+    language: pt
+    duration_seconds: 180
+    source_url: https://archive.org/details/youtube-AzHt43-5Yiw
+    attribution: Globo 40 Anos / Fausto Silva (2005)
+    license: Not established by the archive listing
+    notes: Television archive; may contain background sound and other voices.
+
+  - name: silvio_santos
+    display_name: Silvio Santos
+    path: silvio_santos/reference_long.m4a
+    language: pt
+    duration_seconds: 180
+    source_url: https://archive.org/details/inauguracao-da-tvs-rio-com-silvio-santos-1976-360p-30fps-h-264-128kbit-aac
+    attribution: TVS Rio inauguration / Silvio Santos (1976)
+    license: Not established by the archive listing
+    notes: Historical recording, with older recording acoustics.
+
+  - name: charlie_kirk
+    display_name: Charlie Kirk
+    path: charlie_kirk/reference_long.m4a
+    language: en
+    duration_seconds: 180
+    source_url: https://omny.fm/shows/the-charlie-kirk-show/from-the-archive-charlie-on-keeping-our-country-christlike
+    attribution: The Charlie Kirk Show / Salem Podcast Network
+    license: Not specified in public podcast feed

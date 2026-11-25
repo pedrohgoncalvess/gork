@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.filter.parser import parse_filter_response
+from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database.models.content import Message
 from database.models.manager import Interaction
 from database.operations.base import UserRepository
@@ -113,6 +114,9 @@ async def filter_agent(
     if agent.response_format:
         payload["response_format"] = json.loads(agent.response_format)
 
+    apply_prompt_setting(payload, agent)
+    if prompt_disabled(agent):
+        system_prompt = ""
     req = await completions(payload)
     raw_response = req["choices"][0]["message"]["content"]
     try:

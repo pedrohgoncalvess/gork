@@ -36,14 +36,13 @@ async def init_agents() -> None:
         for agent_data in config["agents"]:
             name = agent_data["name"]
             model_id = agent_data["model"]
-            prompt_path_str = agent_data["prompt_path"]
-
-            prompt_path = Path(project_root) / prompt_path_str
-            if prompt_path.exists():
+            prompt_path_str = agent_data.get("prompt_path")
+            prompt_content = ""
+            prompt_path = Path(project_root) / prompt_path_str if prompt_path_str else None
+            if prompt_path and prompt_path.exists():
                 with open(prompt_path, "r", encoding="utf-8") as f:
                     prompt_content = f.read()
-            else:
-                prompt_content = ""
+            elif prompt_path:
                 await logger.error("Agents", "Initialization", f"Prompt file not found for agent: {name}")
 
             model_db_id = models_rel.get(model_id)

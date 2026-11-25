@@ -56,6 +56,13 @@ For host tests, use `uv run python -m unittest discover -s tests` and the
 instead of replacing Docker hostnames in the app's mounted `.env`. Media tests
 may need FFmpeg; provider calls should be mocked in unit tests.
 
+## CI and releases
+
+GitHub Actions runs the Python, JavaScript and Go suites on pull requests and
+pushes to `main` and `master`. On version tags it also checks the project version
+and publishes the API image to GitHub Container Registry after the suites pass.
+See the [versioning and changelog guide](releases.md).
+
 ## Deployment
 
 Set `PG_*`, `MINIO_*`, and provider credentials for your external services.

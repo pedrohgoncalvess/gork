@@ -4,7 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.waha.handles.audio import transcribe_audio
-from api.routes.webhook.waha.handles.core import is_message_too_old
+from api.routes.webhook.waha.handles.core import get_explicit_command_feature, is_message_too_old
 from api.routes.webhook.waha.processors.common import process_commands
 from database.operations.base import UserRepository, WhiteListRepository
 from database.operations.content import MessageRepository
@@ -104,7 +104,7 @@ async def process_private_message(
     if not is_whitelisted:
         return
 
-    if "audio_message" in context.keys():
+    if "audio_message" in context and get_explicit_command_feature(conversation) != "tag":
         conversation = await transcribe_audio(body, user.id, group_id=None)
         if conversation:
             db_message = await message_repo.update(
@@ -112,6 +112,8 @@ async def process_private_message(
                 {"content": conversation},
             )
             context["text_message"] = conversation
+            from services.media_search import index_audio_transcript
+            await index_audio_transcript(db, user.id, db_message, conversation)
 
     await process_commands(
         conversation,

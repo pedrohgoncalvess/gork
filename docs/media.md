@@ -1,5 +1,70 @@
 # Images, video, stickers, and saved media
 
+## Automatic descriptions and semantic search
+
+New videos, GIFs received as images or videos, and animated WebP stickers get a
+Portuguese description through the `describe-video` agent, using
+`google/gemini-2.5-flash-lite`. Descriptions and their embeddings are stored in
+`content.media.description` and `description_embedding`, so the existing semantic
+gallery search can find them. Exact duplicate files reuse the existing record.
+Existing media are not backfilled.
+
+Only media lasting at most **60 seconds** (inclusive) and at most **20 MiB** are
+submitted. Longer media, unknown durations, and processing/provider failures still
+allow the original file to be saved, without a new description. GIF/WebP duration
+is one play of the animation, ignoring infinite looping. FFmpeg/FFprobe must be
+installed. A temporary MP4 copy is resized to at most 512px per side, retaining
+audio when present; the original stored file is unchanged. Inference uses a
+private base64 video input and at most 400 output tokens. Usage is recorded as an
+agent interaction. Run the normal agent initialization on deployment to register
+`describe-video`.
+
+Cost estimate (prices checked 2026-11-09): Flash-Lite costs $0.10 per million
+text/image/video input tokens and $0.40 per million output tokens; audio input is
+$0.30 per million. At approximately 263 video tokens/second and 32 audio
+tokens/second, a 60-second clip with audio, a 200-token prompt and 400-token output
+costs about **$0.00234**, or **$2.34 per 1,000 clips**. A silent 60-second clip is
+about **$0.00176**. These are estimates; actual tokenization/provider charges
+vary. Embeddings use the existing configured embedding model and are extra.
+
+Sources: [OpenRouter pricing](https://openrouter.ai/google/gemini-2.5-flash-lite/pricing),
+[Google pricing](https://ai.google.dev/gemini-api/docs/pricing),
+[Google token counting](https://firebase.google.com/docs/ai-logic/count-tokens).
+
+## Finding and forwarding stored media
+
+Conversation agents have a native `search_media` tool with `query`, optional
+`media_type` (`audio`, `image`, `video`, `sticker`), `mode` (`hybrid`, `semantic`,
+`text`) and `limit` (1–10). Hybrid search merges cosine similarity of stored
+descriptions with accent-insensitive character similarity over names,
+descriptions and audio transcripts. Text matching runs after decryption in the
+application, since encrypted fields cannot use SQL trigram matching. It remains
+available when embeddings are unavailable. Scores are relevance signals, not
+probabilities. The agent must assess the actual description and clarify weak or
+ambiguous matches rather than forwarding an unrelated file.
+
+Search covers the shared library and the current conversation only. Group
+attachments never appear in DM searches, and one group's attachments cannot be
+retrieved from another group. Deleted messages are excluded. Results contain
+IDs, source, type, description and scores; storage paths are not exposed.
+
+To send a result, the agent emits `send_audio`, `send_image` or `send_video` with
+`{"media_id": 123, "media_source": "library|conversation"}`. To forward an
+attachment explicitly selected or quoted by the user, it can instead pass
+`{"message_id": 123}`. IDs refer to database message IDs shown in context. The
+application checks scope and type again before downloading or sending. Stickers
+use `send_image` and retain sticker delivery. Legacy `media_id`-only actions still
+refer to the shared library.
+
+Startup migrations add descriptions and embeddings to `content.sup_media`.
+Asset initialization copies descriptions from `assets/metadata.yaml`, generating
+embeddings only when descriptions changed or the vector is missing. New incoming
+audio transcripts are indexed in both the media and message records. Semantic
+search also backfills up to 20 older, already-transcribed audio attachments from
+the current conversation per request in one embedding batch; tool output reports
+whether more remain. Untranscribed recordings cannot be searched by spoken words.
+No transcription or description is invented for missing content.
+
 Generation uses configured OpenRouter models, WhatsApp transfers use WAHA, and
 archived media is stored in MinIO. Commands require an authorized conversation
 and the corresponding permissions.

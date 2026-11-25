@@ -78,6 +78,33 @@ e a porta; hosts ARM precisam de uma imagem GOWS compatível.
   chegaram ao MinIO, não são migradas automaticamente. Mantenha os volumes
   Evolution enquanto valida o acervo.
 
+## Envio de figurinhas com som
+
+O serviço opcional `sound-sticker` é um dispositivo vinculado separado da
+mesma conta do Gork. Ele envia a figurinha e a faixa Opus pelo whatsmeow.
+Configure no `.env`:
+
+```dotenv
+SOUND_STICKER_ACCOUNT=55DDDNUMERO
+SOUND_STICKER_TOKEN=seu-token-aleatorio-com-pelo-menos-32-caracteres
+SOUND_STICKER_URL=http://sound-sticker:8080
+```
+
+Use no campo da conta o número da sessão WAHA com o código do país e só
+dígitos. A partir da raiz do repositório, rode:
+
+```sh
+docker compose --env-file .env -p gork-sound -f docker/compose.sound-sticker.yaml build
+docker compose --env-file .env -p gork-sound -f docker/compose.sound-sticker.yaml run --rm sound-sticker pair
+docker compose --env-file .env -p gork-sound -f docker/compose.sound-sticker.yaml up -d
+```
+
+Escaneie o QR de `pair` em **WhatsApp → Aparelhos conectados** com o
+celular do Gork. O volume `sound_sticker_device` guarda a sessão do
+dispositivo, e a porta fica restrita à rede Docker. Carregue o `.env`
+atualizado no processo do Gork. As figurinhas convencionais usam o WAHA.
+Veja os [comandos e exemplos de recorte](knowledge/commands.md).
+
 ## Validação depois do pareamento
 
 Confira `!status` e `!help` em um privado autorizado; em grupo, mencione o bot e

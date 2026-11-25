@@ -1,4 +1,5 @@
-from sqlalchemy import Column, func, Integer, String, TIMESTAMP
+from sqlalchemy import Column, func, Integer, String, Text, TIMESTAMP
+from pgvector.sqlalchemy import Vector
 
 from database.models import Base
 
@@ -12,6 +13,8 @@ class SupMedia(Base):
     bucket = Column(String(50), nullable=False)
     path = Column(String(150), nullable=False)
     type = Column(String(10), nullable=False)
+    description = Column(Text)
+    description_embedding = Column(Vector(2560))
 
     inserted_at = Column(
         TIMESTAMP(timezone=True),

@@ -3,9 +3,10 @@ from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.agent_settings import apply_prompt_setting, prompt_disabled
 from database.models.base import User
 from database.models.manager import Interaction
-from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository, ModelRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external import completions
 
 async def _run_web_search(
@@ -14,7 +15,6 @@ async def _run_web_search(
         query: str,
         group_id: Optional[int],
 ) -> str:
-    model_repo = ModelRepository(db)
     agent_repo = AgentRepository(db)
     model_conv_repo = ModelConversationRepository(db)
     web_agent = await agent_repo.find_by_name("web-search")
@@ -28,7 +28,7 @@ async def _run_web_search(
         )
 
     if not model:
-        model = await model_repo.get_default_model()
+        raise ValueError("Model not configured for agent: web-search")
 
     if web_agent and web_agent.prompt:
         system_prompt = web_agent.prompt
@@ -58,6 +58,9 @@ async def _run_web_search(
         except Exception:
             pass
 
+    apply_prompt_setting(payload, web_agent)
+    if prompt_disabled(web_agent):
+        system_prompt = ""
     req = await completions(payload, is_online=True)
     result = req["choices"][0]["message"]["content"]
 

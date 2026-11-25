@@ -9,6 +9,7 @@ from database.operations.content.sup_media import SupMediaRepository
 from log import logger
 from s3 import S3Client
 from utils import project_root
+from embeddings import generate_text_embeddings
 
 BUCKET = "whatsapp"
 
@@ -84,12 +85,18 @@ async def init_assets() -> None:
                         f"Uploaded {name} -> s3://{BUCKET}/{s3_sub_path}"
                     )
 
-                await sup_media_repo.upsert_by_name(
+                media = await sup_media_repo.upsert_by_name(
                     name=name,
                     bucket=BUCKET,
                     path=s3_sub_path,
                     media_type=media_type,
                 )
+                description = str(item.get("description") or "").strip()
+                if media.description != description or media.description_embedding is None:
+                    vector = await generate_text_embeddings(text=f"{name}\n{description}", db=db)
+                    await sup_media_repo.update(media.id, {
+                        "description": description, "description_embedding": vector or None,
+                    })
 
     await logger.info("Assets", "Initialization", "Successful")
 
