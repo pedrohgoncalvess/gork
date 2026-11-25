@@ -9,8 +9,9 @@ from agents.resume.agent import get_resume_conversation
 from api.routes.webhook.waha.handles.core import COMMANDS
 from database import PgConnection
 from database.models.manager.interaction import Interaction
-from database.operations.manager import InteractionRepository, ModelRepository
+from database.operations.manager import AgentRepository, InteractionRepository, ModelConversationRepository
 from external.waha import send_message
+from voices.catalog import available_voices
 
 
 # ── Token consumption ────────────────────────────────────────────────────────
@@ -258,6 +259,7 @@ async def token_consumption(
 # ── Handles ──────────────────────────────────────────────────────────────────
 
 async def handle_help_command(remote_id: str, message_id: str):
+    voices = await available_voices()
     category_info = {
         "interaction": ("💬 *INTERAÇÃO*", []),
         "search": ("🔍 *BUSCA & INFORMAÇÃO*", []),
@@ -293,6 +295,13 @@ async def handle_help_command(remote_id: str, message_id: str):
                             options_str = "\n".join([f"        - _{opt}_ ({desc})" for opt, desc in param_options])
                             help_parts.append(f"    Opções:\n {options_str}")
 
+                if cmd == "!audio":
+                    help_parts.append("  _Vozes disponíveis (áudio sintético):_")
+                    for voice in voices:
+                        help_parts.append(f"  • :voice={voice.name} — {voice.display_name}")
+                    if not voices:
+                        help_parts.append("  Nenhuma voz de clonagem cadastrada.")
+
             help_parts.append("")
 
     help_parts.extend([
@@ -324,11 +333,27 @@ async def handle_help_command(remote_id: str, message_id: str):
     await send_message(remote_id, help_message, message_id)
 
 
-async def handle_model_command(remote_id: str, message_id: str, db: AsyncSession):
-    model_repo = ModelRepository(db)
-    model = await model_repo.get_default_model()
-    audio_model = await model_repo.get_default_audio_model()
-    image_model = await model_repo.get_default_image_model()
+async def handle_model_command(
+    remote_id: str,
+    message_id: str,
+    db: AsyncSession,
+    user_id: Optional[int] = None,
+    group_id: Optional[int] = None,
+):
+    agent_repo = AgentRepository(db)
+    model_repo = ModelConversationRepository(db)
+    models = []
+    for agent_name in (
+        "conversation-group" if group_id is not None else "conversation-dm",
+        "audio-generation",
+        "modify-image",
+    ):
+        agent = await agent_repo.find_by_name(agent_name)
+        models.append(
+            await model_repo.resolve_agent_model(agent, user_id=user_id, group_id=group_id)
+            if agent else None
+        )
+    model, audio_model, image_model = models
 
     formatted_text = (
         "🤖 *MODELOS EM USO*\n"
@@ -340,7 +365,7 @@ async def handle_model_command(remote_id: str, message_id: str, db: AsyncSession
         f"🖼️ *Imagem*\n"
         f"└─ _{image_model.name if image_model else 'Não configurado'}_\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "_💡 Modelos padrão do sistema_"
+        "_💡 Modelos dos agentes nesta conversa_"
     )
     await send_message(remote_id, formatted_text, message_id)
 

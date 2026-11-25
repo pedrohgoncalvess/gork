@@ -40,11 +40,16 @@ do Gork e estimativas por preços registrados, não uma fatura do provedor.
 
 ## Áudio e transcrição
 
-`!audio <pedido>` solicita resposta falada. `!english` é modificador para voz
+`!audio <texto>` gera áudio diretamente com o texto informado, removendo comandos,
+parâmetros e seus valores e menções antes da síntese. `!english` é modificador para voz
 em inglês. `!transcribe` respondendo um áudio transcreve o conteúdo; áudios
 recebidos também podem entrar no fluxo de conversa. Voz suporta pt/en/es,
-usa modelo OpenRouter e uma voz fixa do adaptador. Ações de áudio têm cooldown
-de três minutos. Falha de síntese pode retornar texto. Veja o tópico `audio`.
+usa modelo OpenRouter. Sem `:voice`, usa a voz padrão. Com `:voice=bolsonaro`
+(ou outra opção listada em `!help`), usa o agente `voice-cloning` com HeyGen
+e a referência cadastrada em `voices/metadata.yaml`. O catálogo é sincronizado
+com `content.voice` na inicialização, inclusive para referências MP4.
+O cooldown de áudio está zerado. Falha de síntese pode retornar texto.
+Veja o tópico `audio`.
 
 ## Fotos e criação visual
 
@@ -84,13 +89,35 @@ usar a ação generate_sticker para uma cena nova com legenda.
 | `:text t` | Usa texto do post como legenda. |
 | `:tweet <url-X>` | Renderiza cartão com autor/avatar/texto e primeira prévia de mídia, quando disponível. |
 | `:effect rotation` | Anima/aplica efeito. |
-| `:cut 1:00-1:05` | Recorta intervalo de vídeo; também aceita segundos e intervalos abertos como `43-` ou `-46`. |
+| `:audio` | Ativa o som. Usa seu último áudio marcado ou extrai a faixa do vídeo. O padrão é desligado. |
+| `:cut=1:00-1:05` | Aplica o mesmo recorte ao vídeo e ao áudio. Aceita segundos, minuto:segundo e intervalos abertos como `43-` ou `-46`. |
+| `:cut-video=2-5` | Substitui apenas o recorte do vídeo. Aceita os mesmos formatos de `:cut`. |
+| `:cut-audio=0:12-0:15` | Substitui apenas o recorte do áudio. Aceita os mesmos formatos de `:cut`. |
 | `:speed 2` | Ajusta velocidade; em rotation define voltas e em explosion repetições. |
 | `:size 0.5` | Multiplica área de bulge/explosão; padrão 1, faixa 0.1 a 3. |
 | `:duration 2` | Duração de explosion, 0.1 a 7 segundos; respeita limites do recorte/mídia. |
 | `:blur 50` | Desfoque de 0 a 100. |
 | `:resize t` | Redimensiona preservando proporção. |
 | `:dead t` | Lápide com foto e texto da mensagem citada. |
+
+Responda a um áudio com `!tag` ou envie um áudio com `!tag` na legenda,
+quando o cliente permitir. O Gork responde “Áudio marcado”.
+Na próxima figurinha com `:audio`, o Gork usa a última marcação feita por
+você, inclusive se a fonte visual for uma imagem estática. Cada usuário tem
+sua própria marcação. Após um envio bem-sucedido, ela vai para o histórico e
+nenhuma marcação anterior volta a ficar disponível. Uma falha de envio libera
+a marcação para nova tentativa.
+
+Sem recortes, a figurinha com som usa até os primeiros sete segundos.
+Se a figurinha for animada, a trilha é limitada à duração da animação
+final. Se for estática, toca até o fim do áudio ou até sete segundos.
+Um áudio mais curto toca pelo tempo disponível.
+
+```text
+!sticker :audio
+!sticker :audio :cut=0:10-0:15
+!sticker :audio :cut-video=2-5 :cut-audio=0:12-0:15
+```
 
 Efeitos do catálogo: explosion, nuclear-bomb, breathing, rotation, bulge,
 pinch, swirl, wave e fisheye. `:duration` de explosion usa 3 segundos para
@@ -110,6 +137,12 @@ pode falhar. A ferramenta de conhecimento explica a função, mas não faz downl
 `:time` aceita minutos numéricos, sufixos min/hr e horas:minutos; padrão 30,
 mínimo 1 e máximo 180 minutos. `:expiration` é o prazo da enquete em minutos,
 mínimo 5, padrão 10 e máximo 20. São durações diferentes.
+
+`!unban @usuário :expiration 5` (ou `!unban @me :expiration 5` quando enviado pela
+própria pessoa banida) abre votação para remover um banimento ativo. Só funciona
+para quem está banido, pode ser usado 1 vez durante o banimento, segue as mesmas
+regras de votação e quórum do `!ban`, e aceita apenas `:expiration` (mínimo 3,
+padrão 5 e máximo 10 minutos).
 
 Exige Gork admin. Quórum: ao menos um terço dos membros sem Gork, arredondado
 para cima, e mínimo de três votantes. Com quórum, maioria aprova; empate não.

@@ -35,6 +35,18 @@ O parâmetro `:expiration` define o prazo da votação em minutos inteiros: mín
 e o ban, se aprovado, dura 30 minutos. O prazo escolhido é salvo em `closes_at`,
 preservado após reinícios e exibido no aviso e no painel.
 
+Para remover um banimento ativo antes do prazo, outros membros usam `!unban @usuário`
+e a própria pessoa banida usa `!unban @me` (opcionalmente com `:expiration` de 3 a
+10 minutos, padrão 5; não aceita `:time`). O comando só funciona para quem está
+banido no momento, pode ser usado apenas 1 vez durante cada banimento e segue as
+mesmas regras de quórum e maioria do `!ban`. Se aprovado, o banimento é encerrado
+imediatamente.
+
+A mensagem `!unban @me` da pessoa banida é preservada somente enquanto nenhum
+pedido de desbanimento tiver sido aberto para aquele banimento, incluindo pedidos
+feitos por outros membros. Depois disso, suas mensagens com `!unban` também são
+excluídas normalmente. Falhas no envio da enquete permitem uma nova tentativa.
+
 Cada membro tem um controle separado por grupo. Uma votação aberta ou ban ativo
 impede outra votação para o mesmo alvo. Após rejeição, cancelamento ou voto ilegível,
 é preciso aguardar 1 hora desde o encerramento real da votação (inclusive antecipado).

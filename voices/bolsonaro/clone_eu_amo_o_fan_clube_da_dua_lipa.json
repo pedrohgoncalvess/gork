@@ -1,0 +1,9 @@
+{
+  "synthetic": true,
+  "model": "fish-audio/s2.1-pro",
+  "text": "eu amo o fan clube da dua lipa",
+  "reference": "amostra_01_30s.wav",
+  "output": "clone_eu_amo_o_fan_clube_da_dua_lipa.mp3",
+  "generation_id": "gen-tts-1793811984-MGpTEwThxT0CNNklUKsj",
+  "bytes": 38869
+}

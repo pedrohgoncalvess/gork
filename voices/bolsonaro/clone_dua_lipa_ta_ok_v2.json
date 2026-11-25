@@ -1,0 +1,12 @@
+{
+  "synthetic": true,
+  "model": "fish-audio/s2.1-pro",
+  "text": "Eu amo o fan clube da Dua Lipa, tá ok?",
+  "reference": "referencia_video_30s.wav",
+  "reference_source": "fonte_video_2022-11-01.ogg",
+  "reference_start_seconds": 15,
+  "reference_duration_seconds": 30,
+  "output": "clone_dua_lipa_ta_ok_v2.mp3",
+  "generation_id": "gen-tts-1793812177-CTvlIjReXFaPqF0vk4Rr",
+  "bytes": 69380
+}

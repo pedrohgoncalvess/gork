@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routes.webhook.waha.handles import (
     clean_text,
+    handle_audio_command,
     handle_consumption_command,
     handle_deactivate_command,
     handle_conversation_agent,
@@ -30,6 +31,7 @@ from api.routes.webhook.waha.handles import (
     has_explicit_command,
 )
 from database.models.base import User
+from api.routes.webhook.waha.handles.media_tag import handle_tag_command
 from database.models.content import Message
 from external.waha import send_message
 from services import get_disabled_command_message, get_mentions_from_content, parse_params
@@ -94,6 +96,10 @@ async def process_explicit_commands(
         from services.group_ban import handle_ban_command
         await handle_ban_command(remote_id, conversation, message_id, body)
         return
+    if re.search(r"(?<!\S)!unban(?=\s|$)", lw_conversation):
+        from services.group_ban import handle_unban_command
+        await handle_unban_command(remote_id, conversation, message_id, body)
+        return
     if "!status" in lw_conversation:
         await send_message(remote_id, "🤖 Robo do mito está pronto", message_id)
         return
@@ -103,7 +109,7 @@ async def process_explicit_commands(
         return
 
     if "!model" in lw_conversation:
-        await handle_model_command(remote_id, message_id, db)
+        await handle_model_command(remote_id, message_id, db, user_id=user.id, group_id=group_id)
         return
 
     if "!resume" in lw_conversation:
@@ -112,6 +118,12 @@ async def process_explicit_commands(
 
     if "!transcribe" in lw_conversation:
         await handle_transcribe_command(remote_id, message_id, body, user.id, group_id)
+        return
+
+    if re.search(r"(?<!\S)!audio(?=\s|$)", lw_conversation):
+        await handle_audio_command(
+            conversation, remote_id, user, db_message, db, scheduler, context, group_id,
+        )
         return
 
     if "!image" in lw_conversation:
@@ -133,6 +145,10 @@ async def process_explicit_commands(
 
     if "!sticker" in lw_conversation:
         await handle_sticker_command(remote_id, db_message, db, context)
+        return
+
+    if re.search(r"(?<!\S)!tag(?=\s|$)", lw_conversation):
+        await handle_tag_command(remote_id, db_message, context)
         return
 
     if "!video" in lw_conversation:

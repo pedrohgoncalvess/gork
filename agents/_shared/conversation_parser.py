@@ -404,7 +404,7 @@ def _validate_action_type(action_type: str, action: Dict, idx: int) -> None:
     elif action_type in [
         "sticker", "generate_sticker", "audio", "picture", "image", "video", "describe",
         "search", "web_search", "transcribe", "remember", "twitter", "instagram",
-        "gallery", "favorite"
+        "gallery", "favorite", "send_audio", "send_image", "send_video"
     ]:
         # These actions may have parameters
         if "parameters" in action and not isinstance(action["parameters"], dict):

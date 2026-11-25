@@ -9,6 +9,7 @@ from api.admin.mcp_routes import router as mcp_admin_router
 from api import webhook_waha_router
 from agents.init import init_agents
 from assets.init import init_assets
+from voices.catalog import init_voices
 from database import dispose_database_engine
 from database.migrate import apply_pending_migrations
 from log import logger
@@ -33,6 +34,7 @@ async def startup_event():
         f"Applied {applied_migrations} pending migration(s).",
     )
     await init_agents()
+    await init_voices()
     # Register newly configured models before collecting their price snapshots.
     await set_model_price_refresh(scheduler)
     await init_assets()

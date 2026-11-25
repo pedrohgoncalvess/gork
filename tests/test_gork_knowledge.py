@@ -53,6 +53,20 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(result["total"], 0)
         self.assertIsNone(result["next_offset"])
 
+    def test_release_lookup_includes_the_requested_versions_changes(self):
+        with TemporaryDirectory() as directory, patch("services.gork_knowledge.ROOT", Path(directory)):
+            root = Path(directory)
+            (root / "pyproject.toml").write_text('[project]\nversion = "0.3.0"\n', encoding="utf-8")
+            (root / "CHANGELOG.md").write_text(
+                "# Changelog\n\n## [0.3.0] - 2026-12-01\n\n### Adicionado\n- Exportação.\n"
+                "\n## [0.2.0] - 2026-11-30\n\n### Corrigido\n- Busca de mídia.\n",
+                encoding="utf-8",
+            )
+            result = consult({"topic": "releases", "query": "v0.2.0"})
+        self.assertEqual(result["project_version"], "0.3.0")
+        self.assertEqual(len(result["results"]), 2)
+        self.assertIn("Busca de mídia", result["results"][1]["text"])
+
     def test_only_allowlisted_documents_and_valid_bounds(self):
         for arguments in ({"topic": "../../.env"}, {"path": ".env"}, {"query": "x" * 301},
                           {"limit": 7}, {"offset": -1}, {"limit": True}, {"query": ""}):
@@ -98,7 +112,10 @@ class KnowledgeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(record.await_count, 2)
         self.assertEqual(payload, original)
         self.assertEqual(seen[0]["response_format"], original["response_format"])
-        self.assertIn("consult_gork_knowledge", seen[0]["messages"][1]["content"])
+        self.assertTrue(any(
+            item["role"] == "system" and TOOL_NAME in item["content"]
+            for item in seen[0]["messages"]
+        ))
         self.assertNotIn("AES-GCM", json.dumps(seen[0]))
         tool_result = next(item for item in seen[1]["messages"] if item["role"] == "tool")
         self.assertEqual(tool_result["tool_call_id"], "knowledge-1")

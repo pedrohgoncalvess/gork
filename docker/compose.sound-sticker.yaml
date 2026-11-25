@@ -1,0 +1,19 @@
+services:
+  sound-sticker:
+    build:
+      context: ./sound-sticker
+    environment:
+      SOUND_STICKER_ACCOUNT: ${SOUND_STICKER_ACCOUNT:?set the Gork account phone with country code}
+      SOUND_STICKER_TOKEN: ${SOUND_STICKER_TOKEN:?set a shared token of at least 32 characters}
+    networks:
+      - dokploy-network
+    volumes:
+      - sound_sticker_device:/data
+    restart: unless-stopped
+
+networks:
+  dokploy-network:
+    external: true
+
+volumes:
+  sound_sticker_device:

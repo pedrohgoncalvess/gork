@@ -1,4 +1,5 @@
 import asyncio
+
 import base64
 import binascii
 import json
@@ -9,6 +10,7 @@ from io import BytesIO
 from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from services.agent_settings import prompt_disabled
 from database import PgConnection
 from database.models.content import Message
 from database.operations.content import MediaRepository, MessageRepository
@@ -403,6 +405,8 @@ async def handle_video_command(
         "aspect_ratio": options.aspect_ratio,
         "generate_audio": options.generate_audio,
     }
+    if prompt_disabled(video_agent):
+        payload["prompt"] = user_prompt
     if references:
         payload["input_references"] = references
 

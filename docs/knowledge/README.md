@@ -10,15 +10,17 @@ conversa precisa suportar tool calling.
 
 O runtime injeta uma instrução curta para consultar antes de responder perguntas
 factuais sobre o próprio Gork: história, autor, recursos/comandos, código,
-tecnologias, criptografia, instalação, configuração, deploy e diagnóstico.
+tecnologias, versões, mudanças, correções, criptografia, instalação, configuração,
+deploy e diagnóstico.
 A instrução vale também para prompts personalizados preservados pelo painel.
 Conversas sem relação com o projeto e execução de ações já compreendidas não
 pedem leitura da base. A escolha da chamada continua sendo feita pelo modelo.
 
 ## Consultas e respostas
 
-- `{}` ou `{"topic":"index"}`: catálogo com os 18 assuntos e suas fontes.
+- `{}` ou `{"topic":"index"}`: catálogo de assuntos e fontes.
 - `{"topic":"history"}`: história documentada, autoria pública e ressalvas.
+- `{"topic":"releases","query":"0.2.0"}`: notas de uma versão e versão do código local.
 - `{"topic":"encryption","query":"AES"}`: trechos do guia de criptografia.
 - `{"query":"WAHA"}`: busca lexical em todos os assuntos.
 - `{"topic":"development","offset":4,"limit":4}`: continuação de um guia.
