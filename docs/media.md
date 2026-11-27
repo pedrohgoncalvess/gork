@@ -138,6 +138,12 @@ a public URL.
 ## Downloads and archives
 
 `!twitter <url>` sends a video or the first photo from an X/Twitter post.
+`!youtube <url>` sends a public YouTube video or Short as MP4, up to 16 MiB.
+Use `!sticker <url>` or reply to a message with a YouTube link using `!sticker`
+to create an animated sticker from a video within the same size limit. You
+can select a clip with `:cut 0:02-0:05`.
+Both commands accept `youtube.com/watch?v=…`, `youtube.com/shorts/…`, and
+`youtu.be/…` links.
 `!instagram <reel-url>` downloads a reel; some sources require the optional
 `INSTAGRAM_COOKIES_FILE`. In Docker, mount that file and configure its path as
 seen inside the application container.

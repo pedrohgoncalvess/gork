@@ -25,7 +25,7 @@ COMMANDS = [
     ("!tag", "Marque um áudio para usar na sua próxima figurinha com :audio. Responda ao áudio com !tag.", "audio", []),
     (
         "!sticker",
-        "Cria um sticker com base em uma imagem e texto fornecido. _[Use | como separador de top/bottom]_ \n_(Obs: Mensagens quotadas com !sticker será criado um sticker da mensagem com a foto de perfil de quem enviou)_",
+        "Cria uma figurinha a partir de mídia, texto citado ou link do YouTube (incluindo Shorts). _[Use | para separar as legendas de cima e de baixo]_",
         "image",
         [
             (":no-background", "Remove fundo da imagem ou video.", [("t", "Verdadeiro"),]),
@@ -33,7 +33,7 @@ COMMANDS = [
             (":random", "Usa uma imagem aleatória", [("t", "Verdadeiro"),]),
             (":fill", "Preenche todo o tamanho do sticker cortando o excesso da imagem.", [("true", "Verdadeiro"),]),
             (":direction", "Ativa o preenchimento e escolhe qual região do recorte preservar; o padrão é o centro.", [("top", "Cima"), ("bottom", "Baixo"), ("left", "Esquerda"), ("right", "Direita"), ("top-left", "Cima e esquerda"), ("top-right", "Cima e direita"), ("bottom-left", "Baixo e esquerda"), ("bottom-right", "Baixo e direita")]),
-            (":url", "Usa uma URL do Twitter/X como fonte do sticker.", [("https://x.com/usuario/status/12345", "Link do post"),]),
+            (":url", "Usa um link do Twitter/X ou do YouTube como fonte da figurinha.", [("https://x.com/usuario/status/12345", "Link do post"),]),
             (":text", "Usa o texto do post do Twitter/X como legenda do sticker.", [("t", "Verdadeiro"),]),
             (":tweet", "Cria um cartão de tweet com autor, avatar, texto e foto. Use !sticker :tweet <link> ou !sticker :tweet=<link>; também aceita posts só de texto.", [("t", "Verdadeiro"),]),
             (":effect", "Adiciona um efeito e transforma imagens estáticas em figurinhas animadas.", [
@@ -90,6 +90,7 @@ COMMANDS = [
     ("!remove", "", "hidden", []),
     ("!twitter", "Baixa e envia o vídeo ou a primeira imagem de um link do X/Twitter. _[Ex: !twitter https://x.com/usuario/status/12345]_", "media", []),
     ("!instagram", "Baixa reels do Instagram e envia. _[Ex: !instagram https://www.instagram.com/reel/XXXXXXXX]_", "media", []),
+    ("!youtube", "Baixa e envia vídeos e Shorts do YouTube em MP4. _[Use !youtube <link>]_", "media", []),
     (
         "!philo",
         "Gera uma imagem filosófica com a frase quotada (ou texto da mensagem) sobreposta à foto do filósofo escolhido.",
@@ -140,7 +141,7 @@ def get_explicit_command_feature(text: str | None) -> str | None:
         return None
     lowered_text = text.lower()
     for command, _, _, _ in COMMANDS:
-        if command == "!tag" and not re.search(r"(?<!\S)!tag(?=\s|$)", lowered_text):
+        if command in {"!tag", "!youtube"} and not re.search(rf"(?<!\S){command}(?=\s|$)", lowered_text):
             continue
         if command.startswith("!") and command.lower() in lowered_text:
             return command.removeprefix("!").lower()

@@ -85,7 +85,7 @@ usar a ação generate_sticker para uma cena nova com legenda.
 | `:random t` | Usa uma imagem aleatória. |
 | `:fill true` | Preenche recortando excedente; centro é o padrão. |
 | `:direction top` | Preserva região: top, bottom, left, right, top-left, top-right, bottom-left ou bottom-right. |
-| `:url <url-X>` | Usa mídia de post X/Twitter. |
+| `:url=<link>` | Usa mídia do X/Twitter ou vídeo ou Short do YouTube. Também aceita o link diretamente no comando ou em mensagem citada. |
 | `:text t` | Usa texto do post como legenda. |
 | `:tweet <url-X>` | Renderiza cartão com autor/avatar/texto e primeira prévia de mídia, quando disponível. |
 | `:effect rotation` | Anima/aplica efeito. |
@@ -127,6 +127,9 @@ fundos. A criação de uma imagem nova depende do provedor de IA.
 ## Downloads
 
 `!twitter <url>` baixa vídeo ou primeira imagem de post X/Twitter.
+`!youtube <url>` baixa e envia vídeo público ou Short do YouTube em MP4
+(até 16 MiB). Use `!sticker <url>` ou responda ao link com `!sticker` para
+criar uma figurinha animada. Use `:cut 0:02-0:05` para escolher o trecho.
 `!instagram <url-reel>` baixa reel; alguns casos precisam de cookie opcional
 configurado pelo operador. Conteúdo removido, privado ou bloqueado na origem
 pode falhar. A ferramenta de conhecimento explica a função, mas não faz download.

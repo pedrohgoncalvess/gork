@@ -17,6 +17,12 @@ from api.routes.webhook.waha.handles.social import (
     extract_twitter_url,
     remove_twitter_urls,
 )
+from api.routes.webhook.waha.handles.youtube import (
+    YouTubeDownloadError,
+    download_youtube_video,
+    extract_youtube_url,
+    remove_youtube_urls,
+)
 from database.models.base import User
 from database.models.content import Message
 from database.operations.content import MessageRepository, MediaRepository
@@ -336,14 +342,18 @@ async def handle_sticker_command(
 
     tweet_param = params.get("tweet", "false")
     tweet_url = extract_twitter_url(str(tweet_param))
-    twitter_url = (
-        tweet_url
-        or params.get("url")
-        or extract_twitter_url(current_content)
-        or extract_twitter_url(quoted_content)
-        or extract_twitter_url(context_quote_content)
-    )
+    link_sources = (current_content, quoted_content, context_quote_content)
+    explicit_url = params.get("url")
+    if not isinstance(explicit_url, str):
+        explicit_url = None
     if tweet_url or _param_enabled(tweet_param):
+        twitter_url = (
+            tweet_url
+            or explicit_url
+            or extract_twitter_url(current_content)
+            or extract_twitter_url(quoted_content)
+            or extract_twitter_url(context_quote_content)
+        )
         if not twitter_url:
             await send_message(remote_id, "Use !sticker :tweet <link do Twitter/X> ou responda a uma mensagem com o link.")
             return
@@ -371,12 +381,39 @@ async def handle_sticker_command(
         await logger.info("TweetSticker", "Sent", f"message_id={db_message.message_id}")
         return
 
-    if twitter_url:
-        result = await download_twitter_media(twitter_url)
-        if not result.is_success:
-            await send_message(remote_id, f"Erro ao baixar midia do Twitter/X: {result.error}")
-            return
+    youtube_url = None
+    twitter_url = explicit_url
+    for content in (explicit_url,) if explicit_url else link_sources:
+        youtube_url = extract_youtube_url(content)
+        twitter_url = explicit_url or extract_twitter_url(content)
+        if youtube_url or twitter_url:
+            break
 
+    if youtube_url or twitter_url:
+        caption_text = None
+        if youtube_url:
+            try:
+                media_bytes = await download_youtube_video(youtube_url)
+            except YouTubeDownloadError as error:
+                await send_message(remote_id, str(error), db_message.message_id)
+                return
+            media_type = "video"
+            remove_source_urls = remove_youtube_urls
+        else:
+            result = await download_twitter_media(twitter_url)
+            if not result.is_success:
+                await send_message(remote_id, f"Erro ao baixar midia do Twitter/X: {result.error}")
+                return
+            media_bytes = result.media_bytes
+            media_type = result.media_type
+            remove_source_urls = remove_twitter_urls
+            if _param_enabled(params.get("text", "false")):
+                caption_text = result.text
+
+        for content in link_sources:
+            if caption_text:
+                break
+            caption_text = clean_text(remove_source_urls(content))
         effect = params.get("effect")
         fill = _fill_enabled(params)
         font_size = params.get("font-size", "l")
@@ -384,19 +421,11 @@ async def handle_sticker_command(
         speed = float(params.get("speed", 1.0))
         blur = _parse_blur(params)
         no_color = _param_enabled(params.get("no-color", "false"))
-        use_tweet_text = _param_enabled(params.get("text", "false"))
-        caption_text = result.text if use_tweet_text else None
-        if not caption_text:
-            caption_text = clean_text(remove_twitter_urls(current_content))
-        if not caption_text:
-            caption_text = clean_text(remove_twitter_urls(quoted_content))
-        if not caption_text:
-            caption_text = clean_text(remove_twitter_urls(context_quote_content))
-        if result.media_type == "video" or effect:
+        if media_type == "video" or effect:
             from api.routes.webhook.waha.handles.image.sticker_animated import animated_sticker_from_bytes
 
             sticker_url = await animated_sticker_from_bytes(
-                result.media_bytes,
+                media_bytes,
                 caption_text,
                 effect,
                 fill,
@@ -411,7 +440,7 @@ async def handle_sticker_command(
                 duration=params.get("duration"),
                 **({"return_webp": True} if audio_enabled else {}),
             )
-            video = result.media_bytes if result.media_type == "video" else None
+            video = media_bytes if media_type == "video" else None
             await deliver(sticker_url, animated=True, video=video)
         else:
             from api.routes.webhook.waha.handles.image.sticker_static import static_sticker
@@ -427,7 +456,7 @@ async def handle_sticker_command(
                 fill,
                 blur=blur,
                 font_size_param=font_size,
-                source_image_bytes=result.media_bytes,
+                source_image_bytes=media_bytes,
                 caption_text=caption_text,
                 no_color=no_color,
                 direction=params.get("direction"),
