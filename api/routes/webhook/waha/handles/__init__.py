@@ -25,6 +25,7 @@ from api.routes.webhook.waha.handles.philo import handle_philo_command
 from api.routes.webhook.waha.handles.reminder import handle_remember_command
 from agents.video_generation.agent import handle_video_command
 from api.routes.webhook.waha.handles.social import handle_instagram_command, handle_twitter_command
+from api.routes.webhook.waha.handles.youtube import handle_youtube_command
 from api.routes.webhook.waha.handles.utility import (
     handle_consumption_command,
     handle_help_command,

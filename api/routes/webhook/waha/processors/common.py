@@ -27,6 +27,7 @@ from api.routes.webhook.waha.handles import (
     handle_transcribe_command,
     handle_twitter_command,
     handle_video_command,
+    handle_youtube_command,
     get_explicit_command_feature,
     has_explicit_command,
 )
@@ -215,6 +216,10 @@ async def process_explicit_commands(
 
     if "!instagram" in lw_conversation:
         await handle_instagram_command(remote_id, conversation, message_id)
+        return
+
+    if re.search(r"(?<!\S)!youtube(?=\s|$)", lw_conversation):
+        await handle_youtube_command(remote_id, conversation, message_id)
         return
 
     if "!philo" in lw_conversation:

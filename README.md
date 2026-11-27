@@ -75,7 +75,8 @@ Send `!help` in an authorized chat for the full command list. In groups, mention
 | `!status` / `!model` | Check availability and the current model |
 | `!resume` | Summarize recent messages |
 | `!image <prompt>` / `!video <prompt>` | Generate images or short videos |
-| `!sticker` | Create a sticker from attached or quoted media |
+| `!sticker` | Create a sticker from attached or quoted media, or a YouTube video or Short link |
+| `!youtube <url>` | Download and send a YouTube video or Short as MP4 |
 | `!sticker :audio` | Create a sound sticker from a video track or a tagged audio clip |
 | `!tag` | Mark a quoted audio clip for your next sound sticker |
 | `!sticker :tweet <url>` | Turn an X/Twitter post into a sticker |
